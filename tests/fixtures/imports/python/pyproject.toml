@@ -1,0 +1,6 @@
+[project]
+name = "fixture-app"
+dependencies = [
+    "requests>=2.28.0",
+    "pillow>=10.0",
+]
