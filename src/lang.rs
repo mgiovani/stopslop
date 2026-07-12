@@ -8,6 +8,10 @@ pub enum Lang {
     Python,
     Go,
     Rust,
+    Md,
+    Mdx,
+    Txt,
+    Rst,
 }
 
 impl Lang {
@@ -18,8 +22,17 @@ impl Lang {
             "py" | "pyi" => Some(Lang::Python),
             "go" => Some(Lang::Go),
             "rs" => Some(Lang::Rust),
+            "md" | "markdown" => Some(Lang::Md),
+            "mdx" => Some(Lang::Mdx),
+            "txt" | "text" => Some(Lang::Txt),
+            "rst" => Some(Lang::Rst),
             _ => None,
         }
+    }
+
+    /// Prose langs bypass tree-sitter entirely (see engine::lint_file).
+    pub fn is_prose(self) -> bool {
+        matches!(self, Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst)
     }
 }
 
@@ -33,5 +46,8 @@ pub fn ts_language(lang: Lang) -> Language {
         Lang::Python => tree_sitter_python::LANGUAGE.into(),
         Lang::Go => tree_sitter_go::LANGUAGE.into(),
         Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => {
+            unreachable!("prose langs bypass tree-sitter")
+        }
     }
 }

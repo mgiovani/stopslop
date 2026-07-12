@@ -75,6 +75,9 @@ pub fn lint_file(
     lang: Lang,
     settings: &Settings,
 ) -> Vec<Diagnostic> {
+    if lang.is_prose() {
+        return lint_prose(display_path, source, lang, settings);
+    }
     let mut parser = Parser::new();
     if parser.set_language(&lang::ts_language(lang)).is_err() {
         return Vec::new();
@@ -93,13 +96,14 @@ pub fn lint_file(
     let ctx = LintContext {
         display_path,
         source,
-        tree: &tree,
+        tree: Some(&tree),
         lang,
         comments: &comments,
         strings: &strings,
         is_test_path: is_test,
         is_stub_file: is_stub,
         deps: settings.deps.as_ref(),
+        prose: None,
     };
     let mut out = Vec::new();
     for &rule in RULES {
@@ -115,6 +119,46 @@ pub fn lint_file(
         (rule.check)(rule, &ctx, &mut out);
     }
     suppress::apply(&mut out, &comments);
+    out
+}
+
+/// Prose langs (.md/.mdx/.txt/.rst) skip tree-sitter entirely: there is no grammar for them, and
+/// prose rules scan `ProseDoc::masked` (a byte-preserving fenced/inline-code-blanked stream) instead
+/// of an AST. `ctx.tree` stays `None`; `ctx.prose` is the only thing prose rules read.
+fn lint_prose(
+    display_path: String,
+    source: &str,
+    lang: Lang,
+    settings: &Settings,
+) -> Vec<Diagnostic> {
+    let doc = crate::prose::ProseDoc::parse(source);
+    let is_test = paths::is_test_path(&display_path);
+    let ctx = LintContext {
+        display_path,
+        source,
+        tree: None,
+        lang,
+        comments: &doc.ignore_comments, // only used by suppress::apply; prose rules read ctx.prose
+        strings: &[],
+        is_test_path: is_test,
+        is_stub_file: false,
+        deps: None,
+        prose: Some(&doc),
+    };
+    let mut out = Vec::new();
+    for &rule in RULES {
+        if !settings.enabled.contains(rule.code) {
+            continue;
+        }
+        if !rule.langs.contains(&lang) {
+            continue;
+        }
+        if rule.path_gated && ctx.is_test_path {
+            continue;
+        }
+        (rule.check)(rule, &ctx, &mut out);
+    }
+    suppress::apply(&mut out, ctx.comments);
     out
 }
 

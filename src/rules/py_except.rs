@@ -82,13 +82,14 @@ mod tests {
         let ctx = LintContext {
             display_path: "test".into(),
             source: src,
-            tree: &tree,
+            tree: Some(&tree),
             lang: Lang::Python,
             comments: &comments,
             strings: &strings,
             is_test_path: false,
             is_stub_file: false,
             deps: None,
+            prose: None,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);

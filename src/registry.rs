@@ -28,4 +28,15 @@ pub static RULES: &[&'static RuleDef] = &[
     &crate::rules::stub::RULE,
     &crate::rules::placeholder::RULE,
     &crate::rules::imports::RULE,
+    &crate::rules::residue::RULE,       // SLOP011
+    &crate::rules::citation::RULE,      // SLOP012
+    &crate::rules::template::RULE,      // SLOP013
+    &crate::rules::cliche::RULE,        // SLOP014
+    &crate::rules::hedging::RULE,       // SLOP015
+    &crate::rules::vocabulary::RULE,    // SLOP016
+    &crate::rules::parallelism::RULE,   // SLOP017
+    &crate::rules::emdash::RULE,        // SLOP018
+    &crate::rules::boldface::RULE,      // SLOP019
+    &crate::rules::smartquotes::RULE,   // SLOP020
+    &crate::rules::heading_style::RULE, // SLOP021
 ];

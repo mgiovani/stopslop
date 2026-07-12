@@ -1,0 +1,3 @@
+Our platform helps unlock the power of your data instantly.
+
+<!-- expect-line: 1 SLOP014 -->

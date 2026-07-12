@@ -1,5 +1,6 @@
 use crate::imports_data::DepIndex; // re-exported via rules::imports_data
 use crate::lang::Lang;
+use crate::prose::ProseDoc;
 use tree_sitter::{Node, Tree, TreeCursor};
 
 #[derive(Debug, Clone)]
@@ -15,19 +16,22 @@ pub struct TextNode<'a> {
 pub struct LintContext<'a> {
     pub display_path: String,
     pub source: &'a str,
-    pub tree: &'a Tree,
+    pub tree: Option<&'a Tree>,
     pub lang: Lang,
     pub comments: &'a [TextNode<'a>],
     pub strings: &'a [TextNode<'a>],
     pub is_test_path: bool,
-    pub is_stub_file: bool,         // .pyi
-    pub deps: Option<&'a DepIndex>, // Some only under --check-imports
+    pub is_stub_file: bool,              // .pyi
+    pub deps: Option<&'a DepIndex>,      // Some only under --check-imports
+    pub prose: Option<&'a ProseDoc<'a>>, // Some only for prose langs (see lang::Lang::is_prose)
 }
 
 impl<'a> LintContext<'a> {
     /// One DFS over the whole tree; callers `match node.kind()`. (See ponytail note below.)
+    /// No-op for prose langs (`tree` is `None`).
     pub fn walk(&self, mut f: impl FnMut(Node<'a>)) {
-        let mut c: TreeCursor<'a> = self.tree.walk();
+        let Some(tree) = self.tree else { return };
+        let mut c: TreeCursor<'a> = tree.walk();
         walk_tree(&mut c, &mut f);
     }
     pub fn pos(&self, node: &Node) -> (usize, usize) {
@@ -62,6 +66,8 @@ pub fn extract<'a>(
             &["line_comment", "block_comment"],
             &["string_literal", "raw_string_literal"],
         ),
+        // Never reached: prose langs bypass this extraction path entirely (engine::lint_prose).
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => (&[], &[]),
     };
 
     let mut comments = Vec::new();
@@ -125,6 +131,8 @@ fn is_doc_comment(lang: Lang, node: Node, source: &str) -> bool {
                 || text.starts_with("/**")
                 || text.starts_with("/*!")
         }
+        // Never reached: prose langs never call extract().
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => false,
     }
 }
 

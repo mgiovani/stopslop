@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use stopslop::{lint_file, resolve_enabled, Lang, Settings};
 
-const LANG_DIRS: &[&str] = &["typescript", "python", "go", "rust"];
+const LANG_DIRS: &[&str] = &["typescript", "python", "go", "rust", "markdown"];
 
 fn fixtures_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -53,13 +53,20 @@ fn parse_markers(source: &str) -> HashSet<(usize, String)> {
 #[test]
 fn fixtures_match_markers() {
     let root = fixtures_root();
-    let settings = Settings {
-        enabled: resolve_enabled(&[], &[], false),
-        deps: None,
-    };
 
     let mut checked = 0;
     for lang_dir in LANG_DIRS {
+        // Markdown fixtures exercise ALL rule codes (incl. Tier B, default_on=false) so
+        // opt-in prose density/style rules' `expect:`/`expect-line:` markers actually fire under
+        // this harness; other lang dirs stick to the real default-on set.
+        let settings = Settings {
+            enabled: if *lang_dir == "markdown" {
+                resolve_enabled(&["SLOP".to_string()], &[], false)
+            } else {
+                resolve_enabled(&[], &[], false)
+            },
+            deps: None,
+        };
         let dir = root.join(lang_dir);
         let mut files = Vec::new();
         collect_files(&dir, &mut files);

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/hero.png" alt="stopslop — Like Ruff, but for AI slop. Catch the junk AI leaves in your code.">
+  <img src="assets/hero.png" alt="stopslop: Like Ruff, but for AI slop. Catch the junk AI leaves in your code.">
 </p>
 
 # stopslop
@@ -13,12 +13,12 @@ Like Ruff, but for AI slop.
 ![stopslop demo](assets/demo.gif)
 
 Your linter can't see `// ... rest of code unchanged`. ESLint, Ruff, and
-Clippy throw away comment and string content before analysis — exactly
+Clippy throw away comment and string content before analysis: exactly
 where AI coding artifacts live. stopslop reads what they discard: leaked
 chat preambles, elision comments that silently deleted code, stray markdown
 fences, placeholder credentials, and package imports that don't resolve to
 anything you declared. One static binary, four languages, no LLM at scan
-time — same input, same output, every run.
+time: same input, same output, every run.
 
 - One fast static binary, zero config to get started.
 - Deterministic: no LLM calls, no API calls, no network access at scan time.
@@ -27,26 +27,26 @@ time — same input, same output, every run.
 ## Why your existing linter misses this
 
 ESLint, Ruff, and Clippy parse comments and strings as trivia their default
-rule sets don't inspect — which is exactly where copy-pasted chat output and
+rule sets don't inspect, which is exactly where copy-pasted chat output and
 truncated edits land. A few examples:
 
 | Artifact | ESLint / Ruff / Clippy | stopslop |
 |---|---|---|
-| `// ... rest of code unchanged` | Not linted — comment content is ignored by default rules | SLOP001 |
-| Leaked chat preamble ("Certainly! Here's...") | Not linted — same reason | SLOP002 |
-| `x as unknown as T` type-escape chain | No stock rule — `as unknown` alone is valid, idiomatic TS | SLOP007 |
-| `YOUR_API_KEY`, `sk-...`-shaped secret | Not linted — string literal content is ignored by default rules | SLOP009 |
+| `// ... rest of code unchanged` | Not linted (comment content is ignored by default rules) | SLOP001 |
+| Leaked chat preamble ("Certainly! Here's...") | Not linted (same reason) | SLOP002 |
+| `x as unknown as T` type-escape chain | No stock rule (`as unknown` alone is valid, idiomatic TS) | SLOP007 |
+| `YOUR_API_KEY`, `sk-...`-shaped secret | Not linted (string literal content is ignored by default rules) | SLOP009 |
 
 `stopslop` is a deterministic linter for TypeScript, Python, Go, and Rust.
 Every rule is a tree-sitter AST match or a regex over extracted
-comments/strings — same input, same output, every time. This is a
+comments/strings: same input, same output, every time. This is a
 **quality gate, not an AI-origin detector**: it doesn't try to prove a human
 didn't write the code, it flags patterns that are junk regardless of who (or
 what) produced them.
 
 ## Install
 
-Not yet on crates.io — install from git or from a local checkout:
+Not yet on crates.io. Install from git or from a local checkout:
 
 ```bash
 cargo install --git https://github.com/mgiovani/ai-stop-slop
@@ -95,28 +95,66 @@ SARIF 2.1.0 document for GitHub code scanning and similar tools.
 | SLOP007 | Type-escape (`as any` / `as unknown` / `@ts-ignore`) | A | TS, TSX | `as any`, an `x as unknown as T` chain that fully escapes the type checker, or `@ts-ignore`/`@ts-nocheck` |
 | SLOP008 | Stub-only / unimplemented body | A | TS, TSX, Python, Go, Rust | A function whose entire body is `pass`/`...`/`throw new Error("not implemented")`/`todo!()`/empty |
 | SLOP009 | Placeholder / sample credential value | A | TS, TSX, Python, Go, Rust | A hardcoded `YOUR_API_KEY`, `example.com`, `sk-...`-shaped secret, or other sample value |
-| SLOP010 | Unresolved package import | B | TS, TSX, Python, Go, Rust | An imported package that isn't declared in the project's manifest or stdlib — opt-in, `--check-imports` |
+| SLOP010 | Unresolved package import | B | TS, TSX, Python, Go, Rust | An imported package that isn't declared in the project's manifest or stdlib (opt-in, `--check-imports`) |
+| SLOP011 | Assistant-response residue in prose | A | Markdown, MDX, Text, reST | A leftover chat-turn phrase (self-ID disclaimer, refusal boilerplate, a line-initial `Certainly!` opener, or a trailing `let me know if you have` closer) left unedited in prose |
+| SLOP012 | LLM tool / citation artifact token | A | Markdown, MDX, Text, reST | A leftover search/citation-tool token (`turn0search0`, `:contentReference[oaicite:1]`, a `【12†L3】` marker, `utm_source=chatgpt.com`) left in text |
+| SLOP013 | Unfilled template placeholder | A | Markdown, MDX, Text, reST | An unfilled placeholder (`[Your Name]`, `INSERT_SOURCE_URL_30`, a `date: 2025-XX-XX` stub) left in place of real content |
+| SLOP014 | Formulaic cliché phrase | A | Markdown, MDX, Text, reST | A stock marketing/narrative cliché (`unlock the power of`, `in today's fast-paced world`, `a testament to`) |
+| SLOP015 | Hedging & filler-phrase density | B | Markdown, MDX, Text, reST | A document-wide density of hedging/filler phrases (`it's worth noting that`, `in conclusion`, `first and foremost`), opt-in |
+| SLOP016 | Overused-vocabulary density | B | Markdown, MDX, Text, reST | A document-wide density of overused vocabulary (`delve`, `tapestry`, `robust`, `leverage`) across enough distinct terms to read as filler, opt-in |
+| SLOP017 | Rhetorical parallelism / false-depth scaffolding density | B | Markdown, MDX, Text, reST | A document-wide density of rule-of-three lists, `not only X but also Y` phrasing, and trailing `, underscoring its...` participles, opt-in |
+| SLOP018 | Mid-prose em dash | A | Markdown, MDX, Text, reST | A mid-sentence em dash (`—`) that should be a comma, colon, or parentheses instead (line-initial attribution dashes like `— Oscar Wilde` are exempt) |
+| SLOP019 | Boldface & bold-lead-in list overuse | B | Markdown, MDX | Boldface overuse in body prose, or 3+ consecutive `- **Term**: ...` bold-lead-in list items, opt-in |
+| SLOP020 | Typographic (smart) quotes in source | B | Markdown, MDX, Text, reST | Curly quotes/apostrophes in source where straight ASCII quotes are expected, opt-in |
+| SLOP021 | Heading & marker formatting affectations | B | Markdown, MDX | Emoji used as a heading/list marker, or headings written in Title Case against an otherwise sentence-case document, opt-in |
 
-Tier A findings fail the run (exit 1). Tier B (SLOP010 only) is warn-only and
-never fails CI — import resolution has real false-positive risk (private
-registries, path-based monorepo packages, dynamic `sys.path` tricks), so it's
-opt-in and non-blocking by design.
+Tier A findings fail the run (exit 1). Tier B (SLOP010 plus the prose density
+and style rules SLOP015–017 and SLOP019–021) is warn-only and never fails CI:
+these all have real false-positive risk (private registries and dynamic
+imports for SLOP010; subjective style/density judgment calls for the prose
+rules), so they're opt-in (`--select SLOP015`, etc.) and non-blocking by
+design.
 
-Note on SLOP007: a bare `x as unknown` is not flagged on its own — it's a
+Note on SLOP007: a bare `x as unknown` is not flagged on its own: it's a
 legitimate first step in TypeScript's narrowing idiom. Only the chained form,
 `x as unknown as T`, is flagged, since that's the pattern that fully defeats
 the type checker.
+
+## Prose linting
+
+stopslop also lints `.md`, `.mdx`, `.txt`, and `.rst` files: same binary,
+same deterministic regex/structural matching, no LLM involved in the scan.
+SLOP011–014 catch mechanical, high-confidence artifacts (leftover chat-turn
+phrasing, citation-tool tokens, unfilled placeholders, stock clichés);
+SLOP018 flags every mid-prose em dash outright (the one exemption is a
+line-initial attribution dash like `— Oscar Wilde`). All five are on by
+default (Tier A). SLOP015–017 and SLOP019–021 are document-wide density and
+style checks (hedging density, overused vocabulary, rhetorical parallelism,
+boldface overuse, smart quotes, heading formatting). These are judgment
+calls rather than mechanical certainties, so they're Tier B, opt-in, and
+warn-only. Enable them with `--select SLOP015` (or `--select SLOP` for
+everything, prose density rules included). Expect some noise from them:
+this very README trips SLOP017 under `--select SLOP`, since its prose is
+heavy on the enumerations that rule counts. That's Tier B working as
+intended, a lead to investigate rather than a verdict. As with the rest of
+stopslop, this is a writing-quality gate, not a claim about who or what wrote
+the text: every rule flags a concrete pattern (a stale phrase, an unfilled
+slot, a density threshold), never "this is AI-generated."
 
 ## Suppression
 
 Two escape valves, both plain comments so they work in any language's
 comment syntax:
 
-- `// ai-slop-ignore` — suppresses findings on that line and the line below
+- `// ai-slop-ignore`: suppresses findings on that line and the line below
   it (so it works whether the comment is trailing or sits above the flagged
   line).
-- `// ai-slop-ignore-file` — anywhere in the file, drops every finding in
+- `// ai-slop-ignore-file`: anywhere in the file, drops every finding in
   that file.
+
+In Markdown/MDX/Text/reST files, use the HTML comment form instead:
+`<!-- ai-slop-ignore -->` / `<!-- ai-slop-ignore-file -->`, with the same
+two-line and whole-file suppression semantics.
 
 ![suppressing a finding with ai-slop-ignore](assets/suppress.gif)
 
@@ -133,7 +171,7 @@ common there:
 - Filenames matching `test_*`, `conftest.py`, `*_test.go`, `*_test.py`,
   `*.test.ts(x)`, `*.spec.ts(x)`, `*.pyi`, `*.pb.go`, `*_pb2.py`, `*.min.js`.
 
-SLOP001–004 (the junk-text rules) are **not** path-gated — a leaked chat
+SLOP001–004 (the junk-text rules) are **not** path-gated: a leaked chat
 preamble or elision comment is junk in a test file too.
 
 ## Config file
@@ -163,32 +201,35 @@ Honest caveats:
 - It's a static namecheck, not a resolver: workspace/path dependencies,
   dynamic imports, and unusual build setups can still false-positive or
   false-negative.
-- It never fails the build on its own (Tier B) — treat it as a lead to
+- It never fails the build on its own (Tier B): treat it as a lead to
   investigate, not a hard gate.
 
 ## Exit codes
 
-- `0` — no findings, or Tier B findings only.
-- `1` — at least one Tier A finding.
-- `2` — usage error or a path that couldn't be scanned.
+- `0`: no findings, or Tier B findings only.
+- `1`: at least one Tier A finding.
+- `2`: usage error or a path that couldn't be scanned.
 
 ## Non-goals
 
 - **Not an AI-origin detector.** stopslop never claims code *was* written by
   an AI, only that a pattern in it is junk regardless of origin.
 - **Not a correctness checker.** It doesn't run your code or understand what
-  it's supposed to do — a stub function that's genuinely fine (e.g. an
+  it's supposed to do: a stub function that's genuinely fine (e.g. an
   intentionally unimplemented trait default) can still need a suppression
   comment.
 - **No member-level hallucination detection.** It can't tell you that
-  `requests.get_json()` isn't a real method — that's a type checker's job.
-- **No prose/comment-quality detection.** It flags specific junk patterns
-  (preamble, attribution, elision), not comment style or verbosity in
-  general.
+  `requests.get_json()` isn't a real method: that's a type checker's job.
+- **No general code-comment style/verbosity grading.** In code files it
+  flags specific junk patterns (preamble, attribution, elision), not
+  comment style or verbosity in general. Prose files additionally get the
+  document-wide density/style checks in [Prose linting](#prose-linting)
+  above, but those are all Tier B, opt-in, warn-only judgment calls, not a
+  house-style grader.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT (see [LICENSE](LICENSE)).
 
 stopslop's own CI fails if its source contains slop: every push runs
 `cargo run -- src` against the project's own code as a gate, alongside

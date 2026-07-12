@@ -29,6 +29,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         Lang::Rust => check_rust(rule, ctx, out),
         Lang::Ts | Lang::Tsx => check_ts(rule, ctx, out),
         Lang::Go => check_go(rule, ctx, out),
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => {} // rule.langs excludes prose; never reached
     }
 }
 
@@ -283,13 +284,14 @@ mod tests {
         let ctx = LintContext {
             display_path: "t".into(),
             source: src,
-            tree: &tree,
+            tree: Some(&tree),
             lang,
             comments: &comments,
             strings: &strings,
             is_test_path: false,
             is_stub_file: false,
             deps: None,
+            prose: None,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);

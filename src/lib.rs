@@ -6,6 +6,8 @@ pub mod engine;
 pub mod lang;
 pub mod output;
 pub mod paths;
+pub mod prose;
+pub mod prose_words;
 pub mod registry;
 pub mod rules;
 pub mod suppress;
