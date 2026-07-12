@@ -1,6 +1,12 @@
+<p align="center">
+  <img src="assets/hero.png" alt="stopslop — Like Ruff, but for AI slop. Catch the junk AI leaves in your code.">
+</p>
+
 # stopslop
 
 Like Ruff, but for AI slop.
+
+![stopslop demo](assets/demo.gif)
 
 `stopslop` is a deterministic linter for TypeScript, Python, Go, and Rust that
 catches AI-generated junk left behind in code: leaked chat preamble, elided
@@ -43,18 +49,12 @@ stopslop --no-config         # ignore any stopslop.toml, CLI flags only
 
 Example output:
 
-```
-$ stopslop tests/fixtures/go
-tests/fixtures/go/slop_attribution.go:5:1 SLOP004 AI attribution / chat-export artifact in comment
-tests/fixtures/go/slop_elision.go:7:2 SLOP001 elision comment may have replaced real code
-tests/fixtures/go/slop_fence.go:7:1 SLOP003 stray markdown code fence in source file
-tests/fixtures/go/slop_preamble.go:3:1 SLOP002 chat-preamble text leaked into a source comment
-$ echo $?
-1
-```
+![stopslop findings across Python and TypeScript files](assets/findings.png)
 
 `--format json` emits a flat array of findings; `--format sarif` emits a
 SARIF 2.1.0 document for GitHub code scanning and similar tools.
+
+![stopslop --format json output](assets/formats.png)
 
 ## Rules
 
@@ -86,6 +86,8 @@ comment syntax:
   line).
 - `// ai-slop-ignore-file` — anywhere in the file, drops every finding in
   that file.
+
+![suppressing a finding with ai-slop-ignore](assets/suppress.gif)
 
 ## Path exemptions
 
