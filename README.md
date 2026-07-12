@@ -6,27 +6,51 @@
 
 Like Ruff, but for AI slop.
 
+[![CI](https://github.com/mgiovani/ai-stop-slop/actions/workflows/ci.yml/badge.svg)](https://github.com/mgiovani/ai-stop-slop/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+<!-- [![Crates.io](https://img.shields.io/crates/v/stopslop.svg)](https://crates.io/crates/stopslop) -->
+
 ![stopslop demo](assets/demo.gif)
 
-`stopslop` is a deterministic linter for TypeScript, Python, Go, and Rust that
-catches AI-generated junk left behind in code: leaked chat preamble, elided
-`// ... rest unchanged` comments that silently dropped code, stray markdown
-fences, empty error handlers, unimplemented stubs, hardcoded placeholder
-values, and unresolved package imports.
+Your linter can't see `// ... rest of code unchanged`. ESLint, Ruff, and
+Clippy throw away comment and string content before analysis — exactly
+where AI coding artifacts live. stopslop reads what they discard: leaked
+chat preambles, elision comments that silently deleted code, stray markdown
+fences, placeholder credentials, and package imports that don't resolve to
+anything you declared. One static binary, four languages, no LLM at scan
+time — same input, same output, every run.
 
-**No LLM calls at scan time.** Every rule is a tree-sitter AST match or a
-regex over comments/strings — same input, same output, every time. This is a
+- One fast static binary, zero config to get started.
+- Deterministic: no LLM calls, no API calls, no network access at scan time.
+- Built for CI: exit codes, SARIF, JSON, and inline suppressions.
+
+## Why your existing linter misses this
+
+ESLint, Ruff, and Clippy parse comments and strings as trivia their default
+rule sets don't inspect — which is exactly where copy-pasted chat output and
+truncated edits land. A few examples:
+
+| Artifact | ESLint / Ruff / Clippy | stopslop |
+|---|---|---|
+| `// ... rest of code unchanged` | Not linted — comment content is ignored by default rules | SLOP001 |
+| Leaked chat preamble ("Certainly! Here's...") | Not linted — same reason | SLOP002 |
+| `x as unknown as T` type-escape chain | No stock rule — `as unknown` alone is valid, idiomatic TS | SLOP007 |
+| `YOUR_API_KEY`, `sk-...`-shaped secret | Not linted — string literal content is ignored by default rules | SLOP009 |
+
+`stopslop` is a deterministic linter for TypeScript, Python, Go, and Rust.
+Every rule is a tree-sitter AST match or a regex over extracted
+comments/strings — same input, same output, every time. This is a
 **quality gate, not an AI-origin detector**: it doesn't try to prove a human
 didn't write the code, it flags patterns that are junk regardless of who (or
 what) produced them.
 
 ## Install
 
-```bash
-cargo install stopslop
-```
+Not yet on crates.io — install from git or from a local checkout:
 
-From source:
+```bash
+cargo install --git https://github.com/mgiovani/ai-stop-slop
+```
 
 ```bash
 git clone https://github.com/mgiovani/ai-stop-slop
@@ -34,17 +58,19 @@ cd ai-stop-slop
 cargo install --path .
 ```
 
+<!-- Once published: cargo install stopslop -->
+
 ## Usage
 
 ```bash
-stopslop                    # lint the current directory
-stopslop src/ lib/           # lint specific paths
-stopslop --format json .     # machine-readable output
-stopslop --select SLOP001    # run only the elision rule
-stopslop --ignore SLOP008    # run everything except stub detection
-stopslop --check-imports .   # also run SLOP010 (unresolved import) — opt-in
-stopslop --config path.toml  # use a specific config file instead of ./stopslop.toml
-stopslop --no-config         # ignore any stopslop.toml, CLI flags only
+stopslop                     # lint the current directory
+stopslop src/ lib/            # lint specific paths
+stopslop --format json .      # machine-readable output
+stopslop --select SLOP001     # run only the elision rule
+stopslop --ignore SLOP008     # run everything except stub detection
+stopslop --check-imports .    # also run SLOP010 (unresolved import) — opt-in
+stopslop --config path.toml   # use a specific config file instead of ./stopslop.toml
+stopslop --no-config          # ignore any stopslop.toml, CLI flags only
 ```
 
 Example output:
@@ -62,11 +88,11 @@ SARIF 2.1.0 document for GitHub code scanning and similar tools.
 |------|------|------|-------|--------------|
 | SLOP001 | Elision / "rest unchanged" comment | A | TS, TSX, Python, Go, Rust | A comment like `// ... rest unchanged` may mark code an AI dropped while truncating an edit |
 | SLOP002 | Chat preamble leaked into code | A | TS, TSX, Python, Go, Rust | Chat-assistant preamble ("Certainly! Here's the updated...") pasted straight into a source comment |
-| SLOP003 | Stray markdown code fence | A | TS, TSX, Python, Go, Rust | A bare ` ``` ` fence line left in source, usually from a whole file pasted out of a chat reply |
-| SLOP004 | AI attribution / chat-export artifact | A | TS, TSX, Python, Go, Rust | "Generated by ChatGPT", a `claude.ai/share` link, or other chat-export junk in a comment |
+| SLOP003 | Stray markdown code fence in source | A | TS, TSX, Python, Go, Rust | A bare ` ``` ` fence line left in source, usually from a whole file pasted out of a chat reply |
+| SLOP004 | AI attribution / chat-share artifact | A | TS, TSX, Python, Go, Rust | "Generated by ChatGPT", a `claude.ai/share` link, or other chat-export junk in a comment |
 | SLOP005 | Empty / log-only catch | A | TS, TSX, Go, Rust | A `catch`/error branch that swallows the error with an empty body or just a log call |
 | SLOP006 | Broad / swallowing except | A | Python | A bare or overly broad `except:` that swallows the exception instead of handling it |
-| SLOP007 | Type-escape (`as any` / `@ts-ignore`) | A | TS, TSX | `as any`, `as unknown`, `@ts-ignore`, or `@ts-nocheck` used to bypass the type checker |
+| SLOP007 | Type-escape (`as any` / `as unknown` / `@ts-ignore`) | A | TS, TSX | `as any`, an `x as unknown as T` chain that fully escapes the type checker, or `@ts-ignore`/`@ts-nocheck` |
 | SLOP008 | Stub-only / unimplemented body | A | TS, TSX, Python, Go, Rust | A function whose entire body is `pass`/`...`/`throw new Error("not implemented")`/`todo!()`/empty |
 | SLOP009 | Placeholder / sample credential value | A | TS, TSX, Python, Go, Rust | A hardcoded `YOUR_API_KEY`, `example.com`, `sk-...`-shaped secret, or other sample value |
 | SLOP010 | Unresolved package import | B | TS, TSX, Python, Go, Rust | An imported package that isn't declared in the project's manifest or stdlib — opt-in, `--check-imports` |
@@ -75,6 +101,11 @@ Tier A findings fail the run (exit 1). Tier B (SLOP010 only) is warn-only and
 never fails CI — import resolution has real false-positive risk (private
 registries, path-based monorepo packages, dynamic `sys.path` tricks), so it's
 opt-in and non-blocking by design.
+
+Note on SLOP007: a bare `x as unknown` is not flagged on its own — it's a
+legitimate first step in TypeScript's narrowing idiom. Only the chained form,
+`x as unknown as T`, is flagged, since that's the pattern that fully defeats
+the type checker.
 
 ## Suppression
 
@@ -157,4 +188,8 @@ Honest caveats:
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
+
+stopslop's own CI fails if its source contains slop: every push runs
+`cargo run -- src` against the project's own code as a gate, alongside
+`cargo fmt`, `cargo clippy`, and `cargo test`.
