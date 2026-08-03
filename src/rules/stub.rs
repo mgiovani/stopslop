@@ -181,7 +181,7 @@ fn is_stub_body_rust(ctx: &LintContext, body: Node) -> bool {
 }
 
 /// Any ancestor `mod_item` preceded by a `#[cfg(test)]`-ish `attribute_item` sibling.
-fn is_cfg_test_ancestor(ctx: &LintContext, node: Node) -> bool {
+pub(crate) fn is_cfg_test_ancestor(ctx: &LintContext, node: Node) -> bool {
     let mut cur = node;
     while let Some(parent) = cur.parent() {
         if parent.kind() == "mod_item" {

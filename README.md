@@ -103,7 +103,7 @@ SARIF 2.1.0 document for GitHub code scanning and similar tools.
 | SLOP015 | Hedging & filler-phrase density | B | Markdown, MDX, Text, reST | A document-wide density of hedging/filler phrases (`it's worth noting that`, `in conclusion`, `first and foremost`), opt-in |
 | SLOP016 | Overused-vocabulary density | B | Markdown, MDX, Text, reST | A document-wide density of overused vocabulary (`delve`, `tapestry`, `robust`, `leverage`) across enough distinct terms to read as filler, opt-in |
 | SLOP017 | Rhetorical parallelism / false-depth scaffolding density | B | Markdown, MDX, Text, reST | A document-wide density of rule-of-three lists, `not only X but also Y` phrasing, and trailing `, underscoring its...` participles, opt-in |
-| SLOP018 | Mid-prose em dash | A | Markdown, MDX, Text, reST | A mid-sentence em dash (`—`) that should be a comma, colon, or parentheses instead (line-initial attribution dashes like `— Oscar Wilde` are exempt) |
+| SLOP018 | Mid-prose em dash | A | Markdown, MDX, Text, reST | A mid-sentence em dash (`—`) that should be rewritten out of the sentence (an attribution dash opening a block or blockquote, like `— Oscar Wilde`, is exempt) |
 | SLOP019 | Boldface & bold-lead-in list overuse | B | Markdown, MDX | Boldface overuse in body prose, or 3+ consecutive `- **Term**: ...` bold-lead-in list items, opt-in |
 | SLOP020 | Typographic (smart) quotes in source | B | Markdown, MDX, Text, reST | Curly quotes/apostrophes in source where straight ASCII quotes are expected, opt-in |
 | SLOP021 | Heading & marker formatting affectations | B | Markdown, MDX | Emoji used as a heading/list marker, or headings written in Title Case against an otherwise sentence-case document, opt-in |
@@ -127,7 +127,7 @@ same deterministic regex/structural matching, no LLM involved in the scan.
 SLOP011–014 catch mechanical, high-confidence artifacts (leftover chat-turn
 phrasing, citation-tool tokens, unfilled placeholders, stock clichés);
 SLOP018 flags every mid-prose em dash outright (the one exemption is a
-line-initial attribution dash like `— Oscar Wilde`). All five are on by
+block-opening attribution dash like `— Oscar Wilde`). All five are on by
 default (Tier A). SLOP015–017 and SLOP019–021 are document-wide density and
 style checks (hedging density, overused vocabulary, rhetorical parallelism,
 boldface overuse, smart quotes, heading formatting). These are judgment

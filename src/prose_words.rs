@@ -44,9 +44,59 @@ pub static TRAILING_PARTICIPLE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r",\s+(highlighting|underscoring|emphasizing|showcasing|reflecting|symbolizing|fostering|cultivating|contributing to|reinforcing|solidifying|cementing|reaffirming|underlining|exemplifying|demonstrating|signaling|embodying|encapsulating|marking)\b[^.?!\n]*[.?!]").unwrap()
 });
 
+// SLOP030 — throat-clearing / faux-insight openers. Consumer: rules::opener.
+// Anchored sentence/paragraph-initial: the prefix alternation is `^` (with leading markdown
+// list/quote/heading markers) OR end-of-previous-sentence punctuation. The phrase itself is
+// capture group 1 so the diagnostic column points at the phrase, not the prefix.
+// Verified disjoint from CLICHE_PHRASES, HEDGE_PHRASES and residue's RE_OPENER/RE_CLOSER.
+pub static THROAT_CLEARING: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?im)(?:^[ \t>*_#-]*|[.!?]["')\]]?[ \t]+)(here'?s (?:the (?:thing|kicker|catch|secret|deal|problem|part)|what (?:nobody|no one|most people) (?:tells?|realiz(?:e|es)|miss(?:es)?)|why that matters)|what nobody tells you|what most people (?:miss|get wrong)|let'?s be (?:honest|real|clear)|the (?:truth|reality) is|sound(?:s)? familiar|what if I told you|plot twist|spoiler alert|the bottom line is|make no mistake|but (?:here'?s|there'?s) the (?:thing|catch|rub))"#).unwrap()
+});
+
+// SLOP031 — weasel attribution subjects. Consumer: rules::weasel.
+// Deliberately excludes `users|developers|data|critics|reports` subjects: "users report a
+// crash" and "the data shows 40% latency" are ordinary technical writing, not weaseling.
+pub static WEASEL_ATTRIBUTION: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(experts (?:agree|say|believe|note|warn)|(?:many|most|some) experts\b|according to (?:experts|researchers|studies|scientists)|studies (?:show|suggest|indicate|have shown|have found)|research (?:shows|suggests|indicates|has shown)|a (?:recent|new) study\b|scientists (?:say|believe|agree)|researchers (?:say|found|believe)|it is (?:widely|generally|commonly) (?:believed|known|accepted|agreed)|it'?s (?:widely|generally|commonly) (?:believed|known|accepted)|surveys? (?:show|suggest|indicate)|analysts (?:predict|say|expect))\b").unwrap()
+});
+
+// SLOP031 — inline citation signals. A weasel attribution near any of these is attributed
+// writing, not a bare appeal to authority. Consumer: rules::weasel.
+pub static CITATION_SIGNAL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\[\^[^\]\s]+\]|\[#[^\]\s]*\]_|\[\d+\]|\([^()]*\b(?:19|20)\d{2}[^()]*\)|\bdoi:|https?://").unwrap()
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn throat_clearing_compiles_and_matches() {
+        assert!(THROAT_CLEARING.is_match("Here's the thing: the cache never expires."));
+        assert!(THROAT_CLEARING.is_match("We shipped it. Let's be honest, it was rushed."));
+        assert!(!THROAT_CLEARING.is_match("The cache expires after 60 seconds."));
+    }
+
+    #[test]
+    fn throat_clearing_needs_sentence_initial_anchor() {
+        assert!(!THROAT_CLEARING.is_match("Rewriting the truth is hard work for anyone."));
+    }
+
+    #[test]
+    fn weasel_attribution_compiles_and_matches() {
+        assert!(WEASEL_ATTRIBUTION.is_match("Experts agree that caching helps."));
+        assert!(WEASEL_ATTRIBUTION.is_match("Studies show a 40% improvement."));
+        assert!(!WEASEL_ATTRIBUTION.is_match("Users report a crash on startup."));
+        assert!(!WEASEL_ATTRIBUTION.is_match("The data shows 40% lower latency."));
+    }
+
+    #[test]
+    fn citation_signal_compiles_and_matches() {
+        assert!(CITATION_SIGNAL.is_match("as shown in [^1]"));
+        assert!(CITATION_SIGNAL.is_match("(Chen et al. 2021)"));
+        assert!(CITATION_SIGNAL.is_match("see https://example.org/paper"));
+        assert!(!CITATION_SIGNAL.is_match("a plain sentence with no citation"));
+    }
 
     #[test]
     fn cliche_phrases_compiles_and_matches() {

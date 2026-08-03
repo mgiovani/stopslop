@@ -56,15 +56,11 @@ fn fixtures_match_markers() {
 
     let mut checked = 0;
     for lang_dir in LANG_DIRS {
-        // Markdown fixtures exercise ALL rule codes (incl. Tier B, default_on=false) so
-        // opt-in prose density/style rules' `expect:`/`expect-line:` markers actually fire under
-        // this harness; other lang dirs stick to the real default-on set.
+        // Fixtures exercise ALL rule codes (incl. Tier B, default_on=false) so opt-in
+        // density/style rules' `expect:`/`expect-line:` markers actually fire under this
+        // harness. SLOP010 stays off: resolve_enabled drops it when check_imports == false.
         let settings = Settings {
-            enabled: if *lang_dir == "markdown" {
-                resolve_enabled(&["SLOP".to_string()], &[], false)
-            } else {
-                resolve_enabled(&[], &[], false)
-            },
+            enabled: resolve_enabled(&["SLOP".to_string()], &[], false),
             deps: None,
         };
         let dir = root.join(lang_dir);

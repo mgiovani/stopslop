@@ -1,6 +1,7 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::Lang;
+use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
 
 pub static RULE: RuleDef = RuleDef {
@@ -13,13 +14,15 @@ pub static RULE: RuleDef = RuleDef {
     check,
 };
 
-/// Flags every U+2014 (em dash) in the masked prose stream that isn't line-initial -- both the
+/// Flags every U+2014 (em dash) in the masked prose stream that isn't block-initial -- both the
 /// tight form (word--word) and the spaced form (word -- word). Frontmatter is skipped (metadata,
 /// not prose); headings are in scope. Code is already blanked in `doc.masked`, so a dash inside a
 /// fence or inline span never reaches this scan. `---` rules/frontmatter fences are plain hyphens
 /// and can't match U+2014 regardless. The one allowed dash is the attribution/quote convention --
-/// a dash that opens the line (after optional whitespace/blockquote `>` markers), as in
-/// `-- Oscar Wilde` -- since that's a typographic convention, not mid-sentence punctuation. Each
+/// a dash that opens a *block* (after optional whitespace/blockquote `>` markers), as in
+/// `-- Oscar Wilde` -- since that's a typographic convention, not mid-sentence punctuation. A dash
+/// opening a line that merely continues the preceding one (wrapped prose, list-item continuation)
+/// is ordinary punctuation that happened to land at a wrap point, so it is flagged. Each
 /// qualifying occurrence gets its own diagnostic (not deduped per line): a line with two mid-prose
 /// dashes is two problems to fix, not one.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
@@ -28,7 +31,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         if ch != '\u{2014}' {
             continue;
         }
-        if doc.in_frontmatter(byte) || is_line_initial(&doc.masked, byte) {
+        if doc.in_frontmatter(byte) || is_block_initial(doc, byte) {
             continue;
         }
         let (line, col) = doc.line_col(byte);
@@ -37,18 +40,43 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             ctx,
             line,
             col,
-            "em dash in prose; prefer a comma, colon, or parentheses",
+            "em dash in prose; rewrite the sentence",
         ));
     }
 }
 
-/// True if nothing but whitespace and blockquote `>` markers precede `byte` on its line -- i.e.
-/// this em dash is the first real thing on the line (the attribution/quote convention).
-fn is_line_initial(masked: &str, byte: usize) -> bool {
+/// True if this em dash opens a block: nothing but whitespace and blockquote `>` markers precede
+/// it on its line, *and* the line itself starts a block: it is the document's first line (or the
+/// first after frontmatter), it carries a `>` marker, or the line above is blank or itself a
+/// blockquote line. Opening a line is not enough -- prose wraps, so a dash that merely landed at a
+/// wrap point or on a list-item continuation line still needs flagging. One deliberate exception:
+/// a `>`-marked line is always treated as block-initial, so a wrapped continuation *inside* a
+/// blockquote stays exempt -- `> -- Author` under a quote is indistinguishable from attribution,
+/// and attribution is the likelier reading.
+fn is_block_initial(doc: &ProseDoc, byte: usize) -> bool {
+    let masked = &doc.masked;
     let line_start = masked[..byte].rfind('\n').map_or(0, |i| i + 1);
-    masked[line_start..byte]
+    let prefix = &masked[line_start..byte];
+    if !prefix
         .trim_start_matches(|c: char| c.is_whitespace() || c == '>')
         .is_empty()
+    {
+        return false;
+    }
+    if prefix.contains('>') {
+        return true; // attribution inside a blockquote
+    }
+    let Some(before) = masked[..line_start].strip_suffix('\n') else {
+        return true; // first line of the document
+    };
+    let prev_start = before.rfind('\n').map_or(0, |i| i + 1);
+    if doc.in_frontmatter(prev_start) {
+        return true; // first prose line after frontmatter -- the body's real first line
+    }
+    let prev = before[prev_start..].trim();
+    // Blank line above => this dash opens a block. `>` line above => this is the lazy continuation
+    // of a blockquote, where an unmarked `-- Author` line is the same attribution convention.
+    prev.is_empty() || prev.starts_with('>')
 }
 
 #[cfg(test)]
@@ -113,6 +141,61 @@ mod tests {
     fn allows_blockquote_attribution() {
         let diags = diagnostics_for("> \u{2014} Oscar Wilde\n");
         assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn allows_attribution_after_blank_line() {
+        let diags = diagnostics_for("> A quoted line of prose.\n\n\u{2014} Oscar Wilde\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn allows_attribution_on_blockquote_lazy_continuation_line() {
+        // CommonMark lazy continuation: the unmarked line still belongs to the blockquote, and
+        // `-- Author` directly under a quote is the attribution convention, not mid-prose dash.
+        let diags = diagnostics_for("> A quoted line of prose.\n\u{2014} Oscar Wilde\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn allows_attribution_on_first_body_line_after_frontmatter() {
+        // The closing `---` is not a blank line, but the line after it still opens the body.
+        let diags = diagnostics_for("---\ntitle: Report\n---\n\u{2014} Oscar Wilde\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn allows_attribution_after_whitespace_only_blank_line() {
+        let diags = diagnostics_for("Body text sits above the quote.\n   \n\u{2014} Oscar Wilde\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn flags_dash_starting_a_wrapped_continuation_line() {
+        // The original false negative: prose wraps, and a dash landing at the wrap point escaped.
+        let diags = diagnostics_for("a \u{2014} b\n      \u{2014} c\n\u{2014} d\n");
+        assert_eq!(diags.len(), 3);
+        assert_eq!((diags[0].line, diags[0].col), (1, 3));
+        assert_eq!((diags[1].line, diags[1].col), (2, 7));
+        assert_eq!((diags[2].line, diags[2].col), (3, 1));
+    }
+
+    #[test]
+    fn flags_dash_at_column_one_of_a_continuation_line() {
+        let diags = diagnostics_for(
+            "The release went out on schedule and the rollout was uneventful\n\u{2014} apart from one flaky test.\n",
+        );
+        assert_eq!(diags.len(), 1);
+        assert_eq!((diags[0].line, diags[0].col), (2, 1));
+    }
+
+    #[test]
+    fn flags_dash_on_list_item_continuation_line() {
+        let diags = diagnostics_for(
+            "- The first bullet runs long enough to wrap onto a second line\n  \u{2014} which continues it.\n",
+        );
+        assert_eq!(diags.len(), 1);
+        assert_eq!((diags[0].line, diags[0].col), (2, 3));
     }
 
     #[test]

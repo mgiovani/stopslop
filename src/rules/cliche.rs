@@ -33,7 +33,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             ctx,
             line,
             col,
-            "formulaic cliché phrase",
+            "formulaic cliché phrase; rewrite it",
         ));
     }
 }
