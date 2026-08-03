@@ -39,4 +39,13 @@ pub static RULES: &[&'static RuleDef] = &[
     &crate::rules::boldface::RULE,      // SLOP019
     &crate::rules::smartquotes::RULE,   // SLOP020
     &crate::rules::heading_style::RULE, // SLOP021
+    &crate::rules::opener::RULE,        // SLOP022
+    &crate::rules::contrast::RULE,      // SLOP023
+    &crate::rules::puffery::RULE,       // SLOP024
+    &crate::rules::weasel::RULE,        // SLOP025
+    &crate::rules::colon_reveal::RULE,  // SLOP026
+    &crate::rules::filler::RULE,        // SLOP027
+    &crate::rules::weak_verb::RULE,     // SLOP028
+    &crate::rules::recap::RULE,         // SLOP029
+    &crate::rules::fragmentation::RULE, // SLOP030
 ];

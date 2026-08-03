@@ -106,10 +106,20 @@ SARIF 2.1.0 document for GitHub code scanning and similar tools.
 | SLOP018 | Mid-prose em dash | A | Markdown, MDX, Text, reST | A mid-sentence em dash (`—`) that should be rewritten out of the sentence (an attribution dash opening a block or blockquote, like `— Oscar Wilde`, is exempt) |
 | SLOP019 | Boldface & bold-lead-in list overuse | B | Markdown, MDX | Boldface overuse in body prose, or 3+ consecutive `- **Term**: ...` bold-lead-in list items, opt-in |
 | SLOP020 | Typographic (smart) quotes in source | B | Markdown, MDX, Text, reST | Curly quotes/apostrophes in source where straight ASCII quotes are expected, opt-in |
-| SLOP021 | Heading & marker formatting affectations | B | Markdown, MDX | Emoji used as a heading/list marker, or headings written in Title Case against an otherwise sentence-case document, opt-in |
+| SLOP021 | Heading & marker formatting affectations | B | Markdown, MDX | Emoji used as a heading/list marker, headings written in Title Case against an otherwise sentence-case document, or headings stacked over two-sentence sections, opt-in |
+| SLOP022 | Formulaic opener / rhetorical setup | A | Markdown, MDX, Text, reST | A throat-clearing or faux-insight opener (`Here's the thing`, `What nobody tells you`, `Plot twist:`), or a self-answered `Question? Answer.` pair opening a line |
+| SLOP023 | Binary contrast / negative listing | A | Markdown, MDX, Text, reST | The `It's not X. It's Y.` / `The question isn't X, it's Y` shape, or a `Not a X. Not a Y.` fragment run |
+| SLOP024 | Importance puffery / fake-strong verb | A | Markdown, MDX, Text, reST | An inflated significance claim (`marks a pivotal moment`, `solidifies its position`), or a `serves as a centralized hub`-style linking verb where plain `is` reads better |
+| SLOP025 | Unsourced weasel attribution | A | Markdown, MDX, Text, reST | Anonymous authority (`experts agree`, `studies show`) with no link, footnote, or citation anywhere on the line |
+| SLOP026 | Dramatic colon reveal | B | Markdown, MDX, Text, reST | A short noun phrase, a colon, then a lowercase dramatic reveal (`The best part: it learns`), opt-in |
+| SLOP027 | Empty filler phrase & adverb density | B | Markdown, MDX, Text, reST | A document-wide density of empty phrases (`when it comes to`, `at its core`) and filler adverbs (`simply`, `actually`), opt-in |
+| SLOP028 | Weak verb phrase / vague quantifier | B | Markdown, MDX, Text, reST | A document-wide density of nominalizations (`made a decision`, `has the ability to`) and vague quantifiers used where a number belongs (`significantly improves`), opt-in |
+| SLOP029 | Summary-recap ending / fake-profound kicker | A | Markdown, MDX, Text, reST | A closing block that restates the piece (`In conclusion`, `Overall`) or lands a mic-drop line (`It's already here.`) |
+| SLOP030 | Dramatic fragmentation / robotic rhythm | B | Markdown, MDX, Text, reST | Stacked one-clause fragments (`That's it. That's the whole thing.`), consecutive `And`-initial sentences, or paragraph-wide repeated sentence shapes, opt-in |
 
 Tier A findings fail the run (exit 1). Tier B (SLOP010 plus the prose density
-and style rules SLOP015–017 and SLOP019–021) is warn-only and never fails CI:
+and style rules SLOP015–017, SLOP019–021, SLOP026–028 and SLOP030) is
+warn-only and never fails CI:
 these all have real false-positive risk (private registries and dynamic
 imports for SLOP010; subjective style/density judgment calls for the prose
 rules), so they're opt-in (`--select SLOP015`, etc.) and non-blocking by

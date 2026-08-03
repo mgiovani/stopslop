@@ -40,6 +40,43 @@ static EMOJI_MARKER_RE: LazyLock<Regex> = LazyLock::new(|| {
 static SENTENCE_CASE_GUARD_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\b[a-z]{2,}\s+[a-z]{2,}\b").unwrap());
 
+/// Markdown table separator row (e.g. `| --- | --- |`, `:-:|:-:`): evidence a body is a table,
+/// not thin prose, for sub-check (c) below.
+static TABLE_SEPARATOR_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^[ \t]*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$").unwrap()
+});
+
+/// HTML comments (incl. this harness's own `<!-- expect-line: ... -->` test markers): stripped
+/// out of a section body before word/sentence counting in sub-check (c) -- a trailing comment
+/// is not prose.
+static HTML_COMMENT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<!--[\s\S]*?-->").unwrap());
+
+/// A sentence boundary, for the crude sentence count in sub-check (c): any run of `.`/`!`/`?`.
+static SENTENCE_END_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[.!?]+").unwrap());
+
+/// Heading text that opens a reference/appendix-style section: conventionally short by nature,
+/// not a slop signal. Matched as a case-insensitive prefix of the (trimmed) heading text.
+const REFERENCE_HEADINGS: &[&str] = &[
+    "references",
+    "appendix",
+    "footnotes",
+    "footnote",
+    "further reading",
+    "see also",
+    "acknowledgments",
+    "acknowledgements",
+    "license",
+    "licence",
+    "changelog",
+    "citations",
+    "bibliography",
+];
+
+fn is_reference_heading(text: &str) -> bool {
+    let lower = text.trim().to_lowercase();
+    REFERENCE_HEADINGS.iter().any(|kw| lower.starts_with(kw))
+}
+
 const STOPWORDS: &[&str] = &[
     "a", "an", "the", "and", "or", "but", "nor", "for", "of", "to", "in", "on", "at", "by", "with",
     "as", "from", "into", "over", "per", "via", "vs", "is", "are",
@@ -72,8 +109,8 @@ fn is_title_case_heading(text: &str) -> bool {
     capitalized * 100 >= 80 * non_stop.len()
 }
 
-/// (a) emoji-as-marker lines and (b) title-cased headings, each an independent sub-check that
-/// emits at most one diagnostic, anchored at its first offender.
+/// (a) emoji-as-marker lines, (b) title-cased headings, and (c) thin sections, each an
+/// independent sub-check that emits at most one diagnostic, anchored at its first offender.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
 
@@ -124,6 +161,64 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             ));
         }
     }
+
+    // (c) thin sections: a heading whose body (the text up to the next heading, or EOF) is
+    // under ~25 words AND fewer than 2 sentences is a candidate. Excluded: the document's first
+    // H1 (title), a heading immediately followed by a deeper-level heading (legitimate nesting --
+    // the parent isn't expected to carry its own body), a body that's a code fence or table
+    // (checked against ctx.source: `masked` blanks fence markers to spaces, which would hide
+    // them), and reference/appendix-style sections. Fires once the document has 2+ candidates --
+    // a single short section is completely normal.
+    let first_h1 = doc.headings.iter().position(|hd| hd.level == 1);
+    let mut thin_count = 0usize;
+    let mut first_thin_byte = None;
+    for (i, h) in doc.headings.iter().enumerate() {
+        if Some(i) == first_h1 {
+            continue;
+        }
+        if doc
+            .headings
+            .get(i + 1)
+            .is_some_and(|next| next.level > h.level)
+        {
+            continue;
+        }
+        if is_reference_heading(&h.text) {
+            continue;
+        }
+        let body_start = (h.byte_end + 1).min(doc.masked.len());
+        let body_end = doc
+            .headings
+            .get(i + 1)
+            .map_or(doc.masked.len(), |next| next.byte_start)
+            .max(body_start);
+        let raw_body = &ctx.source[body_start..body_end];
+        if raw_body.contains("```")
+            || raw_body.contains("~~~")
+            || TABLE_SEPARATOR_RE.is_match(raw_body)
+        {
+            continue;
+        }
+        let body = HTML_COMMENT_RE.replace_all(&doc.masked[body_start..body_end], "");
+        let words = body.split_whitespace().count();
+        let sentences = SENTENCE_END_RE.find_iter(&body).count();
+        if words < 25 && sentences < 2 {
+            thin_count += 1;
+            first_thin_byte.get_or_insert(h.byte_start);
+        }
+    }
+    if thin_count >= 2 {
+        let (line, col) = doc.line_col(first_thin_byte.unwrap());
+        out.push(Diagnostic::at(
+            rule,
+            ctx,
+            line,
+            col,
+            format!(
+                "{thin_count} headings guard sections too thin to need them (under ~25 words each)"
+            ),
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -160,7 +255,10 @@ mod tests {
 
     #[test]
     fn flags_title_case_headings_with_sentence_case_guard() {
-        let src = "# Getting Started With Setup\n\nThis is a normal sentence written in plain lowercase words.\n\n## Configuring Your Local Environment\n\n## Reviewing The Final Report Now\n";
+        // Each heading has a real (2-sentence) body so this stays a pure title-case test: with
+        // no body at all, back-to-back empty H2s would also legitimately trip the (c) thin-
+        // section sub-check below, which is a different concern than this test targets.
+        let src = "# Getting Started With Setup\n\nThis is a normal sentence written in plain lowercase words.\n\n## Configuring Your Local Environment\n\nThis section walks through the environment variables read on startup. Override them locally when testing changes.\n\n## Reviewing The Final Report Now\n\nThis section explains where the report is generated. Reviewers check it before it ships to stakeholders.\n";
         let diags = diagnostics_for(src);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "SLOP021");
@@ -186,6 +284,43 @@ mod tests {
     #[test]
     fn clean_single_title_cased_heading_and_single_emoji_bullet() {
         let src = "# Getting started with the linter\n\nThis document walks through everyday setup steps in plain sentence case.\n\n## Configuring Your Workspace Rules\n\n## Running the checks locally\n\n- Run the command from the project root.\n- \u{2728} A single decorative bullet marker.\n- Review the output for warnings.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn flags_thin_stacked_sections() {
+        // "Overview" has a real body (30 words); "Setup" and "Usage" are both near-empty --
+        // 2 thin candidates meets the >=2 floor, anchored at the first one ("Setup").
+        let src = "# Guide\n\n## Overview\n\nThis section gives real explanatory detail about the guide so that it is clearly not a thin section by either word count or sentence count in this particular paragraph today.\n\n## Setup\n\nDone.\n\n## Usage\n\nRun it.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP021");
+        assert!(diags[0].message.contains("thin"));
+    }
+
+    #[test]
+    fn clean_single_thin_section_below_floor() {
+        // Only "Setup" is thin here; a single thin section under an otherwise normal document
+        // is completely ordinary and must not fire.
+        let src = "# Guide\n\n## Overview\n\nThis section gives real explanatory detail about the guide so that it is clearly not a thin section by either word count or sentence count in this particular paragraph today.\n\n## Setup\n\nDone.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn clean_nested_and_reference_heading_thin_bodies_excluded() {
+        // "Configuration" has an empty body of its own but is immediately followed by a deeper
+        // heading (legitimate nesting); "Appendix" is a reference-style section. Neither counts
+        // toward the thin-section total, so this must stay clean even though both headings would
+        // otherwise look near-empty.
+        let src = "# Guide\n\n## Configuration\n\n### Basic Setup\n\nThis subsection has plenty of real detail about configuration options so that it is clearly not a thin section under any reasonable word or sentence count here today.\n\n## Appendix\n\nSee the reference table listed above for details.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn clean_code_and_table_bodies_excluded() {
+        // Both sections are near-empty by word count, but a body that's a code fence or a table
+        // is a legitimate structural pattern, not a thin section.
+        let src = "# Guide\n\n## Example\n\n```\nfoo()\n```\n\n## Data\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n";
         assert!(diagnostics_for(src).is_empty());
     }
 }
