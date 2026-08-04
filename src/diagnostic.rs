@@ -15,6 +15,11 @@ pub struct Diagnostic {
     pub line: usize,  // 1-based
     pub col: usize,   // 1-based
     pub message: String,
+    /// Concrete "write this instead" hint, when the rule knows a specific replacement
+    /// (`leverage` -> `use`, a hand-rolled clone -> `structuredClone`). Density rules that
+    /// flag a document-wide pattern rather than one substitutable span leave this `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix: Option<String>,
 }
 
 impl Diagnostic {
@@ -33,6 +38,21 @@ impl Diagnostic {
             line,
             col,
             message: message.into(),
+            fix: None,
+        }
+    }
+    /// Same as `at`, plus a concrete replacement hint rendered under the finding.
+    pub fn at_fix(
+        rule: &crate::registry::RuleDef,
+        ctx: &crate::context::LintContext,
+        line: usize,
+        col: usize,
+        message: impl Into<String>,
+        fix: impl Into<String>,
+    ) -> Self {
+        Diagnostic {
+            fix: Some(fix.into()),
+            ..Diagnostic::at(rule, ctx, line, col, message)
         }
     }
     pub fn sort_key(&self) -> (&str, usize, usize, &str) {

@@ -50,12 +50,13 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         .min()
         .unwrap();
     let (line, col) = doc.line_col(first_byte);
-    out.push(Diagnostic::at(
+    out.push(Diagnostic::at_fix(
         rule,
         ctx,
         line,
         col,
         format!("rhetorical parallelism / false-depth scaffolding density high ({t} occurrences)"),
+        "cut the participial tail or make it its own sentence",
     ));
 }
 
@@ -104,6 +105,20 @@ mod tests {
     fn flags_two_strong_subsignals() {
         // S = b + c >= 2: one negative-parallelism + one trailing participle.
         let src = "The API is not only fast but also simple to use, and it favors clarity, underscoring its focus on developer experience.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP017");
+        assert_eq!(
+            diags[0].fix.as_deref(),
+            Some("cut the participial tail or make it its own sentence")
+        );
+    }
+
+    #[test]
+    fn flags_two_new_trailing_participle_verbs() {
+        // S = c = 2: two of the newly added trailing-participle verbs, no rule-of-three and no
+        // negative parallelism anywhere, isolating the widened TRAILING_PARTICIPLE panel.
+        let src = "The change reworks the retry path, ensuring every request lands exactly once. It also simplifies the config loader, resulting in a much smaller startup file.\n";
         let diags = diagnostics_for(src);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "SLOP017");

@@ -1,0 +1,101 @@
+//! Named rule groups. Every rule code belongs to exactly one group, and a group name is accepted
+//! anywhere a rule code or code prefix is (`--select`, `--ignore`, and the `select`/`ignore` keys
+//! in `stopslop.toml`). `SLOP0NN` numbering is chronological, not thematic, so numeric prefixes
+//! alone can't express "just the rhetoric rules" -- that's what these names are for.
+
+/// (group name, member codes). The `groups_partition_every_rule` test below enforces that this
+/// table stays exhaustive and non-overlapping, so adding a rule without grouping it fails CI.
+pub static GROUPS: &[(&str, &[&str])] = &[
+    // Mechanical leftovers from a generation session: chat turns, tool tokens, unfilled slots.
+    (
+        "artifact",
+        &[
+            "SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP011", "SLOP012", "SLOP013",
+        ],
+    ),
+    // Structural code smells: swallowed errors, escaped types, stubs, speculative abstraction.
+    (
+        "structure",
+        &[
+            "SLOP005", "SLOP006", "SLOP007", "SLOP008", "SLOP009", "SLOP010", "SLOP039", "SLOP040",
+        ],
+    ),
+    // Code that rebuilds something the standard library or the platform already provides.
+    ("stdlib", &["SLOP037", "SLOP038"]),
+    // Formulaic rhetorical shapes: clichés, staged reveals, manufactured significance.
+    (
+        "rhetoric",
+        &[
+            "SLOP014", "SLOP017", "SLOP022", "SLOP023", "SLOP024", "SLOP026", "SLOP029", "SLOP030",
+            "SLOP031", "SLOP035", "SLOP036",
+        ],
+    ),
+    // Words that cost the reader something and return nothing: hedging, filler, padding.
+    (
+        "verbosity",
+        &[
+            "SLOP015", "SLOP016", "SLOP027", "SLOP028", "SLOP032", "SLOP033", "SLOP034",
+        ],
+    ),
+    // Claims with no checkable source behind them.
+    ("sourcing", &["SLOP025"]),
+    // Typographic and Markdown affectations.
+    ("format", &["SLOP018", "SLOP019", "SLOP020", "SLOP021"]),
+];
+
+/// The group a code belongs to, for `--list-rules`.
+pub fn group_of(code: &str) -> &'static str {
+    GROUPS
+        .iter()
+        .find(|(_, codes)| codes.contains(&code))
+        .map(|(name, _)| *name)
+        .unwrap_or("ungrouped")
+}
+
+/// Replaces every group name in `pats` with that group's member codes; non-group patterns pass
+/// through untouched, so codes and prefixes keep working exactly as before.
+pub fn expand(pats: &[String]) -> Vec<String> {
+    pats.iter()
+        .flat_map(|p| match GROUPS.iter().find(|(name, _)| name == p) {
+            Some((_, codes)) => codes.iter().map(|c| c.to_string()).collect(),
+            None => vec![p.clone()],
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::RULES;
+    use std::collections::HashSet;
+
+    /// Exhaustive and non-overlapping: every registered rule sits in exactly one group. A new rule
+    /// that nobody grouped, or a code pasted into two groups, fails here rather than silently
+    /// escaping `--select <group>`.
+    #[test]
+    fn groups_partition_every_rule() {
+        let mut seen: HashSet<&str> = HashSet::new();
+        for (name, codes) in GROUPS {
+            for code in *codes {
+                assert!(
+                    seen.insert(code),
+                    "{code} appears in more than one group ({name})"
+                );
+                assert!(
+                    RULES.iter().any(|r| r.code == *code),
+                    "group {name} lists unknown rule {code}"
+                );
+            }
+        }
+        for r in RULES {
+            assert!(seen.contains(r.code), "rule {} is in no group", r.code);
+        }
+    }
+
+    #[test]
+    fn expand_replaces_group_names_and_passes_codes_through() {
+        assert_eq!(expand(&["sourcing".to_string()]), vec!["SLOP025"]);
+        assert_eq!(expand(&["SLOP001".to_string()]), vec!["SLOP001"]);
+        assert_eq!(expand(&["SLOP".to_string()]), vec!["SLOP"]);
+    }
+}

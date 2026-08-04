@@ -18,16 +18,18 @@ pub static RULE: RuleDef = RuleDef {
 
 /// Groups A/B/E (self-ID / knowledge-cutoff disclaimer / speculative gap-filling, refusal
 /// boilerplate, reviewer-submission leakage). Anchored anywhere in the masked prose stream --
-/// this exact phrasing has no legitimate reason to appear in finished, edited prose.
+/// this exact phrasing has no legitimate reason to appear in finished, edited prose. The
+/// speculative-gap-filling family below (`maintains a low profile`, `not publicly available`, ...)
+/// is the shape a model falls back on when it has no real biographical fact to report.
 static RE_ANYWHERE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\bas an? (ai|large) language model\b|\bas an ai (assistant|model)\b|\bas of my (last|latest|most recent) (knowledge|training) (update|cutoff|data)\b|\b(up to|as of) my last training update\b|\bmy (knowledge|training) cutoff\b|\bI (do not|don'?t) have (access to|the ability to browse) (real-?time|the internet|current)\b|\bI (cannot|can'?t) browse the internet\b|\bwhile specific details (are|remain) (limited|scarce|unavailable)\b|\bin the (provided|available) (search results|sources)\b|\bbased on (the )?available information\b|\bI'?m (sorry|unable)[, ].{0,40}\b(cannot|can'?t|unable to) (assist|help|provide|generate)\b|\bI cannot generate content that\b|\bI'?m unable to assist with that request\b|\breviewer note\b|\bi hope this message finds you well\b|\bthank you for your review\b|\bplease find (our|the) revised\b|\bwe remain committed to creating content that aligns with\b").unwrap()
+    Regex::new(r"(?i)\bas an? (ai|large) language model\b|\bas an ai (assistant|model)\b|\bas of my (last|latest|most recent) (knowledge|training) (update|cutoff|data)\b|\b(up to|as of) my last training update\b|\bmy (knowledge|training) cutoff\b|\bI (do not|don'?t) have (access to|the ability to browse) (real-?time|the internet|current)\b|\bI (cannot|can'?t) browse the internet\b|\bwhile specific details (are|remain) (limited|scarce|unavailable)\b|\bin the (provided|available) (search results|sources)\b|\bbased on (the )?available information\b|\bI'?m (sorry|unable)[, ].{0,40}\b(cannot|can'?t|unable to) (assist|help|provide|generate)\b|\bI cannot generate content that\b|\bI'?m unable to assist with that request\b|\breviewer note\b|\bi hope this message finds you well\b|\bthank you for your review\b|\bplease find (our|the) revised\b|\bwe remain committed to creating content that aligns with\b|\bmaintains? a low profile\b|\bkeeps? (his|her|their) personal (life|details) private\b|\bprefers? to stay out of the spotlight\b|\blikely (grew up|studied|began|started)\b|\bnot publicly available\b").unwrap()
 });
 
 /// Group C (conversational openers). LINE-INITIAL anchor only: a paragraph that legitimately
 /// opens with "Sure, ..." mid-document is ordinary English; residue only when it's literally
 /// the first thing on the line (chat-turn register bleeding through).
 static RE_OPENER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?im)^[ \t]*(certainly|sure|absolutely|of course|great question)[!,.]|^[ \t]*you'?re absolutely right\b").unwrap()
+    Regex::new(r"(?im)^[ \t]*(certainly|sure|absolutely|of course|great question|excellent question)[!,.]|^[ \t]*(you'?re absolutely right|that'?s an excellent (?:point|question)|happy to help)\b").unwrap()
 });
 
 /// Group D (closers). END-OF-LINE/end-of-paragraph anchor: "feel free to reach out to a
@@ -48,12 +50,13 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let by_line = first_byte_per_line(doc, bytes);
     for &byte in by_line.values() {
         let (line, col) = doc.line_col(byte);
-        out.push(Diagnostic::at(
+        out.push(Diagnostic::at_fix(
             rule,
             ctx,
             line,
             col,
             "unedited assistant-response residue in prose",
+            "delete the sentence",
         ));
     }
 }
@@ -128,6 +131,38 @@ mod tests {
             "Feel free to reach out to a maintainer before starting a large change.\n",
         );
         assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn diagnostic_carries_a_fix_hint() {
+        let diags = diagnostics_for("Reviewer note: please check the config.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].fix.as_deref(), Some("delete the sentence"));
+    }
+
+    #[test]
+    fn flags_new_opener_markers() {
+        let diags = diagnostics_for(
+            "Excellent question! Let's look at the logs.\n\nThat's an excellent point about retries.\n\nHappy to help with the migration.\n",
+        );
+        assert_eq!(diags.len(), 3);
+        assert!(diags.iter().all(|d| d.code == "SLOP011"));
+    }
+
+    #[test]
+    fn flags_speculative_gap_filling_markers() {
+        let cases = [
+            "The author maintains a low profile outside of work.\n",
+            "She keeps her personal life private from the press.\n",
+            "He prefers to stay out of the spotlight entirely.\n",
+            "The engineer likely grew up in the same region as the team.\n",
+            "A verified birth date is not publicly available for this person.\n",
+        ];
+        for src in cases {
+            let diags = diagnostics_for(src);
+            assert_eq!(diags.len(), 1, "expected exactly one finding for: {src}");
+            assert_eq!(diags[0].code, "SLOP011");
+        }
     }
 
     #[test]

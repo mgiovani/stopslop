@@ -21,6 +21,12 @@ pub fn resolve_enabled(
     ignore: &[String],
     check_imports: bool,
 ) -> HashSet<&'static str> {
+    // Group names expand to their member codes first, so everything downstream only ever sees
+    // codes and prefixes -- `--select rhetoric` and `--select SLOP014,SLOP017,...` are one path.
+    let (select, ignore) = (
+        &crate::groups::expand(select),
+        &crate::groups::expand(ignore),
+    );
     let m = |code: &str, pats: &[String]| {
         pats.iter()
             .any(|p| code == p || code.starts_with(p.as_str()))

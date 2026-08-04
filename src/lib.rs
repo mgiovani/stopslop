@@ -1,8 +1,10 @@
+pub mod baseline;
 pub mod cli;
 pub mod config;
 pub mod context;
 pub mod diagnostic;
 pub mod engine;
+pub mod groups;
 pub mod lang;
 pub mod output;
 pub mod paths;
@@ -13,6 +15,7 @@ pub mod rules;
 pub mod suppress;
 pub mod walk;
 
+pub use baseline::Baseline;
 pub use diagnostic::{Diagnostic, Tier};
 pub use engine::{lint_file, resolve_enabled, Settings};
 pub use lang::Lang;

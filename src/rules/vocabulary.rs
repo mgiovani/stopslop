@@ -75,13 +75,76 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         .join(", ");
 
     let (line, col) = doc.line_col(first_byte);
-    out.push(Diagnostic::at(
-        rule,
-        ctx,
-        line,
-        col,
-        format!("overused-vocabulary density high (top markers: {top})"),
-    ));
+    let message = format!("overused-vocabulary density high (top markers: {top})");
+    match replacement_fix(lemmas.keys()) {
+        Some(fix) => out.push(Diagnostic::at_fix(rule, ctx, line, col, message, fix)),
+        None => out.push(Diagnostic::at(rule, ctx, line, col, message)),
+    }
+}
+
+/// A clean, unambiguous 1:1 replacement for a matched vocab lemma, keyed by prefix/exact match on
+/// the lowercased matched text (so any inflected form -- "delves"/"delved"/"delving" -- maps to
+/// the same replacement). Not every flagged term has one: this only covers the subset of both
+/// panels with a genuinely obvious plain-English substitute; anything else returns `None` and is
+/// simply left out of the fix string.
+fn lemma_replacement(lemma: &str) -> Option<&'static str> {
+    if lemma.starts_with("leverag") || lemma.starts_with("utiliz") || lemma.starts_with("harness") {
+        Some("use")
+    } else if lemma.starts_with("delv") {
+        Some("examine")
+    } else if lemma == "myriad" || lemma == "plethora" {
+        Some("many")
+    } else if lemma.starts_with("facilitat") {
+        Some("ease")
+    } else if lemma.starts_with("showcas") {
+        Some("show")
+    } else if lemma.starts_with("elucidat") {
+        Some("explain")
+    } else if lemma.starts_with("underscor") {
+        Some("emphasize")
+    } else if lemma.starts_with("garner") {
+        Some("gain")
+    } else if lemma.starts_with("foster") {
+        Some("encourage")
+    } else if lemma.starts_with("streamlin") {
+        Some("simplify")
+    } else if lemma.starts_with("unveil") {
+        Some("reveal")
+    } else {
+        None
+    }
+}
+
+/// Builds the fix string from whichever matched lemmas (in this document) have a clean 1:1
+/// replacement, grouping lemmas that share the same replacement together (e.g. "leverage"/
+/// "utilize" both -> "use"). Returns `None` when no matched lemma has a known replacement, per
+/// `Diagnostic`'s convention of leaving density findings unfixed when there's no substitutable
+/// span. Output is sorted for determinism (HashMap/HashSet iteration order isn't stable).
+fn replacement_fix<'a>(matched_lemmas: impl Iterator<Item = &'a String>) -> Option<String> {
+    let mut groups: HashMap<&'static str, Vec<&str>> = HashMap::new();
+    for lemma in matched_lemmas {
+        if let Some(replacement) = lemma_replacement(lemma) {
+            groups.entry(replacement).or_default().push(lemma.as_str());
+        }
+    }
+    if groups.is_empty() {
+        return None;
+    }
+    let mut parts: Vec<String> = groups
+        .into_iter()
+        .map(|(replacement, mut lemmas)| {
+            lemmas.sort_unstable();
+            lemmas.dedup();
+            let joined = lemmas
+                .iter()
+                .map(|l| format!("`{l}`"))
+                .collect::<Vec<_>>()
+                .join("/");
+            format!("{joined} -> `{replacement}`")
+        })
+        .collect();
+    parts.sort();
+    Some(parts.join(", "))
 }
 
 #[cfg(test)]
@@ -117,6 +180,24 @@ mod tests {
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "SLOP016");
         assert!(diags[0].message.contains("top markers"));
+        // "delved" -> `examine` and "underscored" -> `emphasize` both have known replacements;
+        // "unveiling"/"tapestry"/"intricate"/"meticulous" don't, and are simply left out.
+        let fix = diags[0].fix.as_deref().unwrap();
+        assert!(fix.contains("`delved` -> `examine`"));
+        assert!(fix.contains("`underscored` -> `emphasize`"));
+    }
+
+    #[test]
+    fn fix_groups_shared_replacements_and_is_none_without_a_known_mapping() {
+        assert_eq!(
+            replacement_fix(["leverage".to_string(), "utilize".to_string()].iter()).as_deref(),
+            Some("`leverage`/`utilize` -> `use`")
+        );
+        assert_eq!(
+            replacement_fix(["myriad".to_string(), "plethora".to_string()].iter()).as_deref(),
+            Some("`myriad`/`plethora` -> `many`")
+        );
+        assert!(replacement_fix(["quintessential".to_string()].iter()).is_none());
     }
 
     #[test]
