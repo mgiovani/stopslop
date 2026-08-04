@@ -11,6 +11,9 @@ pub struct Config {
     pub exclude: Vec<String>, // extra walker excludes (globs)
     #[serde(default)]
     pub check_imports: bool,
+    /// Path to a baseline file whose findings are subtracted from every run.
+    #[serde(default)]
+    pub baseline: Option<std::path::PathBuf>,
 }
 
 impl Config {

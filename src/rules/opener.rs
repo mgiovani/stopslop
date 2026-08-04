@@ -25,12 +25,24 @@ const PREFIX: &str = r#"(?:^[ \t>*_#0-9.)-]*|[.!?]["')\]]?[ \t]+)"#;
 
 /// Families (a) throat-clearing, (b) faux-insight setups, and (c) rhetorical setups (minus the
 /// self-answered question/answer shape, handled separately below since its shape isn't a fixed
-/// phrase). Capture group 1 is the phrase itself, so the diagnostic column points at the phrase,
-/// not the anchor. Apostrophes are optional (`'?`) to also catch the typo'd unapostrophized form,
-/// matching this codebase's existing phrase-panel convention.
+/// phrase), plus three later additions: (d) signposting ("let's dive into", "buckle up", ...),
+/// (e) authority tropes ("in reality", "what really matters", ...), and (f) conversational
+/// openers ("real talk", "the thing is,"). Capture group 1 is the phrase itself, so the diagnostic
+/// column points at the phrase, not the anchor. Apostrophes are optional (`'?`) to also catch the
+/// typo'd unapostrophized form, matching this codebase's existing phrase-panel convention.
+///
+/// Several signposting/authority candidates were dropped for overlap with an existing panel
+/// rather than added here (OVERLAP INVARIANT -- every phrase panel in this codebase stays
+/// disjoint, so no span is ever flagged by two rules):
+/// - "let's dive in" and "let's take a look" are already in `prose_words::FILLER_PHRASES`
+///   (SLOP027, `rules::filler`) verbatim.
+/// - "at its core" is already in `prose_words::FILLER_PHRASES` (SLOP027) verbatim.
+/// - "the real question is" was dropped: `rules::recap`'s KICKER_PHRASE (SLOP029) already matches
+///   the bare substring "the real question" with no word-boundary anchor, so a sentence-initial
+///   "The real question is ..." inside the document's final block could be claimed by both rules.
 static OPENER_PHRASES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
-        r#"(?im){PREFIX}(here'?s the thing|here'?s what i mean|let me be clear|i'?ll be honest|let'?s be honest|the uncomfortable truth is|here'?s the deal|make no mistake|let me explain|but here'?s the kicker|this is the part most people skip|what most people get wrong|here'?s what nobody tells you|the part everyone misses|what nobody talks about|most people don'?t realize|here'?s what they don'?t tell you|the part nobody mentions|what if i told you|think about it:|plot twist:|let that sink in|spoiler alert:|here'?s a thought:)"#
+        r#"(?im){PREFIX}(here'?s the thing|here'?s what i mean|let me be clear|i'?ll be honest|let'?s be honest|the uncomfortable truth is|here'?s the deal|make no mistake|let me explain|but here'?s the kicker|this is the part most people skip|what most people get wrong|here'?s what nobody tells you|the part everyone misses|what nobody talks about|most people don'?t realize|here'?s what they don'?t tell you|the part nobody mentions|what if i told you|think about it:|plot twist:|let that sink in|spoiler alert:|here'?s a thought:|let'?s dive into|let'?s explore|let'?s break this down|let'?s break it down|let'?s get started|here'?s what you need to know|now let'?s look at|without further ado|buckle up|in reality|what really matters|the deeper issue|the heart of the matter|real talk|the thing is,)"#
     ))
     .unwrap()
 });
@@ -65,12 +77,13 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let by_line = first_byte_per_line(doc, bytes);
     for &byte in by_line.values() {
         let (line, col) = doc.line_col(byte);
-        out.push(Diagnostic::at(
+        out.push(Diagnostic::at_fix(
             rule,
             ctx,
             line,
             col,
             "formulaic opener / rhetorical setup; get to the point instead",
+            "delete the opener and start with the fact",
         ));
     }
 }
@@ -173,6 +186,68 @@ mod tests {
         let src =
             "---\nHere's the thing: draft notes\n---\n\nOrdinary text closes out the document.\n";
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn diagnostic_carries_a_fix_hint() {
+        let diags = diagnostics_for("Plot twist: the deploy rolled back automatically.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(
+            diags[0].fix.as_deref(),
+            Some("delete the opener and start with the fact")
+        );
+    }
+
+    #[test]
+    fn flags_signposting_openers() {
+        let diags = diagnostics_for(
+            "Let's dive into the config file.\n\nLet's explore the retry logic next.\n\nLet's break this down into three steps.\n\nBuckle up, this gets technical fast.\n",
+        );
+        assert_eq!(diags.len(), 4);
+        assert!(diags.iter().all(|d| d.code == "SLOP022"));
+    }
+
+    #[test]
+    fn clean_ordinary_sentence_with_dive_in_and_take_a_look() {
+        // "let's dive in" / "let's take a look" are SLOP027's FILLER_PHRASES territory already;
+        // opener.rs must not also claim them.
+        let diags = diagnostics_for(
+            "Let's dive in and look at the config.\n\nLet's take a look at the retry logic.\n",
+        );
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn flags_authority_trope_openers() {
+        let diags = diagnostics_for(
+            "In reality, the fix took an afternoon.\n\nWhat really matters is uptime.\n\nThe deeper issue is a missing index.\n\nThe heart of the matter is latency.\n",
+        );
+        assert_eq!(diags.len(), 4);
+        assert!(diags.iter().all(|d| d.code == "SLOP022"));
+    }
+
+    #[test]
+    fn clean_sentence_using_at_its_core() {
+        // "at its core" is SLOP027's FILLER_PHRASES territory already; opener.rs must not also
+        // claim it, even though the catalog groups it under "authority trope" too.
+        let diags = diagnostics_for("At its core, the service is a thin proxy.\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn does_not_duplicate_recap_real_question_kicker() {
+        // "the real question" is SLOP029's KICKER_PHRASE territory; opener.rs must stay out of
+        // its way rather than also claiming "the real question is".
+        let diags = diagnostics_for("The real question is whether caching helps.\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn flags_conversational_openers() {
+        let diags =
+            diagnostics_for("Real talk, the rollout was rough.\n\nThe thing is, it works now.\n");
+        assert_eq!(diags.len(), 2);
+        assert!(diags.iter().all(|d| d.code == "SLOP022"));
     }
 
     #[test]

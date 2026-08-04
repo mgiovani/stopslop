@@ -20,7 +20,7 @@ pub static RULE: RuleDef = RuleDef {
 /// Anonymous-authority attribution phrases: an appeal to an unnamed "expert"/"study"/"critic"
 /// standing in for a real, checkable source.
 static WEASEL_ATTRIBUTION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(experts (?:agree|say)|studies (?:show|suggest)|research (?:shows|suggests|indicates)|industry reports suggest|many (?:argue|believe)|some (?:say|argue)|it is widely regarded as|widely considered|widely regarded as|it is believed that|critics argue|analysts predict|reports indicate|sources say|it is often said)\b")
+    Regex::new(r"(?i)\b(experts (?:agree|say)|studies (?:show|suggest)|research (?:shows|suggests|indicates)|industry reports suggest|many (?:argue|believe)|some (?:say|argue)|it is widely regarded as|widely considered|widely regarded as|it is believed that|critics argue|analysts predict|reports indicate|sources say|it is often said|observers have (?:cited|noted)|several sources|several publications|many have (?:argued|noted|suggested)|it has been (?:suggested|argued|noted)|commentators (?:say|note|argue)|proponents (?:argue|say)|detractors (?:argue|say))\b")
         .unwrap()
 });
 
@@ -55,12 +55,13 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let by_line = first_byte_per_line(doc, bytes);
     for &byte in by_line.values() {
         let (line, col) = doc.line_col(byte);
-        out.push(Diagnostic::at(
+        out.push(Diagnostic::at_fix(
             rule,
             ctx,
             line,
             col,
             "unsourced weasel attribution; name the source or cite it",
+            "name the source, or cut the claim",
         ));
     }
 }
@@ -104,6 +105,35 @@ mod tests {
         let diags = diagnostics_for(src);
         assert_eq!(diags.len(), 2);
         assert!(diags.iter().all(|d| d.code == "SLOP025"));
+    }
+
+    #[test]
+    fn diagnostic_carries_a_fix_hint() {
+        let diags = diagnostics_for("Experts agree that the migration reduced downtime.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(
+            diags[0].fix.as_deref(),
+            Some("name the source, or cut the claim")
+        );
+    }
+
+    #[test]
+    fn flags_new_weasel_attribution_markers() {
+        let cases = [
+            "Observers have noted a slowdown in release cadence.\n",
+            "Several sources describe the outage as preventable.\n",
+            "Several publications covered the pricing backlash.\n",
+            "Many have argued the migration was rushed.\n",
+            "It has been suggested that the rollback was unnecessary.\n",
+            "Commentators say the redesign missed the mark.\n",
+            "Proponents argue the change reduces on-call load.\n",
+            "Detractors argue the change adds needless complexity.\n",
+        ];
+        for src in cases {
+            let diags = diagnostics_for(src);
+            assert_eq!(diags.len(), 1, "expected exactly one finding for: {src}");
+            assert_eq!(diags[0].code, "SLOP025");
+        }
     }
 
     #[test]

@@ -65,7 +65,14 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             let phrase = repeated_phrase.unwrap();
             format!("filler phrase repeated: \"{phrase}\" appears multiple times")
         };
-        out.push(Diagnostic::at(rule, ctx, line, col, message));
+        out.push(Diagnostic::at_fix(
+            rule,
+            ctx,
+            line,
+            col,
+            message,
+            "delete the filler",
+        ));
     }
 }
 
@@ -101,6 +108,16 @@ mod tests {
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "SLOP027");
         assert!(diags[0].message.contains("vs threshold"));
+        assert_eq!(diags[0].fix.as_deref(), Some("delete the filler"));
+    }
+
+    #[test]
+    fn flags_dense_short_doc_with_second_pass_phrases() {
+        // 3 distinct second-pass phrases (weight 2 each) = weighted 6, at/above the floor of 6.
+        let src = "This client works out of the box with no setup. Under the hood, it batches every request. The wrapper gracefully handles a dropped connection cleanly.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP027");
     }
 
     #[test]

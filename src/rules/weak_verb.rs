@@ -35,6 +35,44 @@ static VAGUE_QUANTIFIER_RE: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
+/// Per-matched-phrase replacement for a (a) WEAK_VERB_PHRASE_RE match, keyed by a substring/exact
+/// check on the lowercased matched text (so "made a decision" and "make a decision" both map to
+/// the same fix, etc.). Returns `None` for anything NOT in family (a) -- in particular, every (b)
+/// VAGUE_QUANTIFIER_RE match -- so the caller can fall back to a single shared fix for those.
+fn weak_verb_phrase_fix(phrase: &str) -> Option<&'static str> {
+    if phrase.contains("decision") {
+        Some("decided")
+    } else if phrase.contains("ability")
+        || phrase.contains("capability")
+        || phrase == "is able to"
+        || phrase == "are able to"
+    {
+        Some("can")
+    } else if phrase == "due to the fact that" {
+        Some("because")
+    } else if phrase == "for the purpose of" {
+        Some("for")
+    } else if phrase == "at this point in time" {
+        Some("now")
+    } else if phrase == "in a timely manner" {
+        Some("give the actual deadline")
+    } else if phrase == "on a regular basis" {
+        Some("say how often")
+    } else if phrase.contains("consideration") {
+        Some("consider")
+    } else if phrase == "conducted an analysis" {
+        Some("analyzed")
+    } else if phrase == "performed an evaluation" {
+        Some("evaluated")
+    } else if phrase == "make an assessment" {
+        Some("assess")
+    } else if phrase == "provides support for" {
+        Some("supports")
+    } else {
+        None
+    }
+}
+
 /// A digit anywhere on `byte`'s own line in `masked`. Used only to gate (b): a concrete number
 /// on the line means the vague quantifier isn't standing in for one after all.
 fn line_has_digit(masked: &str, byte: usize) -> bool {
@@ -58,6 +96,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
     let mut total = 0usize;
     let mut first_byte = None;
+    let mut first_phrase: Option<String> = None;
     let mut per_phrase: HashMap<String, usize> = HashMap::new();
 
     for m in WEAK_VERB_PHRASE_RE.find_iter(&doc.masked) {
@@ -66,7 +105,10 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             continue;
         }
         total += 1;
-        first_byte.get_or_insert(byte);
+        if first_byte.is_none() {
+            first_byte = Some(byte);
+            first_phrase = Some(m.as_str().to_lowercase());
+        }
         *per_phrase.entry(m.as_str().to_lowercase()).or_insert(0) += 1;
     }
     for m in VAGUE_QUANTIFIER_RE.find_iter(&doc.masked) {
@@ -75,7 +117,10 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             continue;
         }
         total += 1;
-        first_byte.get_or_insert(byte);
+        if first_byte.is_none() {
+            first_byte = Some(byte);
+            first_phrase = Some(m.as_str().to_lowercase());
+        }
         *per_phrase.entry(m.as_str().to_lowercase()).or_insert(0) += 1;
     }
 
@@ -93,7 +138,15 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
                 "weak-verb/vague-quantifier phrase repeated: \"{phrase}\" appears multiple times"
             )
         };
-        out.push(Diagnostic::at(rule, ctx, line, col, message));
+        // The anchor phrase (whichever one drove this diagnostic) determines the fix: a repeated
+        // phrase wins if that's what fired, otherwise the earliest matched phrase in the
+        // document. `weak_verb_phrase_fix` only recognizes family (a) phrases, so any family (b)
+        // (vague-quantifier) anchor falls through to the shared fallback fix.
+        let anchor_phrase: &str = repeated_phrase
+            .map(String::as_str)
+            .unwrap_or_else(|| first_phrase.as_deref().unwrap());
+        let fix = weak_verb_phrase_fix(anchor_phrase).unwrap_or("give the measured number");
+        out.push(Diagnostic::at_fix(rule, ctx, line, col, message, fix));
     }
 }
 
@@ -127,6 +180,8 @@ mod tests {
         let diags = diagnostics_for(src);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "SLOP028");
+        // Anchored at the first match ("made a decision"), so the fix follows that phrase.
+        assert_eq!(diags[0].fix.as_deref(), Some("decided"));
     }
 
     #[test]
@@ -135,6 +190,7 @@ mod tests {
         let diags = diagnostics_for(src);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "SLOP028");
+        assert_eq!(diags[0].fix.as_deref(), Some("give the measured number"));
     }
 
     #[test]
@@ -143,6 +199,39 @@ mod tests {
         let diags = diagnostics_for(src);
         assert_eq!(diags.len(), 1);
         assert!(diags[0].message.contains("repeated"));
+        assert_eq!(diags[0].fix.as_deref(), Some("consider"));
+    }
+
+    #[test]
+    fn per_phrase_fix_hints_match_the_lookup_table() {
+        let cases: &[(&str, &str)] = &[
+            ("has the ability to", "can"),
+            ("has the capability to", "can"),
+            ("is able to", "can"),
+            ("are able to", "can"),
+            ("due to the fact that", "because"),
+            ("for the purpose of", "for"),
+            ("at this point in time", "now"),
+            ("in a timely manner", "give the actual deadline"),
+            ("on a regular basis", "say how often"),
+            ("gives consideration to", "consider"),
+            ("conducted an analysis", "analyzed"),
+            ("performed an evaluation", "evaluated"),
+            ("make an assessment", "assess"),
+            ("provides support for", "supports"),
+        ];
+        for (phrase, fix) in cases {
+            // Two occurrences of the SAME phrase so the repeated-phrase branch fires reliably
+            // regardless of document word count (avoids depending on the density floor).
+            let src = format!("The team {phrase} once. Later, the team {phrase} again.\n");
+            let diags = diagnostics_for(&src);
+            assert_eq!(diags.len(), 1, "expected exactly one finding for: {phrase}");
+            assert_eq!(
+                diags[0].fix.as_deref(),
+                Some(*fix),
+                "wrong fix for phrase: {phrase}"
+            );
+        }
     }
 
     #[test]

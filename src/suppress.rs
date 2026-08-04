@@ -36,6 +36,7 @@ mod tests {
             line,
             col: 1,
             message: "test".into(),
+            fix: None,
         }
     }
 

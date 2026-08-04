@@ -26,6 +26,9 @@ fn emit_text(diags: &[Diagnostic], w: &mut impl Write) -> std::io::Result<()> {
             "{}:{}:{} {} {}",
             d.path, d.line, d.col, d.code, d.message
         )?;
+        if let Some(fix) = &d.fix {
+            writeln!(w, "    fix: {fix}")?;
+        }
     }
     Ok(())
 }
@@ -62,10 +65,14 @@ fn emit_sarif(
                 Tier::A => "error",
                 Tier::B => "warning",
             };
+            let text = match &d.fix {
+                Some(fix) => format!("{} (fix: {fix})", d.message),
+                None => d.message.clone(),
+            };
             serde_json::json!({
                 "ruleId": d.code,
                 "level": level,
-                "message": { "text": d.message },
+                "message": { "text": text },
                 "locations": [ {
                     "physicalLocation": {
                         "artifactLocation": { "uri": d.path },

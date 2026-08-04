@@ -20,13 +20,19 @@ pub static HEDGE_PHRASES: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 // SLOP016 — vocab marker panel. Consumer: rules::vocabulary.
-// TIER-1 weight 2 (distinctive):
+// TIER-1 weight 2 (distinctive). "paramount" moved here from TIER2 (it was listed for TIER1 in
+// the catalog, but was already present in TIER2 from an earlier pass -- a word can only ever be
+// in ONE tier, since `vocabulary.rs`'s check() would otherwise double-count a single occurrence
+// by matching it in both `find_iter` passes). "ever-evolving" is NOT re-added: it was already
+// present in this exact panel from the start.
 pub static VOCAB_TIER1: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(delv(e|es|ed|ing)|underscor(e|es|ed|ing)|showcas(e|es|ed|ing)|meticulous(ly)?|intricate|intricac(y|ies)|commendable|tapestr(y|ies)|testament|boast(s|ed|ing)?|bolster(s|ed|ing)?|garner(s|ed|ing)?|interplay|elucidat(e|es|ed|ing)|unveil(s|ed|ing)?|indelible|quintessential|multifaceted|groundbreaking|seamless(ly)?|holistic|transformative|spearhead(s|ed|ing)?|exemplif(y|ies|ied|ying)|underpin(s|ned|ning)?|myriad|plethora|nuanced|resonat(e|es|ed|ing)|captivat(e|es|ed|ing)|paradigm|synerg(y|ies)|burgeoning|veritable|aforementioned|beacon(s)?|supercharg(e|es|ed|ing)|ever-evolving)\b").unwrap()
+    Regex::new(r"(?i)\b(delv(e|es|ed|ing)|underscor(e|es|ed|ing)|showcas(e|es|ed|ing)|meticulous(ly)?|intricate|intricac(y|ies)|commendable|tapestr(y|ies)|testament|boast(s|ed|ing)?|bolster(s|ed|ing)?|garner(s|ed|ing)?|interplay|elucidat(e|es|ed|ing)|unveil(s|ed|ing)?|indelible|quintessential|multifaceted|groundbreaking|seamless(ly)?|holistic|transformative|spearhead(s|ed|ing)?|exemplif(y|ies|ied|ying)|underpin(s|ned|ning)?|myriad|plethora|nuanced|resonat(e|es|ed|ing)|captivat(e|es|ed|ing)|paradigm|synerg(y|ies)|burgeoning|veritable|aforementioned|beacon(s)?|supercharg(e|es|ed|ing)|ever-evolving|interconnected|paramount|noteworthy|emblematic|evocative|poignant)\b").unwrap()
 });
-// TIER-2 weight 1 (common):
+// TIER-2 weight 1 (common). "utiliz(e|es|ed|ing)" is NOT re-added: it was already present in this
+// exact panel from the start. "effortlessly" lives HERE (not in FILLER_ADVERBS/SLOP027) -- see
+// filler.rs's doc comment for why the two panels stay disjoint on that word.
 pub static VOCAB_TIER2: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(comprehensive|crucial|robust|leverag(e|es|ed|ing)|foster(s|ed|ing)?|enhanc(e|es|ed|ing)|elevat(e|es|ed|ing)|streamlin(e|es|ed|ing)|facilitat(e|es|ed|ing)|encompass(es|ed|ing)?|navigat(e|es|ed|ing)|amplif(y|ies|ied|ying)|empower(s|ed|ing)?|notably|particularly|additionally|moreover|furthermore|consequently|nevertheless|nonetheless|pivotal|vibrant|landscape|realm|profound(ly)?|dynamic|integral|cohesive|vital|essential|invaluable|ubiquitous|pertinent|salient|valuable|enduring|discerning|advancement(s)?|revolutionary|unprecedented|cutting-edge|versatile|intuitive|keen|adept|utiliz(e|es|ed|ing)|harness(es|ed|ing)?|paramount)\b").unwrap()
+    Regex::new(r"(?i)\b(comprehensive|crucial|robust|leverag(e|es|ed|ing)|foster(s|ed|ing)?|enhanc(e|es|ed|ing)|elevat(e|es|ed|ing)|streamlin(e|es|ed|ing)|facilitat(e|es|ed|ing)|encompass(es|ed|ing)?|navigat(e|es|ed|ing)|amplif(y|ies|ied|ying)|empower(s|ed|ing)?|notably|particularly|additionally|moreover|furthermore|consequently|nevertheless|nonetheless|pivotal|vibrant|landscape|realm|profound(ly)?|dynamic|integral|cohesive|vital|essential|invaluable|ubiquitous|pertinent|salient|valuable|enduring|discerning|advancement(s)?|revolutionary|unprecedented|cutting-edge|versatile|intuitive|keen|adept|utiliz(e|es|ed|ing)|harness(es|ed|ing)?|effortlessly|performant|imperative)\b").unwrap()
 });
 
 // SLOP017 — parallelism sub-patterns. Consumer: rules::parallelism.
@@ -41,13 +47,15 @@ pub static NEGATIVE_PARALLELISM: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(\bnot only\b[^.?!\n]{0,80}?\bbut(\s+also)?\b|\bnot just\b[^.?!\n]{0,60}?\b(but|it'?s)\b|\bit'?s not (just|only)\b[^.?!\n]{0,60}?\bit'?s\b|\bnot an? \w+[^,.?!\n]{0,40},\s*but\b)").unwrap()
 });
 pub static TRAILING_PARTICIPLE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r",\s+(highlighting|underscoring|emphasizing|showcasing|reflecting|symbolizing|fostering|cultivating|contributing to|reinforcing|solidifying|cementing|reaffirming|underlining|exemplifying|demonstrating|signaling|embodying|encapsulating|marking)\b[^.?!\n]*[.?!]").unwrap()
+    Regex::new(r",\s+(highlighting|underscoring|emphasizing|showcasing|reflecting|symbolizing|fostering|cultivating|contributing to|reinforcing|solidifying|cementing|reaffirming|underlining|exemplifying|demonstrating|signaling|embodying|encapsulating|marking|ensuring|encompassing|enabling|allowing|resulting in|leading to|paving the way for|making it possible|making it easier)\b[^.?!\n]*[.?!]").unwrap()
 });
 
 // SLOP027 — empty filler phrases (case-insensitive). Consumer: rules::filler.
 // "needless to say" is deliberately OMITTED: it's already in HEDGE_PHRASES (SLOP015) above.
+// From the catalog's later addition list, "with regard to", "in terms of", and "the fact of the
+// matter is" are NOT re-added: all three were already present in this exact panel from the start.
 pub static FILLER_PHRASES: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(when it comes to|at its core|in the age of|in the world of|the reality is|the truth is|in terms of|with regard to|with respect to|in order to|going forward|in this article|in this post|let'?s dive in|let'?s take a look|as we'?ve seen|as mentioned earlier|it goes without saying|for all intents and purposes|the fact of the matter is)\b").unwrap()
+    Regex::new(r"(?i)\b(when it comes to|at its core|in the age of|in the world of|the reality is|the truth is|in terms of|with regard to|with respect to|in order to|going forward|in this article|in this post|let'?s dive in|let'?s take a look|as we'?ve seen|as mentioned earlier|it goes without saying|for all intents and purposes|the fact of the matter is|out of the box|under the hood|gracefully handles|subsequent to)\b").unwrap()
 });
 
 // SLOP027 — filler adverbs. Consumer: rules::filler. Position-gated (capture group 1 is the
@@ -56,8 +64,13 @@ pub static FILLER_PHRASES: LazyLock<Regex> = LazyLock::new(|| {
 // copula ("is/are/was/were/be/being/been" or a contracted "'s"/"'re"). This is what keeps
 // "simply" in "the simply typed lambda calculus" (mid-sentence, no copula before it) from
 // counting, while still catching "It's simply a wrapper" / "Simply put, ...".
+// "easily" is the one new addition from the catalog's later pass: "simply"/"just"/"literally"/
+// "essentially"/"arguably" were already present in this exact panel from the start, and
+// "effortlessly" deliberately lives in `VOCAB_TIER2` (SLOP016) instead, not here -- both panels
+// count single words, so the same word can only own one of them (see `prose_words`'s VOCAB_TIER2
+// comment).
 pub static FILLER_ADVERBS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?im)(?:^[ \t>*_#-]*|[.!?]["')\]]?[ \t]+|\b(?:is|are|was|were|be|being|been)[ \t]+|'(?:s|re)[ \t]+)(just|literally|honestly|simply|actually|truly|fundamentally|importantly|crucially|inherently|inevitably|basically|essentially|arguably|undoubtedly|obviously|clearly)\b"#).unwrap()
+    Regex::new(r#"(?im)(?:^[ \t>*_#-]*|[.!?]["')\]]?[ \t]+|\b(?:is|are|was|were|be|being|been)[ \t]+|'(?:s|re)[ \t]+)(just|literally|honestly|simply|actually|truly|fundamentally|importantly|crucially|inherently|inevitably|basically|essentially|arguably|undoubtedly|obviously|clearly|easily)\b"#).unwrap()
 });
 
 #[cfg(test)]
@@ -95,7 +108,28 @@ mod tests {
         assert!(VOCAB_TIER1.is_match("Built for an ever-evolving product roadmap."));
         assert!(VOCAB_TIER2.is_match("Utilize the cache to cut latency."));
         assert!(VOCAB_TIER2.is_match("Harness the queue to smooth out bursts."));
-        assert!(VOCAB_TIER2.is_match("Uptime is of paramount concern here."));
+        // "paramount" moved to TIER1 (see the panel's doc comment); it must not also match TIER2,
+        // or a single occurrence would double-count in vocabulary.rs's weighted total.
+        assert!(VOCAB_TIER1.is_match("Uptime is of paramount concern here."));
+        assert!(!VOCAB_TIER2.is_match("Uptime is of paramount concern here."));
+    }
+
+    #[test]
+    fn vocab_tier1_second_pass_markers_compile_and_match() {
+        assert!(VOCAB_TIER1.is_match("Every service here is deeply interconnected."));
+        assert!(VOCAB_TIER1.is_match("This is a noteworthy improvement over last quarter."));
+        assert!(VOCAB_TIER1.is_match("The mascot is emblematic of the team's culture."));
+        assert!(VOCAB_TIER1.is_match("The essay is an evocative account of the outage."));
+        assert!(VOCAB_TIER1.is_match("The farewell message struck a poignant note."));
+        assert!(!VOCAB_TIER1.is_match("Every service here is well connected to the network."));
+    }
+
+    #[test]
+    fn vocab_tier2_second_pass_markers_compile_and_match() {
+        assert!(VOCAB_TIER2.is_match("The service handles retries effortlessly."));
+        assert!(VOCAB_TIER2.is_match("The new index is far more performant than the old one."));
+        assert!(VOCAB_TIER2.is_match("Reviewing the diff before merge is imperative."));
+        assert!(!VOCAB_TIER2.is_match("The service handles retries without much trouble."));
     }
 
     #[test]
@@ -129,6 +163,21 @@ mod tests {
     }
 
     #[test]
+    fn filler_phrases_second_pass_markers_compile_and_match() {
+        assert!(FILLER_PHRASES.is_match("This client works out of the box with no setup."));
+        assert!(FILLER_PHRASES.is_match("Under the hood, the client batches every request."));
+        assert!(FILLER_PHRASES.is_match("The wrapper gracefully handles a dropped connection."));
+        assert!(FILLER_PHRASES.is_match("The job runs subsequent to the nightly backup."));
+        assert!(!FILLER_PHRASES.is_match("The box ships with a padded interior lining."));
+    }
+
+    #[test]
+    fn filler_adverbs_second_pass_marker_compiles_and_matches() {
+        assert!(FILLER_ADVERBS.is_match("This is easily the simplest fix available."));
+        assert!(!FILLER_ADVERBS.is_match("The team shipped the change easily ahead of schedule."));
+    }
+
+    #[test]
     fn rule_of_three_compiles_and_matches() {
         assert!(RULE_OF_THREE.is_match("clear, concise, and correct"));
         assert!(!RULE_OF_THREE.is_match("clear and correct"));
@@ -151,5 +200,19 @@ mod tests {
     fn trailing_participle_compiles_and_matches() {
         assert!(TRAILING_PARTICIPLE.is_match(", underscoring its significance."));
         assert!(!TRAILING_PARTICIPLE.is_match(" running on port 8080."));
+    }
+
+    #[test]
+    fn trailing_participle_second_pass_verbs_compile_and_match() {
+        assert!(TRAILING_PARTICIPLE.is_match(", ensuring every request is retried once."));
+        assert!(TRAILING_PARTICIPLE.is_match(", encompassing every downstream service too."));
+        assert!(TRAILING_PARTICIPLE.is_match(", enabling teams to ship changes faster."));
+        assert!(TRAILING_PARTICIPLE.is_match(", allowing the queue to drain safely."));
+        assert!(TRAILING_PARTICIPLE.is_match(", resulting in a much smaller diff overall."));
+        assert!(TRAILING_PARTICIPLE.is_match(", leading to fewer on-call pages each week."));
+        assert!(TRAILING_PARTICIPLE.is_match(", paving the way for the next migration."));
+        assert!(TRAILING_PARTICIPLE.is_match(", making it possible to roll back instantly."));
+        assert!(TRAILING_PARTICIPLE.is_match(", making it easier to onboard new engineers."));
+        assert!(!TRAILING_PARTICIPLE.is_match(" running on port 8080, enabled by default."));
     }
 }

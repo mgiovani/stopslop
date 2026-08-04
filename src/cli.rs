@@ -1,4 +1,13 @@
-use crate::{config::Config, diagnostic::Tier, engine, imports_data::DepIndex, output, walk};
+use crate::{
+    baseline::{self, Baseline},
+    config::Config,
+    diagnostic::Tier,
+    engine, groups,
+    imports_data::DepIndex,
+    output,
+    registry::RULES,
+    walk,
+};
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 
@@ -9,12 +18,24 @@ pub struct Cli {
     pub paths: Vec<PathBuf>,
     #[arg(long, value_enum, default_value_t = Format::Text)]
     pub format: Format,
-    /// Only run these rule codes/prefixes (resets defaults). Comma-separated or repeated.
+    /// Only run these rule codes/prefixes/groups (resets defaults). Comma-separated or repeated.
     #[arg(long, value_delimiter = ',')]
     pub select: Vec<String>,
-    /// Subtract these rule codes/prefixes.
+    /// Subtract these rule codes/prefixes/groups.
     #[arg(long, value_delimiter = ',')]
     pub ignore: Vec<String>,
+    /// Print every rule with its group and tier, then exit.
+    #[arg(long)]
+    pub list_rules: bool,
+    /// Subtract findings recorded in a baseline file, so only new findings are reported.
+    /// Bare `--baseline` uses `.stopslop-baseline.json`; `--baseline=PATH` picks another file.
+    // require_equals is load-bearing: without it, `--baseline .` would eat the `.` scan path as
+    // the baseline filename instead of leaving it as a positional.
+    #[arg(long, num_args = 0..=1, require_equals = true, default_missing_value = baseline::DEFAULT_PATH)]
+    pub baseline: Option<PathBuf>,
+    /// Record the current findings as the baseline and exit 0. Same `=PATH` form as --baseline.
+    #[arg(long, num_args = 0..=1, require_equals = true, default_missing_value = baseline::DEFAULT_PATH)]
+    pub write_baseline: Option<PathBuf>,
     /// Enable SLOP010 (package-import resolution).
     #[arg(long)]
     pub check_imports: bool,
@@ -34,6 +55,10 @@ pub enum Format {
 }
 
 pub fn run(cli: Cli) -> anyhow::Result<i32> {
+    if cli.list_rules {
+        list_rules();
+        return Ok(0);
+    }
     let config = Config::discover(cli.config.as_deref(), cli.no_config)?;
 
     let select = if !cli.select.is_empty() {
@@ -63,6 +88,21 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
 
     let diags = walk::lint_paths(&paths, &config.exclude, &settings)?;
 
+    if let Some(path) = cli.write_baseline {
+        let n = Baseline::write(&path, &diags)?;
+        eprintln!("stopslop: recorded {n} findings in {}", path.display());
+        return Ok(0);
+    }
+
+    // CLI wins over config, and an explicit empty `baseline = ""` in config means "no baseline".
+    let baseline_path = cli
+        .baseline
+        .or_else(|| config.baseline.filter(|p| !p.as_os_str().is_empty()));
+    let diags = match baseline_path {
+        Some(path) => Baseline::load(&path)?.filter(diags),
+        None => diags,
+    };
+
     let stdout = std::io::stdout();
     let mut w = stdout.lock();
     output::emit(cli.format, &diags, &settings.enabled, &mut w)?;
@@ -73,4 +113,26 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         0
     };
     Ok(code)
+}
+
+/// `code  group  tier  on-by-default  name`, grouped-name column included so `--select <group>`
+/// is discoverable without reading the README.
+fn list_rules() {
+    println!(
+        "{:<8} {:<10} {:<5} {:<8} NAME",
+        "CODE", "GROUP", "TIER", "DEFAULT"
+    );
+    for r in RULES {
+        println!(
+            "{:<8} {:<10} {:<5} {:<8} {}",
+            r.code,
+            groups::group_of(r.code),
+            match r.tier {
+                Tier::A => "A",
+                Tier::B => "B",
+            },
+            if r.default_on { "on" } else { "off" },
+            r.name,
+        );
+    }
 }

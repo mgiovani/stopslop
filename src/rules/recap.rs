@@ -52,6 +52,17 @@ static BINARY_CONTRAST: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
+/// (c) vague, generic positive-note ending: a stock upbeat closer with no concrete outcome
+/// behind it, e.g. "The future looks bright." / "Watch this space." Scoped to the same short
+/// final block as (b) (see `check`) since a long paragraph that happens to mention one of these
+/// phrases mid-content is ordinary prose, not a vacuous kicker.
+static POSITIVE_CONCLUSION_PHRASE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)the future looks bright|exciting times (?:lie ahead|are ahead)|a step in the right direction|the possibilities are endless|only time will tell|one thing is clear|the sky'?s the limit|watch this space",
+    )
+    .unwrap()
+});
+
 /// Final prose block: text (non-comment lines joined with spaces) plus the byte offset of its
 /// first non-whitespace character, for the diagnostic anchor.
 struct Block {
@@ -161,7 +172,9 @@ fn final_prose_block(doc: &ProseDoc) -> Option<Block> {
 /// fact-dense closing paragraph that happens to start with "In conclusion" -- see
 /// `clean_hedging.md` -- must not fire; a short vacuous restatement is the actual target). (b)
 /// fires when the block is at most `KICKER_WORD_CAP` words AND matches one of three narrow
-/// mic-drop shapes. At most one diagnostic per file.
+/// mic-drop shapes. (c) fires on that same word-count cap when the block matches one of the
+/// stock vague-positive-conclusion phrases instead (distinct wording from (b)'s mic-drop set, so
+/// the two never compete for the same match). At most one diagnostic per file.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
     let Some(block) = final_prose_block(doc) else {
@@ -202,6 +215,19 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             line,
             col,
             "fake-profound kicker ending; cut the mic-drop line",
+        ));
+        return;
+    }
+
+    if words <= KICKER_WORD_CAP && POSITIVE_CONCLUSION_PHRASE.is_match(&block.text) {
+        let (line, col) = doc.line_col(block.first_byte);
+        out.push(Diagnostic::at_fix(
+            rule,
+            ctx,
+            line,
+            col,
+            "vague, generic positive-note ending; say the concrete outcome instead",
+            "end on the last concrete fact",
         ));
     }
 }
@@ -293,5 +319,48 @@ mod tests {
         let src = "In conclusion, ship it now.\n\n[ref]: https://example.com\n"; // ai-slop-ignore
         let diags = diagnostics_for(src);
         assert_eq!(diags.len(), 1);
+    }
+
+    #[test]
+    fn flags_vague_positive_conclusion() {
+        let diags = diagnostics_for("The future looks bright for the whole team.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP029");
+        assert_eq!(
+            diags[0].fix.as_deref(),
+            Some("end on the last concrete fact")
+        );
+    }
+
+    #[test]
+    fn flags_each_vague_positive_conclusion_phrase() {
+        let cases = [
+            "Exciting times lie ahead for the platform team.\n",
+            "This rollout was a step in the right direction.\n",
+            "From here, the possibilities are endless.\n",
+            "Only time will tell how this plays out.\n",
+            "One thing is clear: the team shipped on time.\n",
+            "For this project, the sky's the limit.\n",
+            "Watch this space for what comes next.\n",
+        ];
+        for src in cases {
+            let diags = diagnostics_for(src);
+            assert_eq!(diags.len(), 1, "expected exactly one finding for: {src}");
+            assert_eq!(diags[0].code, "SLOP029");
+        }
+    }
+
+    #[test]
+    fn clean_positive_conclusion_phrase_outside_final_block_is_ignored() {
+        let src = "The future looks bright for the whole team this quarter.\n\nThe team also fixed a minor dashboard bug unrelated to that.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn clean_long_paragraph_mentioning_watch_this_space_mid_content() {
+        // The phrase appears, but the final block is well over KICKER_WORD_CAP words, so this is
+        // ordinary prose referencing the phrase, not the short vacuous-kicker shape.
+        let src = "Watch this space is a phrase the team explicitly banned from release notes after an old announcement used it without ever following up with a real update for the next six months.\n";
+        assert!(diagnostics_for(src).is_empty());
     }
 }

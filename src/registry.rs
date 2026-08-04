@@ -28,24 +28,34 @@ pub static RULES: &[&'static RuleDef] = &[
     &crate::rules::stub::RULE,
     &crate::rules::placeholder::RULE,
     &crate::rules::imports::RULE,
-    &crate::rules::residue::RULE,       // SLOP011
-    &crate::rules::citation::RULE,      // SLOP012
-    &crate::rules::template::RULE,      // SLOP013
-    &crate::rules::cliche::RULE,        // SLOP014
-    &crate::rules::hedging::RULE,       // SLOP015
-    &crate::rules::vocabulary::RULE,    // SLOP016
-    &crate::rules::parallelism::RULE,   // SLOP017
-    &crate::rules::emdash::RULE,        // SLOP018
-    &crate::rules::boldface::RULE,      // SLOP019
-    &crate::rules::smartquotes::RULE,   // SLOP020
-    &crate::rules::heading_style::RULE, // SLOP021
-    &crate::rules::opener::RULE,        // SLOP022
-    &crate::rules::contrast::RULE,      // SLOP023
-    &crate::rules::puffery::RULE,       // SLOP024
-    &crate::rules::weasel::RULE,        // SLOP025
-    &crate::rules::colon_reveal::RULE,  // SLOP026
-    &crate::rules::filler::RULE,        // SLOP027
-    &crate::rules::weak_verb::RULE,     // SLOP028
-    &crate::rules::recap::RULE,         // SLOP029
-    &crate::rules::fragmentation::RULE, // SLOP030
+    &crate::rules::residue::RULE,          // SLOP011
+    &crate::rules::citation::RULE,         // SLOP012
+    &crate::rules::template::RULE,         // SLOP013
+    &crate::rules::cliche::RULE,           // SLOP014
+    &crate::rules::hedging::RULE,          // SLOP015
+    &crate::rules::vocabulary::RULE,       // SLOP016
+    &crate::rules::parallelism::RULE,      // SLOP017
+    &crate::rules::emdash::RULE,           // SLOP018
+    &crate::rules::boldface::RULE,         // SLOP019
+    &crate::rules::smartquotes::RULE,      // SLOP020
+    &crate::rules::heading_style::RULE,    // SLOP021
+    &crate::rules::opener::RULE,           // SLOP022
+    &crate::rules::contrast::RULE,         // SLOP023
+    &crate::rules::puffery::RULE,          // SLOP024
+    &crate::rules::weasel::RULE,           // SLOP025
+    &crate::rules::colon_reveal::RULE,     // SLOP026
+    &crate::rules::filler::RULE,           // SLOP027
+    &crate::rules::weak_verb::RULE,        // SLOP028
+    &crate::rules::recap::RULE,            // SLOP029
+    &crate::rules::fragmentation::RULE,    // SLOP030
+    &crate::rules::promo::RULE,            // SLOP031
+    &crate::rules::hyphen::RULE,           // SLOP032
+    &crate::rules::sentence_length::RULE,  // SLOP033
+    &crate::rules::synonym_rotation::RULE, // SLOP034
+    &crate::rules::outline_section::RULE,  // SLOP035
+    &crate::rules::diff_anchor::RULE,      // SLOP036
+    &crate::rules::reinvent::RULE,         // SLOP037
+    &crate::rules::redundant_dep::RULE,    // SLOP038
+    &crate::rules::wrapper::RULE,          // SLOP039
+    &crate::rules::single_impl::RULE,      // SLOP040
 ];
