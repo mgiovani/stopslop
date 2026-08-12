@@ -35,6 +35,7 @@ pub mod stub;
 pub mod synonym_rotation;
 pub mod template;
 pub mod type_escape;
+pub mod uniformity;
 pub mod vocabulary;
 pub mod weak_verb;
 pub mod weasel;

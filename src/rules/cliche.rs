@@ -8,7 +8,7 @@ use crate::registry::RuleDef;
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP014",
     name: "Formulaic cliché phrase",
-    tier: Tier::A,
+    tier: Tier::B,
     langs: &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst],
     default_on: true,
     path_gated: false,

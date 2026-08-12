@@ -65,9 +65,9 @@ fn is_table_line(line: &str) -> bool {
     t.starts_with('|') || t.matches('|').count() >= 2
 }
 
-struct Block {
-    text: String,
-    first_byte: usize,
+pub(crate) struct Block {
+    pub(crate) text: String,
+    pub(crate) first_byte: usize,
 }
 
 /// All paragraph blocks in the document: maximal contiguous non-blank line runs, excluding
@@ -77,7 +77,7 @@ struct Block {
 /// entirely rather than partially salvaged: bullet lists, tables, and headings must never be
 /// treated as sentences (spec requirement), and a block that mixes prose with one of these is
 /// rare enough that skipping it whole is the conservative, low-risk choice.
-fn paragraph_blocks(doc: &ProseDoc) -> Vec<Block> {
+pub(crate) fn paragraph_blocks(doc: &ProseDoc) -> Vec<Block> {
     let masked = &doc.masked;
     let spans = line_spans(masked);
     let mut blocks = Vec::new();
@@ -124,7 +124,7 @@ fn paragraph_blocks(doc: &ProseDoc) -> Vec<Block> {
 /// end-of-string (so "3.14" and other mid-token punctuation, never followed by whitespace right
 /// there, is not a boundary). Each returned slice keeps its own trailing punctuation.
 /// ponytail: no abbreviation list (e.g. "e.g."); a real fixture would need it to upgrade.
-fn split_sentences(text: &str) -> Vec<&str> {
+pub(crate) fn split_sentences(text: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let bytes = text.as_bytes();
     let mut start = 0usize;
@@ -154,7 +154,7 @@ fn split_sentences(text: &str) -> Vec<&str> {
     out
 }
 
-fn word_count(s: &str) -> usize {
+pub(crate) fn word_count(s: &str) -> usize {
     s.split_whitespace().count()
 }
 

@@ -83,8 +83,9 @@ mod tests {
     fn duplicate_root_does_not_duplicate_findings() {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/go");
         let settings = Settings {
-            enabled: resolve_enabled(&[], &[], false),
+            enabled: resolve_enabled(&[], &[], &[], &[], &[], false),
             deps: None,
+            custom_rules: Vec::new(),
         };
         let once = lint_paths(std::slice::from_ref(&dir), &[], &settings).unwrap();
         let twice = lint_paths(&[dir.clone(), dir], &[], &settings).unwrap();

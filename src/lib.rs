@@ -2,6 +2,7 @@ pub mod baseline;
 pub mod cli;
 pub mod config;
 pub mod context;
+pub mod custom;
 pub mod diagnostic;
 pub mod engine;
 pub mod groups;

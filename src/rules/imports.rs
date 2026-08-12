@@ -694,8 +694,9 @@ mod tests {
         let deps = DepIndex::discover(std::slice::from_ref(&dir));
         let source = std::fs::read_to_string(dir.join(file)).unwrap();
         let settings = crate::engine::Settings {
-            enabled: crate::engine::resolve_enabled(&[], &[], true),
+            enabled: crate::engine::resolve_enabled(&[], &[], &[], &[], &[], true),
             deps: Some(deps),
+            custom_rules: Vec::new(),
         };
         crate::engine::lint_file(format!("{dir_lang}/{file}"), &source, lang, &settings)
     }

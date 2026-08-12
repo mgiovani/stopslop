@@ -9,7 +9,7 @@ use std::sync::LazyLock;
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP022",
     name: "Formulaic opener / rhetorical setup",
-    tier: Tier::A,
+    tier: Tier::B,
     langs: &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst],
     default_on: true,
     path_gated: false,

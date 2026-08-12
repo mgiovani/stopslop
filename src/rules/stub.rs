@@ -396,8 +396,9 @@ mod tests {
     #[test]
     fn resolve_enabled_includes_slop008() {
         let s = Settings {
-            enabled: resolve_enabled(&[], &[], false),
+            enabled: resolve_enabled(&[], &[], &[], &[], &[], false),
             deps: None,
+            custom_rules: Vec::new(),
         };
         assert!(s.enabled.contains("SLOP008"));
     }

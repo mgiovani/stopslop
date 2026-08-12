@@ -10,8 +10,9 @@ pub struct RuleDef {
     pub name: &'static str,
     pub tier: Tier,
     pub langs: &'static [Lang], // rule runs only for these langs
-    pub default_on: bool,       // false only for SLOP010
-    pub path_gated: bool,       // honor is_test_path exemption (SLOP005/6/8/9/10)
+    pub default_on: bool,       // three-state w/ tier: A+on blocks CI, B+on warns without
+    // blocking, B+off is opt-in only (see Tier's doc comment)
+    pub path_gated: bool, // honor is_test_path exemption (SLOP005/6/8/9/10)
     pub check: CheckFn,
 }
 
@@ -58,4 +59,5 @@ pub static RULES: &[&'static RuleDef] = &[
     &crate::rules::redundant_dep::RULE,    // SLOP038
     &crate::rules::wrapper::RULE,          // SLOP039
     &crate::rules::single_impl::RULE,      // SLOP040
+    &crate::rules::uniformity::RULE,       // SLOP041
 ];

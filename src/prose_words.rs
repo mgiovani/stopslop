@@ -73,6 +73,22 @@ pub static FILLER_ADVERBS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?im)(?:^[ \t>*_#-]*|[.!?]["')\]]?[ \t]+|\b(?:is|are|was|were|be|being|been)[ \t]+|'(?:s|re)[ \t]+)(just|literally|honestly|simply|actually|truly|fundamentally|importantly|crucially|inherently|inevitably|basically|essentially|arguably|undoubtedly|obviously|clearly|easily)\b"#).unwrap()
 });
 
+// SLOP002 / SLOP011 — reasoning-chain scaffolding left behind from a model's chain-of-thought,
+// shared between `rules::preamble` (code comments) and `rules::residue` (prose). A pattern
+// FRAGMENT, not a compiled `Regex`: the two consumers anchor it differently (preamble.rs anchors
+// to a comment-marker line start; residue.rs matches anywhere in the masked prose stream), so
+// each compiles its own `Regex` around this shared alternation instead of sharing a `LazyLock`.
+// Both ASCII `'` and U+2019 `'` are covered for the two "let's ..." members.
+pub const REASONING_CHAIN_FRAGMENT: &str =
+    "let(?:'|\u{2019})s think|let me think|thinking through this|step 1:|breaking this down|first, let(?:'|\u{2019})s consider";
+
+// SLOP015 — adjacent hedge stack (case-insensitive). Consumer: rules::hedging. Checked
+// independent of the density gate: two hedge words stacked back to back is a defect on a SINGLE
+// occurrence, unlike the rest of the panel above which only means something in aggregate.
+pub static ADJACENT_HEDGE_STACK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(?:could|may|might) (?:potentially|possibly|perhaps)\b").unwrap()
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,5 +230,22 @@ mod tests {
         assert!(TRAILING_PARTICIPLE.is_match(", making it possible to roll back instantly."));
         assert!(TRAILING_PARTICIPLE.is_match(", making it easier to onboard new engineers."));
         assert!(!TRAILING_PARTICIPLE.is_match(" running on port 8080, enabled by default."));
+    }
+
+    #[test]
+    fn reasoning_chain_fragment_compiles_and_matches_both_apostrophes() {
+        let re = Regex::new(&format!("(?i){REASONING_CHAIN_FRAGMENT}")).unwrap();
+        assert!(re.is_match("let's think about this differently"));
+        assert!(re.is_match("let\u{2019}s think about this differently"));
+        assert!(re.is_match("Step 1: parse the input"));
+        assert!(re.is_match("breaking this down further"));
+        assert!(!re.is_match("we thought this through carefully"));
+    }
+
+    #[test]
+    fn adjacent_hedge_stack_compiles_and_matches() {
+        assert!(ADJACENT_HEDGE_STACK.is_match("This might potentially fail under load."));
+        assert!(ADJACENT_HEDGE_STACK.is_match("It could possibly break older clients."));
+        assert!(!ADJACENT_HEDGE_STACK.is_match("This could work in some cases."));
     }
 }

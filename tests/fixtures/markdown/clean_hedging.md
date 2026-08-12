@@ -42,3 +42,6 @@ from the dashboard itself.
 In conclusion, the migration met its latency and reliability goals, and the
 tooling built along the way should make the next infrastructure change
 easier to test and roll out safely.
+
+A future change could help further, but possibly not for every workload we
+run today.

@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP025",
     name: "Unsourced weasel attribution",
-    tier: Tier::A,
+    tier: Tier::B,
     langs: &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst],
     default_on: true,
     path_gated: false,
@@ -24,6 +24,18 @@ static WEASEL_ATTRIBUTION_RE: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
+/// Notability by name-dropping: three or more bare, comma-chained capitalized outlet/publication
+/// names right after "cited/covered/featured in/by", with no per-citation context (no link, no
+/// date, no quote -- just a list of names standing in for real sourcing). An optional "and "
+/// before the final name covers the ordinary English list form ("X, Y, and Z"), not just a bare
+/// comma splice.
+static NOTABILITY_NAME_DROP_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"\b(?:cited|covered|featured) (?:in|by) [A-Z][\w& ]+(?:, (?:and )?[A-Z][\w& ]+){2,}",
+    )
+    .unwrap()
+});
+
 /// A citation on the SAME LINE as a weasel phrase means the claim is actually sourced, not
 /// unsourced: a markdown link `[text](target)`, a bare URL, a footnote reference (`[^1]`), a
 /// reST-style citation/footnote reference (`[label]_`), or a parenthetical with a year
@@ -35,10 +47,11 @@ static LINE_CITATION_RE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-/// Scans the masked prose stream for unsourced weasel attribution (headings in scope,
-/// frontmatter and URL spans skipped). Any match whose LINE also carries a citation signal is
-/// suppressed -- the rule targets bare appeals to anonymous authority, not attributed claims.
-/// One diagnostic per matching line, anchored at the first (leftmost) match.
+/// Scans the masked prose stream for unsourced weasel attribution and notability name-dropping
+/// (headings in scope, frontmatter and URL spans skipped). Any match whose LINE also carries a
+/// citation signal is suppressed -- the rule targets bare appeals to unnamed/uncontextualized
+/// authority, not attributed claims. One diagnostic per matching line, anchored at the first
+/// (leftmost) match; the message and fix differ by which sub-pattern produced that match.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
 
@@ -47,22 +60,37 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         .map(|m| doc.line_col(m.start()).0)
         .collect();
 
-    let bytes = WEASEL_ATTRIBUTION_RE
+    let attribution: HashSet<usize> = WEASEL_ATTRIBUTION_RE
         .find_iter(&doc.masked)
         .map(|m| m.start())
         .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte))
+        .collect();
+    let name_drop: HashSet<usize> = NOTABILITY_NAME_DROP_RE
+        .find_iter(&doc.masked)
+        .map(|m| m.start())
+        .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte))
+        .collect();
+
+    let bytes = attribution
+        .iter()
+        .chain(name_drop.iter())
+        .copied()
         .filter(|&byte| !cited_lines.contains(&doc.line_col(byte).0));
     let by_line = first_byte_per_line(doc, bytes);
     for &byte in by_line.values() {
         let (line, col) = doc.line_col(byte);
-        out.push(Diagnostic::at_fix(
-            rule,
-            ctx,
-            line,
-            col,
-            "unsourced weasel attribution; name the source or cite it",
-            "name the source, or cut the claim",
-        ));
+        let (message, fix) = if attribution.contains(&byte) {
+            (
+                "unsourced weasel attribution; name the source or cite it",
+                "name the source, or cut the claim",
+            )
+        } else {
+            (
+                "notability by name-dropping outlets with no per-citation context",
+                "cite each claim individually, or cut the list",
+            )
+        };
+        out.push(Diagnostic::at_fix(rule, ctx, line, col, message, fix));
     }
 }
 
@@ -163,6 +191,33 @@ mod tests {
     #[test]
     fn silent_when_footnote_reference_present() {
         let src = "Sources say the rollout was delayed[^1].\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn flags_notability_name_drop() {
+        let src = "The project was featured in The New York Times, The Guardian, and Wired.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP025");
+        assert_eq!(
+            diags[0].fix.as_deref(),
+            Some("cite each claim individually, or cut the list")
+        );
+    }
+
+    #[test]
+    fn flags_notability_name_drop_with_bare_comma_splice() {
+        let src = "The tool was cited in TechCrunch, VentureBeat, Ars Technica.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP025");
+    }
+
+    #[test]
+    fn clean_single_outlet_mention() {
+        // One outlet, no chain of names -- an ordinary, checkable attribution.
+        let src = "The report was featured in The New York Times.\n";
         assert!(diagnostics_for(src).is_empty());
     }
 }

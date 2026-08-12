@@ -177,7 +177,7 @@ mod tests {
         // The inner `[our repo]` must not fool the rejection check into inspecting the wrong
         // (inner) closing bracket's successor -- the real outer close is followed by `(`.
         let diags = diagnostics_for(
-            "See the [link to [our repo]](https://github.com/example/repo) for details.\n", // ai-slop-ignore
+            "See the [link to [our repo]](https://github.com/example/repo) for details.\n",
         );
         assert!(
             diags.is_empty(),

@@ -1,7 +1,7 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::Lang;
-use crate::prose_words::HEDGE_PHRASES;
+use crate::prose_words::{ADJACENT_HEDGE_STACK, HEDGE_PHRASES};
 use crate::registry::RuleDef;
 use std::collections::HashMap;
 
@@ -19,7 +19,9 @@ pub static RULE: RuleDef = RuleDef {
 /// frontmatter and URLs skipped). A single "in conclusion" or "it's worth noting" is completely
 /// normal in human writing, so this never fires on one hit. Flags once, document-level,
 /// anchored at the first occurrence, when the total N meets the density floor
-/// (`N >= max(3, ceil(3 * words / 1000))`) OR any single phrase repeats `>= 2` times.
+/// (`N >= max(3, ceil(3 * words / 1000))`) OR any single phrase repeats `>= 2` times. Separately,
+/// below, an adjacent hedge stack ("might potentially") fires on every match regardless of
+/// density -- see the comment at that loop for why it can't share this gate.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
     let mut total = 0usize;
@@ -53,6 +55,30 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             format!("hedging/filler phrase repeated: \"{phrase}\" appears multiple times")
         };
         out.push(Diagnostic::at(rule, ctx, line, col, message));
+    }
+
+    // Adjacent hedge stack ("might potentially fail") is checked OUTSIDE the density
+    // calculation above and on every match, not just when the document-wide total crosses a
+    // threshold: the density path exists precisely to avoid flagging a single ordinary hedge, so
+    // a lone doubled-up hedge would get averaged away and never surface if it had to go through
+    // that same gate. Stacking two hedge words back to back is a defect on its own, independent
+    // of how much (or how little) hedging surrounds it.
+    for m in ADJACENT_HEDGE_STACK.find_iter(&doc.masked) {
+        let byte = m.start();
+        if doc.in_frontmatter(byte) || doc.in_url(byte) {
+            continue;
+        }
+        let (line, col) = doc.line_col(byte);
+        out.push(Diagnostic::at(
+            rule,
+            ctx,
+            line,
+            col,
+            format!(
+                "adjacent hedge stack: \"{}\" hedges twice in a row",
+                m.as_str()
+            ),
+        ));
     }
 }
 
@@ -104,6 +130,25 @@ mod tests {
         // N=2, no repeated phrase -> below the absolute floor of 3, must not fire.
         let src =
             "It's worth noting that latency improved. In conclusion, the rollout succeeded.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn flags_single_adjacent_hedge_stack_independent_of_density() {
+        // A single hedge, nowhere near the density floor -- must still fire via the separate
+        // adjacent-stack path.
+        let src = "This change might potentially fail under sustained load.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP015");
+        assert!(diags[0].message.contains("adjacent hedge stack"));
+    }
+
+    #[test]
+    fn clean_non_adjacent_hedge_words() {
+        // "could" and "possibly" both appear, but not stacked back to back -- ordinary hedging,
+        // not the doubled-up shape this path targets.
+        let src = "This could work, but possibly not for every workload.\n";
         assert!(diagnostics_for(src).is_empty());
     }
 }

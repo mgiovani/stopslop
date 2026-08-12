@@ -19,15 +19,15 @@ pub static RULE: RuleDef = RuleDef {
 
 const MESSAGE: &str = "hardcoded sample/credential value";
 
-// Two of this file's own string literals below contain the trigger tokens they describe,
-// so dogfooding stopslop against its own src/ would self-flag them; `// ai-slop-ignore`
-// (trailing, same line as the string) suppresses those per suppress.rs semantics.
+// This file's own pattern below spells out several of the trigger tokens it describes, so
+// dogfooding stopslop against its own src/ would self-flag it.
 static RE_CI: LazyLock<Regex> = LazyLock::new(|| {
     // ai-slop-ignore
     Regex::new(r"(?i)YOUR_[A-Z0-9_]+|<your[ -][^>]*>|example\.(com|org|net)|123[- ]?456[- ]?7890|John Doe|Jane Doe|foo@bar\.|user@example\.|change[_ ]?me").unwrap()
 });
+// The credential patterns are prefixes and character classes, never a literal sample value, so
+// this one needs no suppression -- SLOP009 has nothing to match here.
 static RE_CS: LazyLock<Regex> = LazyLock::new(|| {
-    // ai-slop-ignore
     Regex::new(r"sk-[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{12,}|ghp_[A-Za-z0-9]{20,}|xox[baprs]-").unwrap()
 });
 

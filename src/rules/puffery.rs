@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP024",
     name: "Importance puffery / fake-strong verb",
-    tier: Tier::A,
+    tier: Tier::B,
     langs: &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst],
     default_on: true,
     path_gated: false,
@@ -41,13 +41,26 @@ static FAKE_STRONG_VERB_RE: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
-/// Scans both sub-patterns over the masked prose stream (headings in scope, frontmatter and
+/// (c) Faux-scale range: "from the singularity of the Big Bang to the enigmatic dance of dark
+/// matter"-style constructions. The detectable signal is the NESTED DOUBLE `of` -- one bare "from
+/// X to Y" is ordinary English (a date range, a version range, a distance), but "from <phrase> of
+/// <phrase> to <phrase> of <phrase>" is the specific poetic-pairing shape that stands in for an
+/// actual magnitude claim. Each `<phrase>` slot allows an optional leading "the" plus up to 3
+/// filler words before its head noun, matching real examples like "the Big Bang" or "the
+/// enigmatic dance" rather than only single-word nouns.
+static FAUX_SCALE_RANGE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\bfrom (?:the )?(?:\w+ ){0,3}\w+ of (?:the )?(?:\w+ ){0,3}\w+ to (?:the )?(?:\w+ ){0,3}\w+ of (?:the )?(?:\w+ ){0,3}\w+\b")
+        .unwrap()
+});
+
+/// Scans all three sub-patterns over the masked prose stream (headings in scope, frontmatter and
 /// URLs skipped). A (b) match whose noun phrase is "testament" is skipped: that exact shape
 /// ("stands/serves as a testament to ...") is SLOP014's CLICHE_PHRASES territory already. One
 /// diagnostic per matching line, anchored at the first (leftmost) match; the fix hint differs by
 /// which sub-pattern produced that leftmost match (importance puffery states no fact -> "state
 /// the fact instead"; a fake-strong linking verb has a direct one-word replacement -> "use `is` or
-/// `has`"), so the winning byte's origin is tracked alongside the byte itself.
+/// `has`"; a faux-scale range names no actual magnitude -> "name the actual range instead"), so
+/// the winning byte's origin is tracked alongside the byte itself.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
 
@@ -62,22 +75,33 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         .map(|m| m.start())
         .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte))
         .collect();
+    let faux_scale: HashSet<usize> = FAUX_SCALE_RANGE_RE
+        .find_iter(&doc.masked)
+        .map(|m| m.start())
+        .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte))
+        .collect();
 
-    let bytes = importance.iter().chain(fake_strong.iter()).copied();
+    let bytes = importance
+        .iter()
+        .chain(fake_strong.iter())
+        .chain(faux_scale.iter())
+        .copied();
     let by_line = first_byte_per_line(doc, bytes);
     for &byte in by_line.values() {
         let (line, col) = doc.line_col(byte);
         let fix = if importance.contains(&byte) {
             "state the fact instead"
-        } else {
+        } else if fake_strong.contains(&byte) {
             "use `is` or `has`"
+        } else {
+            "name the actual range instead"
         };
         out.push(Diagnostic::at_fix(
             rule,
             ctx,
             line,
             col,
-            "importance puffery or inflated linking verb; state the fact plainly instead",
+            "importance puffery, inflated linking verb, or faux-scale range; state the fact plainly instead",
             fix,
         ));
     }
@@ -163,6 +187,34 @@ mod tests {
     #[test]
     fn clean_ordinary_prose() {
         let src = "The release ships next week with the fixes from this sprint.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn flags_faux_scale_range() {
+        let src = "The talk ranged from the singularity of the Big Bang to the enigmatic dance of dark matter.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP024");
+        assert_eq!(
+            diags[0].fix.as_deref(),
+            Some("name the actual range instead")
+        );
+    }
+
+    #[test]
+    fn clean_bare_from_to_range_is_ordinary_english() {
+        // A single "from X to Y" with no nested "of ... of" is a normal range (a date range
+        // here), not the poetic-pairing shape this sub-pattern targets.
+        let src = "The migration window runs from Monday to Friday this week.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn clean_single_of_is_not_a_faux_scale_range() {
+        // Only one "of" in the whole range: still an ordinary sentence, not the NESTED double
+        // "of" this sub-pattern requires.
+        let src = "Coverage runs from the start of the meeting to the closing remarks.\n";
         assert!(diagnostics_for(src).is_empty());
     }
 

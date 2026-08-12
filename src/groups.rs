@@ -34,7 +34,7 @@ pub static GROUPS: &[(&str, &[&str])] = &[
     (
         "verbosity",
         &[
-            "SLOP015", "SLOP016", "SLOP027", "SLOP028", "SLOP032", "SLOP033", "SLOP034",
+            "SLOP015", "SLOP016", "SLOP027", "SLOP028", "SLOP032", "SLOP033", "SLOP034", "SLOP041",
         ],
     ),
     // Claims with no checkable source behind them.
@@ -43,8 +43,14 @@ pub static GROUPS: &[(&str, &[&str])] = &[
     ("format", &["SLOP018", "SLOP019", "SLOP020", "SLOP021"]),
 ];
 
-/// The group a code belongs to, for `--list-rules`.
+/// The group a code belongs to, for `--list-rules`. `SLOP9NN` codes are user-defined
+/// (`crate::custom`), special-cased here the same way `ALL` is special-cased in `expand` below --
+/// they can never join the `GROUPS` table itself because `groups_partition_every_rule` requires
+/// every member to also be a `RULES` entry, and custom codes aren't.
 pub fn group_of(code: &str) -> &'static str {
+    if code.starts_with("SLOP9") {
+        return "custom";
+    }
     GROUPS
         .iter()
         .find(|(_, codes)| codes.contains(&code))
@@ -53,12 +59,23 @@ pub fn group_of(code: &str) -> &'static str {
 }
 
 /// Replaces every group name in `pats` with that group's member codes; non-group patterns pass
-/// through untouched, so codes and prefixes keep working exactly as before.
+/// through untouched, so codes and prefixes keep working exactly as before. `ALL` is a reserved
+/// selector (not a `GROUPS` entry -- that table's partition test requires every code to live in
+/// exactly one group, and `ALL` deliberately spans all of them) that expands to every registered
+/// rule code.
 pub fn expand(pats: &[String]) -> Vec<String> {
     pats.iter()
-        .flat_map(|p| match GROUPS.iter().find(|(name, _)| name == p) {
-            Some((_, codes)) => codes.iter().map(|c| c.to_string()).collect(),
-            None => vec![p.clone()],
+        .flat_map(|p| {
+            if p == "ALL" {
+                return crate::registry::RULES
+                    .iter()
+                    .map(|r| r.code.to_string())
+                    .collect::<Vec<_>>();
+            }
+            match GROUPS.iter().find(|(name, _)| name == p) {
+                Some((_, codes)) => codes.iter().map(|c| c.to_string()).collect(),
+                None => vec![p.clone()],
+            }
         })
         .collect()
 }
@@ -97,5 +114,20 @@ mod tests {
         assert_eq!(expand(&["sourcing".to_string()]), vec!["SLOP025"]);
         assert_eq!(expand(&["SLOP001".to_string()]), vec!["SLOP001"]);
         assert_eq!(expand(&["SLOP".to_string()]), vec!["SLOP"]);
+    }
+
+    #[test]
+    fn group_of_slop9_prefix_is_custom() {
+        assert_eq!(group_of("SLOP900"), "custom");
+        assert_eq!(group_of("SLOP999"), "custom");
+    }
+
+    #[test]
+    fn expand_all_returns_every_rule_code() {
+        let codes = expand(&["ALL".to_string()]);
+        assert_eq!(codes.len(), RULES.len());
+        for r in RULES {
+            assert!(codes.contains(&r.code.to_string()));
+        }
     }
 }

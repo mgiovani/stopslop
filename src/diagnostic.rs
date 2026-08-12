@@ -1,5 +1,9 @@
 use serde::Serialize;
 
+/// Severity ONLY. `A` exits 1 (blocks CI); `B` is advisory and never affects the exit code.
+/// Independent of `RuleDef::default_on` -- a rule can be Tier B (advisory) and still on by
+/// default (a judgment-call rule you want surfaced but never gating), so tier and default-on
+/// are two separate axes, not a 1:1 pair.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Tier {
     A,

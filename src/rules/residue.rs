@@ -2,7 +2,9 @@ use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::Lang;
 use crate::prose::first_byte_per_line;
+use crate::prose_words::REASONING_CHAIN_FRAGMENT;
 use crate::registry::RuleDef;
+use crate::rules::fragmentation;
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -25,6 +27,25 @@ static RE_ANYWHERE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\bas an? (ai|large) language model\b|\bas an ai (assistant|model)\b|\bas of my (last|latest|most recent) (knowledge|training) (update|cutoff|data)\b|\b(up to|as of) my last training update\b|\bmy (knowledge|training) cutoff\b|\bI (do not|don'?t) have (access to|the ability to browse) (real-?time|the internet|current)\b|\bI (cannot|can'?t) browse the internet\b|\bwhile specific details (are|remain) (limited|scarce|unavailable)\b|\bin the (provided|available) (search results|sources)\b|\bbased on (the )?available information\b|\bI'?m (sorry|unable)[, ].{0,40}\b(cannot|can'?t|unable to) (assist|help|provide|generate)\b|\bI cannot generate content that\b|\bI'?m unable to assist with that request\b|\breviewer note\b|\bi hope this message finds you well\b|\bthank you for your review\b|\bplease find (our|the) revised\b|\bwe remain committed to creating content that aligns with\b|\bmaintains? a low profile\b|\bkeeps? (his|her|their) personal (life|details) private\b|\bprefers? to stay out of the spotlight\b|\blikely (grew up|studied|began|started)\b|\bnot publicly available\b").unwrap()
 });
 
+/// Reasoning-chain leakage: chain-of-thought scaffolding left behind in a deliverable ("let's
+/// think about this", "step 1:", ...). Matched anywhere, same as `RE_ANYWHERE` above -- this
+/// phrasing has no legitimate reason to survive into finished prose either. Shared with
+/// `rules::preamble` (SLOP002, code comments) via `prose_words::REASONING_CHAIN_FRAGMENT` so the
+/// phrase list can't drift between the two consumers.
+static RE_REASONING_CHAIN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r"(?i)\b(?:{REASONING_CHAIN_FRAGMENT})")).unwrap());
+
+/// Acknowledgment loops ("you're asking about X", "to answer your question, ..."). PARAGRAPH-
+/// INITIAL only, checked separately below via `fragmentation::paragraph_blocks`: a wrapped
+/// continuation line that happens to start with this phrasing mid-paragraph is ordinary English,
+/// but the very first line of a paragraph is where a chat-turn acknowledgment actually lands.
+static RE_ACK_LOOP: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^(?:you(?:'|\u{2019})re asking (?:about|for)|to (?:answer|address) your question)\b",
+    )
+    .unwrap()
+});
+
 /// Group C (conversational openers). LINE-INITIAL anchor only: a paragraph that legitimately
 /// opens with "Sure, ..." mid-document is ordinary English; residue only when it's literally
 /// the first thing on the line (chat-turn register bleeding through).
@@ -41,13 +62,24 @@ static RE_CLOSER: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Scope: headings in scope, frontmatter in scope, URLs/link text in scope -- only code (already
 /// blanked in `doc.masked`) is excluded. One diagnostic per matching line: track the first
-/// (minimum-byte) match per line across all three groups, then emit once per line in line order.
+/// (minimum-byte) match per line across all groups (the anywhere/opener/closer regexes plus the
+/// paragraph-initial acknowledgment-loop check), then emit once per line in line order.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
-    let bytes = [&*RE_ANYWHERE, &*RE_OPENER, &*RE_CLOSER]
-        .into_iter()
-        .flat_map(|re| re.find_iter(&doc.masked).map(|m| m.start()));
-    let by_line = first_byte_per_line(doc, bytes);
+    let re_bytes = [
+        &*RE_ANYWHERE,
+        &*RE_REASONING_CHAIN,
+        &*RE_OPENER,
+        &*RE_CLOSER,
+    ]
+    .into_iter()
+    .flat_map(|re| re.find_iter(&doc.masked).map(|m| m.start()));
+    let ack_bytes: Vec<usize> = fragmentation::paragraph_blocks(doc)
+        .iter()
+        .filter(|b| RE_ACK_LOOP.is_match(&b.text))
+        .map(|b| b.first_byte)
+        .collect();
+    let by_line = first_byte_per_line(doc, re_bytes.chain(ack_bytes));
     for &byte in by_line.values() {
         let (line, col) = doc.line_col(byte);
         out.push(Diagnostic::at_fix(
@@ -163,6 +195,47 @@ mod tests {
             assert_eq!(diags.len(), 1, "expected exactly one finding for: {src}");
             assert_eq!(diags[0].code, "SLOP011");
         }
+    }
+
+    #[test]
+    fn flags_reasoning_chain_leakage_markers() {
+        let cases = [
+            "Let's think about this differently before shipping the fix.\n",
+            "Let\u{2019}s think about this differently before shipping the fix.\n",
+            "Let me think about the right way to phrase this.\n",
+            "Thinking through this carefully before writing the final answer.\n",
+            "Step 1: parse the config file into a struct.\n",
+            "Breaking this down into smaller pieces makes it easier to review.\n",
+            "First, let's consider what happens when the queue backs up.\n",
+        ];
+        for src in cases {
+            let diags = diagnostics_for(src);
+            assert_eq!(diags.len(), 1, "expected exactly one finding for: {src}");
+            assert_eq!(diags[0].code, "SLOP011");
+        }
+    }
+
+    #[test]
+    fn flags_paragraph_initial_acknowledgment_loop() {
+        let cases = [
+            "You're asking about the retry budget, so here is how it works.\n",
+            "You\u{2019}re asking for a walkthrough of the deploy pipeline.\n",
+            "To answer your question, the timeout defaults to thirty seconds.\n",
+            "To address your question directly, caching is enabled by default.\n",
+        ];
+        for src in cases {
+            let diags = diagnostics_for(src);
+            assert_eq!(diags.len(), 1, "expected exactly one finding for: {src}");
+            assert_eq!(diags[0].code, "SLOP011");
+        }
+    }
+
+    #[test]
+    fn ignores_mid_paragraph_acknowledgment_loop() {
+        // Same phrasing, but not the first line of its paragraph -- ordinary English, not a
+        // chat-turn acknowledgment bleeding through.
+        let src = "The config file controls most of the runtime behavior.\nYou're asking about the retry budget specifically here.\n";
+        assert!(diagnostics_for(src).is_empty());
     }
 
     #[test]

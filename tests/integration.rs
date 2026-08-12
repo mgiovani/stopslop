@@ -60,8 +60,9 @@ fn fixtures_match_markers() {
         // density/style rules' `expect:`/`expect-line:` markers actually fire under this
         // harness. SLOP010 stays off: resolve_enabled drops it when check_imports == false.
         let settings = Settings {
-            enabled: resolve_enabled(&["SLOP".to_string()], &[], false),
+            enabled: resolve_enabled(&["SLOP".to_string()], &[], &[], &[], &[], false),
             deps: None,
+            custom_rules: Vec::new(),
         };
         let dir = root.join(lang_dir);
         let mut files = Vec::new();

@@ -1,3 +1,11 @@
+/// Display paths carry a `./` prefix when the scan target was spelled `.` (the default) but not
+/// when it was spelled `docs`, so the same `docs/**` glob would match under one invocation and
+/// silently match nothing under the other. Strip both the glob and the path before matching so a
+/// glob means the same thing however the scan was invoked.
+pub fn strip_dot_slash(p: &str) -> &str {
+    p.strip_prefix("./").unwrap_or(p)
+}
+
 pub fn is_test_path(display_path: &str) -> bool {
     let p = display_path.replace('\\', "/");
     const DIRS: &[&str] = &[

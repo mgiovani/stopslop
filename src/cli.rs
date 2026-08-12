@@ -1,7 +1,8 @@
 use crate::{
     baseline::{self, Baseline},
     config::Config,
-    diagnostic::Tier,
+    custom,
+    diagnostic::{Diagnostic, Tier},
     engine, groups,
     imports_data::DepIndex,
     output,
@@ -21,9 +22,17 @@ pub struct Cli {
     /// Only run these rule codes/prefixes/groups (resets defaults). Comma-separated or repeated.
     #[arg(long, value_delimiter = ',')]
     pub select: Vec<String>,
+    /// Adds these rule codes/prefixes/groups on top of the resolved select set (unioned with the
+    /// config's `extend-select`, never replaces it).
+    #[arg(long, value_delimiter = ',')]
+    pub extend_select: Vec<String>,
     /// Subtract these rule codes/prefixes/groups.
     #[arg(long, value_delimiter = ',')]
     pub ignore: Vec<String>,
+    /// Subtracts these rule codes/prefixes/groups last, after select/extend-select (unioned with
+    /// the config's `extend-ignore`).
+    #[arg(long, value_delimiter = ',')]
+    pub extend_ignore: Vec<String>,
     /// Print every rule with its group and tier, then exit.
     #[arg(long)]
     pub list_rules: bool,
@@ -55,11 +64,15 @@ pub enum Format {
 }
 
 pub fn run(cli: Cli) -> anyhow::Result<i32> {
+    // Config is discovered before the --list-rules early-return: custom rules need to appear in
+    // that listing, and they only exist once the config is loaded.
+    let config = Config::discover(cli.config.as_deref(), cli.no_config)?;
+    let custom_rules = custom::load(&config.custom_rule)?;
+
     if cli.list_rules {
-        list_rules();
+        list_rules(&custom_rules);
         return Ok(0);
     }
-    let config = Config::discover(cli.config.as_deref(), cli.no_config)?;
 
     let select = if !cli.select.is_empty() {
         cli.select
@@ -71,6 +84,18 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
     } else {
         config.ignore
     };
+    // Unlike select/ignore, extend-select and extend-ignore are additive from BOTH sources at
+    // once (Ruff semantics): CLI doesn't replace config here, it adds on top of it.
+    let extend_select: Vec<String> = config
+        .extend_select
+        .into_iter()
+        .chain(cli.extend_select)
+        .collect();
+    let extend_ignore: Vec<String> = config
+        .extend_ignore
+        .into_iter()
+        .chain(cli.extend_ignore)
+        .collect();
     let check_imports = cli.check_imports || config.check_imports;
     let paths = if cli.paths.is_empty() {
         vec![PathBuf::from(".")]
@@ -78,15 +103,33 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         cli.paths
     };
 
-    let enabled = engine::resolve_enabled(&select, &ignore, check_imports);
+    let custom_codes: Vec<&'static str> =
+        custom_rules.iter().map(custom::CustomRule::code).collect();
+    let enabled = engine::resolve_enabled(
+        &select,
+        &extend_select,
+        &ignore,
+        &extend_ignore,
+        &custom_codes,
+        check_imports,
+    );
     let deps = if check_imports {
         Some(DepIndex::discover(&paths))
     } else {
         None
     };
-    let settings = engine::Settings { enabled, deps };
+    let settings = engine::Settings {
+        enabled,
+        deps,
+        custom_rules,
+    };
 
     let diags = walk::lint_paths(&paths, &config.exclude, &settings)?;
+    // Applied right after the walk, before either baseline step: a path-scoped ignore composes
+    // with a baseline (both subtract findings) instead of the two fighting over which one "owns"
+    // a finding, and a fresh `--write-baseline` shouldn't fossilize findings the config already
+    // declared irrelevant for that path.
+    let diags = apply_per_file_ignores(diags, &config.per_file_ignores)?;
 
     if let Some(path) = cli.write_baseline {
         let n = Baseline::write(&path, &diags)?;
@@ -115,9 +158,36 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
     Ok(code)
 }
 
+/// `[per-file-ignores]` post-filter: a glob whose value list (codes and/or group names, expanded
+/// through `groups::expand`) matches a diagnostic's code drops that diagnostic for paths matching
+/// the glob. An invalid glob is a config error (exit 2), never a silent skip.
+fn apply_per_file_ignores(
+    diags: Vec<Diagnostic>,
+    per_file_ignores: &std::collections::BTreeMap<String, Vec<String>>,
+) -> anyhow::Result<Vec<Diagnostic>> {
+    if per_file_ignores.is_empty() {
+        return Ok(diags);
+    }
+    let mut compiled = Vec::with_capacity(per_file_ignores.len());
+    for (glob_pat, codes) in per_file_ignores {
+        let glob = globset::Glob::new(crate::paths::strip_dot_slash(glob_pat))
+            .map_err(|e| anyhow::anyhow!("per-file-ignores {glob_pat:?}: invalid glob: {e}"))?;
+        compiled.push((glob.compile_matcher(), groups::expand(codes)));
+    }
+    Ok(diags
+        .into_iter()
+        .filter(|d| {
+            let path = crate::paths::strip_dot_slash(&d.path);
+            !compiled
+                .iter()
+                .any(|(g, codes)| g.is_match(path) && codes.iter().any(|c| c == d.code))
+        })
+        .collect())
+}
+
 /// `code  group  tier  on-by-default  name`, grouped-name column included so `--select <group>`
 /// is discoverable without reading the README.
-fn list_rules() {
+fn list_rules(custom_rules: &[custom::CustomRule]) {
     println!(
         "{:<8} {:<10} {:<5} {:<8} NAME",
         "CODE", "GROUP", "TIER", "DEFAULT"
@@ -134,5 +204,85 @@ fn list_rules() {
             if r.default_on { "on" } else { "off" },
             r.name,
         );
+    }
+    for cr in custom_rules {
+        println!(
+            "{:<8} {:<10} {:<5} {:<8} {}",
+            cr.code(),
+            "custom",
+            match cr.tier() {
+                Tier::A => "A",
+                Tier::B => "B",
+            },
+            "on", // custom rules are always on by default -- the user explicitly wrote them
+            cr.name(),
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostic::Tier;
+    use std::collections::BTreeMap;
+
+    fn diag(code: &'static str, path: &str) -> Diagnostic {
+        Diagnostic {
+            code,
+            name: "test",
+            tier: Tier::A,
+            path: path.to_string(),
+            line: 1,
+            col: 1,
+            message: "test".into(),
+            fix: None,
+        }
+    }
+
+    #[test]
+    fn per_file_ignores_matches_glob_and_leaves_other_paths_alone() {
+        let mut ignores = BTreeMap::new();
+        ignores.insert("docs/**".to_string(), vec!["SLOP036".to_string()]);
+        let diags = vec![diag("SLOP036", "docs/a.md"), diag("SLOP036", "src/a.md")];
+        let kept = apply_per_file_ignores(diags, &ignores).unwrap();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].path, "src/a.md");
+    }
+
+    /// The value list accepts group names, expanded via `groups::expand` (here "rhetoric" covers
+    /// SLOP036 -- see groups.rs).
+    #[test]
+    fn per_file_ignores_value_list_accepts_group_names() {
+        let mut ignores = BTreeMap::new();
+        ignores.insert("docs/**".to_string(), vec!["rhetoric".to_string()]);
+        let diags = vec![diag("SLOP036", "docs/a.md")];
+        let kept = apply_per_file_ignores(diags, &ignores).unwrap();
+        assert!(kept.is_empty());
+    }
+
+    /// Scanning `.` (the default) prefixes every display path with `./`; scanning `docs` does not.
+    /// The regression this guards: `docs/**` matched under one invocation and silently nothing
+    /// under the other, so a per-file-ignore looked simply broken depending on how you invoked it.
+    #[test]
+    fn per_file_ignores_glob_ignores_dot_slash_on_either_side() {
+        for (glob, path) in [
+            ("docs/**", "./docs/a.md"),
+            ("./docs/**", "docs/a.md"),
+            ("./docs/**", "./docs/a.md"),
+            ("docs/**", "docs/a.md"),
+        ] {
+            let mut ignores = BTreeMap::new();
+            ignores.insert(glob.to_string(), vec!["SLOP036".to_string()]);
+            let kept = apply_per_file_ignores(vec![diag("SLOP036", path)], &ignores).unwrap();
+            assert!(kept.is_empty(), "glob {glob:?} should match path {path:?}");
+        }
+    }
+
+    #[test]
+    fn per_file_ignores_invalid_glob_is_a_config_error() {
+        let mut ignores = BTreeMap::new();
+        ignores.insert("[".to_string(), vec!["SLOP036".to_string()]);
+        let err = apply_per_file_ignores(vec![], &ignores).unwrap_err();
+        assert!(err.to_string().contains("invalid glob"));
     }
 }

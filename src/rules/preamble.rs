@@ -1,6 +1,7 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::Lang;
+use crate::prose_words::REASONING_CHAIN_FRAGMENT;
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::sync::LazyLock;
@@ -15,10 +16,16 @@ pub static RULE: RuleDef = RuleDef {
     check,
 };
 
+// Reasoning-chain leakage ("let's think", "step 1:", ...) shares its phrase list with
+// `rules::residue` (SLOP011, the same family in prose) via `REASONING_CHAIN_FRAGMENT`, so a new
+// scaffolding phrase only needs adding in one place. "step 1:" is a real precision/recall
+// tradeoff -- an ordinary numbered-step comment can look similar -- but the family is explicitly
+// about chain-of-thought scaffolding left behind, and it stays anchored to the comment-leader
+// position (`^\s*(?://|#|\*+)\s*`) the same as every other member of this panel.
 static RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?im)^\s*(?://|#|\*+)\s*(certainly[!,]|sure[!,]|here'?s the (updated|revised|complete|new|fixed)|below is the (updated|complete|full)|as an ai\b|i hope this helps)",
-    )
+    Regex::new(&format!(
+        r"(?im)^\s*(?://|#|\*+)\s*(certainly[!,]|sure[!,]|here'?s the (updated|revised|complete|new|fixed)|below is the (updated|complete|full)|as an ai\b|i hope this helps|{REASONING_CHAIN_FRAGMENT})",
+    ))
     .unwrap()
 });
 
@@ -53,5 +60,17 @@ mod tests {
     #[test]
     fn does_not_match_explanation() {
         assert!(!RE.is_match("# Here's a breakdown of the parser logic:"));
+    }
+
+    #[test]
+    fn matches_reasoning_chain_leakage() {
+        assert!(RE.is_match("// Let's think about this differently"));
+        assert!(RE.is_match("// Step 1: parse the config file"));
+        assert!(RE.is_match("# Breaking this down into smaller pieces"));
+    }
+
+    #[test]
+    fn does_not_match_ordinary_numbered_comment() {
+        assert!(!RE.is_match("// The first step here validates the config."));
     }
 }

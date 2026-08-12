@@ -10,6 +10,10 @@ If you run into any issues, feel free to reach out!
 
 Reviewer note: please double check the staging config before merging.
 
+Let's think about this differently before finalizing these release notes.
+
+You're asking about the rollback procedure, so here is the summary.
+
 ```
 As an AI language model, I do not have access to real-time information.
 ```
@@ -19,3 +23,5 @@ As an AI language model, I do not have access to real-time information.
 <!-- expect-line: 7 SLOP011 -->
 <!-- expect-line: 9 SLOP011 -->
 <!-- expect-line: 11 SLOP011 -->
+<!-- expect-line: 13 SLOP011 -->
+<!-- expect-line: 15 SLOP011 -->
