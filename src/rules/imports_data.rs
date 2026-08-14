@@ -63,6 +63,20 @@ fn find_manifests(root: &Path, out: &mut Vec<PathBuf>) {
         if is_manifest_name(root) {
             out.push(root.to_path_buf());
         }
+        // A file argument has no subtree to search, so climb instead: `stopslop --check-imports
+        // src/a.ts` (pre-commit hooks, `git diff --name-only | xargs`) would otherwise resolve
+        // against an empty dep index and silently flag nothing at all.
+        for dir in root.ancestors().skip(1) {
+            for name in MANIFEST_NAMES {
+                let p = dir.join(name);
+                if p.is_file() {
+                    out.push(p);
+                }
+            }
+            if dir.join(".git").exists() {
+                break; // repo root: manifests above this belong to someone else's project
+            }
+        }
         return;
     }
     let Ok(entries) = std::fs::read_dir(root) else {
@@ -554,6 +568,26 @@ log = { version = "0.4" }
         assert!(idx.rust.contains("serde"));
         assert!(idx.python.contains("requests"));
         assert!(idx.go.is_empty());
+    }
+
+    /// Linting single files (pre-commit hooks, `git diff --name-only | xargs`) used to resolve
+    /// against an empty index, so SLOP010 silently found nothing.
+    #[test]
+    fn discover_climbs_to_the_manifest_when_the_root_is_a_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(".git"), "").unwrap();
+        std::fs::write(
+            tmp.path().join("package.json"),
+            r#"{"dependencies":{"react":"^18"}}"#,
+        )
+        .unwrap();
+        let sub = tmp.path().join("src");
+        std::fs::create_dir(&sub).unwrap();
+        let file = sub.join("a.ts");
+        std::fs::write(&file, "import x from 'react';\n").unwrap();
+
+        let idx = DepIndex::discover(&[file]);
+        assert!(idx.ts.contains("react"));
     }
 
     #[test]

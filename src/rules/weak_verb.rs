@@ -1,6 +1,7 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::Lang;
+use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::collections::HashMap;
@@ -75,13 +76,25 @@ fn weak_verb_phrase_fix(phrase: &str) -> Option<&'static str> {
 
 /// A digit anywhere on `byte`'s own line in `masked`. Used only to gate (b): a concrete number
 /// on the line means the vague quantifier isn't standing in for one after all.
-fn line_has_digit(masked: &str, byte: usize) -> bool {
-    let start = masked[..byte].rfind('\n').map(|i| i + 1).unwrap_or(0);
-    let end = masked[byte..]
-        .find('\n')
-        .map(|i| byte + i)
-        .unwrap_or(masked.len());
-    masked[start..end].bytes().any(|b| b.is_ascii_digit())
+///
+/// Memoized on the last line inspected, because matches arrive in byte order and the scan costs
+/// the length of the line: 100k quantifiers on one 900 KB line rescanned that line 100k times
+/// (22s) before this.
+fn line_digit_check<'d>(doc: &'d ProseDoc<'_>) -> impl FnMut(usize) -> bool + 'd {
+    let mut memo: Option<((usize, usize), bool)> = None;
+    move |byte| {
+        let span = doc.line_span(byte);
+        match memo {
+            Some((s, has_digit)) if s == span => has_digit,
+            _ => {
+                let has_digit = doc.masked[span.0..span.1]
+                    .bytes()
+                    .any(|b| b.is_ascii_digit());
+                memo = Some((span, has_digit));
+                has_digit
+            }
+        }
+    }
 }
 
 /// Density rule over the masked prose stream (headings in scope, frontmatter and URLs skipped),
@@ -111,9 +124,10 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         }
         *per_phrase.entry(m.as_str().to_lowercase()).or_insert(0) += 1;
     }
+    let mut line_has_digit = line_digit_check(doc);
     for m in VAGUE_QUANTIFIER_RE.find_iter(&doc.masked) {
         let byte = m.start();
-        if doc.in_frontmatter(byte) || doc.in_url(byte) || line_has_digit(&doc.masked, byte) {
+        if doc.in_frontmatter(byte) || doc.in_url(byte) || line_has_digit(byte) {
             continue;
         }
         total += 1;

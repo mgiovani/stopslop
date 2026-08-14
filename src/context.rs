@@ -91,18 +91,24 @@ pub fn extract<'a>(
     (comments, strings)
 }
 
-/// Shared DFS over a `TreeCursor`, visiting every node exactly once. Used by both
+/// Shared pre-order DFS over a `TreeCursor`, visiting every node exactly once. Used by both
 /// `LintContext::walk` (rules) and `extract` (comment/string classification).
+///
+/// Iterative on purpose: the recursive version cost one stack frame per nesting level and blew
+/// the stack (SIGABRT, not a clean exit code) on ~5k-deep bracket nesting -- 10 KB of generated
+/// or minified source. Both callers start the cursor at the root, so climbing past it ends the
+/// walk.
 fn walk_tree<'t>(c: &mut TreeCursor<'t>, f: &mut impl FnMut(Node<'t>)) {
-    f(c.node());
-    if c.goto_first_child() {
-        loop {
-            walk_tree(c, f);
-            if !c.goto_next_sibling() {
-                break;
+    loop {
+        f(c.node());
+        if c.goto_first_child() {
+            continue;
+        }
+        while !c.goto_next_sibling() {
+            if !c.goto_parent() {
+                return;
             }
         }
-        c.goto_parent();
     }
 }
 
@@ -145,5 +151,27 @@ fn is_doc_string(lang: Lang, node: Node) -> bool {
             .map(|p| p.kind() == "expression_statement")
             .unwrap_or(false),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lang::Lang;
+    use tree_sitter::Parser;
+
+    /// The recursive `walk_tree` aborted the process (stack overflow, exit 134) at ~5k nesting
+    /// levels -- 10 KB of generated source. Test threads get a smaller stack than main, so a
+    /// regression here takes the whole test run down with it.
+    #[test]
+    fn deeply_nested_source_does_not_overflow_the_stack() {
+        let src = format!("const x = {}1{};\n", "[".repeat(20_000), "]".repeat(20_000));
+        let mut p = Parser::new();
+        p.set_language(&crate::lang::ts_language(Lang::Ts)).unwrap();
+        let tree = p.parse(&src, None).unwrap();
+        let mut visited = 0usize;
+        let mut c = tree.walk();
+        walk_tree(&mut c, &mut |_| visited += 1);
+        assert!(visited > 20_000, "visited {visited} nodes");
     }
 }

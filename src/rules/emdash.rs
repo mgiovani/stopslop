@@ -116,7 +116,7 @@ fn spaced_ascii_dashes(masked: &str) -> Vec<usize> {
 /// and attribution is the likelier reading.
 fn is_block_initial(doc: &ProseDoc, byte: usize) -> bool {
     let masked = &doc.masked;
-    let line_start = masked[..byte].rfind('\n').map_or(0, |i| i + 1);
+    let line_start = doc.line_span(byte).0;
     let prefix = &masked[line_start..byte];
     if !prefix
         .trim_start_matches(|c: char| c.is_whitespace() || c == '>')

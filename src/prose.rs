@@ -117,6 +117,24 @@ impl<'a> ProseDoc<'a> {
         compute_line_col(&self.line_starts, &self.masked, byte)
     }
 
+    /// Byte range of `byte`'s own line, end exclusive of the trailing '\n'. Binary search rather
+    /// than the obvious `rfind('\n')`/`find('\n')` pair: rules call this once per regex match, and
+    /// on a single-line document each scan runs the length of the file -- 900 KB of one-line prose
+    /// took 24s in SLOP028 before this.
+    pub fn line_span(&self, byte: usize) -> (usize, usize) {
+        let idx = match self.line_starts.binary_search(&byte) {
+            Ok(i) => i,
+            Err(0) => 0,
+            Err(i) => i - 1,
+        };
+        let end = self
+            .line_starts
+            .get(idx + 1)
+            .map(|&next| next - 1)
+            .unwrap_or(self.masked.len());
+        (self.line_starts[idx], end)
+    }
+
     /// True if `byte` is inside the frontmatter span.
     pub fn in_frontmatter(&self, byte: usize) -> bool {
         self.frontmatter.is_some_and(|(s, e)| byte >= s && byte < e)
