@@ -8,7 +8,7 @@ Like Ruff, but for AI slop.
 
 [![CI](https://github.com/mgiovani/ai-stop-slop/actions/workflows/ci.yml/badge.svg)](https://github.com/mgiovani/ai-stop-slop/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/mgiovani/ai-stop-slop/blob/main/LICENSE)
-<!-- [![Crates.io](https://img.shields.io/crates/v/stopslop.svg)](https://crates.io/crates/stopslop) -->
+[![Crates.io](https://img.shields.io/crates/v/stopslop.svg)](https://crates.io/crates/stopslop)
 
 ![stopslop demo](https://raw.githubusercontent.com/mgiovani/ai-stop-slop/main/assets/demo.gif)
 
@@ -47,7 +47,11 @@ what) produced them.
 
 ## Install
 
-Not yet on crates.io. Install from git or from a local checkout:
+```bash
+cargo install stopslop
+```
+
+Or from git, for an unreleased commit:
 
 ```bash
 cargo install --git https://github.com/mgiovani/ai-stop-slop
@@ -58,8 +62,6 @@ git clone https://github.com/mgiovani/ai-stop-slop
 cd ai-stop-slop
 cargo install --path .
 ```
-
-<!-- Once published: cargo install stopslop -->
 
 ## Usage
 
