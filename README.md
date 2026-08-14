@@ -71,7 +71,7 @@ stopslop --select SLOP001          # run only the elision rule
 stopslop --select rhetoric         # run one rule group (see "Rule groups" below)
 stopslop --select ALL              # every rule (SLOP010 still needs --check-imports)
 stopslop --ignore SLOP008          # run everything except stub detection
-stopslop --extend-select SLOP033   # add a rule on top of whatever's already selected
+stopslop --select artifact --extend-select SLOP033  # add a rule on top of a narrower select
 stopslop --list-rules              # print every rule with its group, tier, and default
 stopslop --check-imports .         # also run SLOP010 (unresolved import) — opt-in
 stopslop --config path.toml        # use a specific config file instead of ./stopslop.toml
@@ -247,8 +247,9 @@ attribution dash like `— Oscar Wilde`).
 The rest are document-wide density and style checks, also on by default: hedging,
 overused vocabulary, rhetorical parallelism, boldface overuse, smart quotes,
 heading formatting, promotional register, hyphen stacking, sentence length,
-synonym rotation, outline filler, change-narrating docs, and mechanical
-uniformity. SLOP041 is the one rule in this list that measures statistics
+synonym rotation, outline filler, change-narrating docs, colon reveals,
+filler and adverb density, weak-verb phrasing, dramatic fragmentation, and
+mechanical uniformity. SLOP041 is the one rule in this list that measures statistics
 (burstiness, vocabulary diversity, trigram repetition) instead of matching a
 phrase. It catches templated prose that rotates its vocabulary just enough to
 slide past every phrase-based rule. These are judgment calls rather than
@@ -312,10 +313,11 @@ stopslop: warning: src/util.ts:14: ai-slop-ignore (SLOP018) suppressed nothing
 
 ## Path exemptions
 
-Rules that are path-gated (SLOP005, 006, 008, 009, 010) don't run inside
-directories or files that look like tests or generated/vendored code, since
-empty catches, broad excepts, and unresolved imports are all legitimately
-common there:
+Rules that are path-gated (SLOP005, 006, 008, 009, 010, 037, 038, 039, 040)
+don't run inside directories or files that look like tests or
+generated/vendored code, since empty catches, broad excepts, unresolved
+imports, and the stdlib/wrapper/single-implementation heuristics are all
+legitimately common there:
 
 - Any path segment named `tests`, `test`, `__tests__`, `testdata`,
   `fixtures`, `fixture`, `mocks`, `mock`, `examples`, `example`, `vendor`,
@@ -441,5 +443,5 @@ Honest caveats:
 MIT (see [LICENSE](LICENSE)).
 
 stopslop's own CI fails if its source contains slop: every push runs
-`cargo run -- src` against the project's own code as a gate, alongside
+`cargo run --quiet -- src` against the project's own code as a gate, alongside
 `cargo fmt`, `cargo clippy`, and `cargo test`.
