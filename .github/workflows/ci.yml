@@ -23,5 +23,5 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test
-      - name: Dogfood (stopslop must be slop-free)
-        run: cargo run --quiet -- src
+      - name: Dogfood (Tier A fails the build, Tier B prints as warnings)
+        run: cargo run --quiet -- .

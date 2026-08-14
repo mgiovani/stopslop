@@ -445,5 +445,6 @@ Honest caveats:
 MIT (see [LICENSE](https://github.com/mgiovani/ai-stop-slop/blob/main/LICENSE)).
 
 stopslop's own CI fails if its source contains slop: every push runs
-`cargo run --quiet -- src` against the project's own code as a gate, alongside
-`cargo fmt`, `cargo clippy`, and `cargo test`.
+`cargo run --quiet -- .` against the whole repo, prose included, alongside
+`cargo fmt`, `cargo clippy`, and `cargo test`. Tier A findings fail the build;
+Tier B findings print as warnings, the same contract users get.
