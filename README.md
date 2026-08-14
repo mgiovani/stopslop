@@ -51,16 +51,14 @@ what) produced them.
 cargo install stopslop
 ```
 
-That's the one you want. The two below aren't needed for normal use. Reach for
-the first when a fix is merged but not yet released, the second when you're
-hacking on stopslop itself.
+**Alternatives:**
 
 ```bash
-cargo install --git https://github.com/mgiovani/ai-stop-slop   # latest main
-```
+# latest main, for a merged-but-unreleased fix
+cargo install --git https://github.com/mgiovani/ai-stop-slop
 
-```bash
-git clone https://github.com/mgiovani/ai-stop-slop             # local checkout
+# local checkout, for hacking on stopslop itself
+git clone https://github.com/mgiovani/ai-stop-slop
 cd ai-stop-slop
 cargo install --path .
 ```
