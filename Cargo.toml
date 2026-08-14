@@ -5,6 +5,10 @@ edition = "2021"
 description = "Like Ruff, but for AI slop — deterministic AI-slop linter for TS/Python/Go/Rust."
 license = "MIT"
 repository = "https://github.com/mgiovani/ai-stop-slop"
+keywords = ["linter", "ai", "cli", "lint", "static-analysis"]
+categories = ["command-line-utilities", "development-tools"]
+# 2.7 MB of README art that the README now links by absolute URL anyway.
+exclude = ["assets/*"]
 
 [dependencies]
 tree-sitter = "0.26"
