@@ -9,7 +9,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Pass-through wrapper function",
     tier: Tier::B,
     langs: &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust],
-    default_on: false,
+    default_on: true,
     path_gated: true,
     check,
 };

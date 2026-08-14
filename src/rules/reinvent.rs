@@ -1,3 +1,4 @@
+// ai-slop-ignore-file: SLOP037 -- this rule's own tests must contain the patterns it detects
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::Lang;
@@ -11,7 +12,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Reinvented stdlib / native platform feature",
     tier: Tier::B,
     langs: &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust],
-    default_on: false,
+    default_on: true,
     path_gated: true,
     check,
 };

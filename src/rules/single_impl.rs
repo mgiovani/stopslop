@@ -9,7 +9,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Single-implementation interface / abstract",
     tier: Tier::B,
     langs: &[Lang::Ts, Lang::Tsx, Lang::Python],
-    default_on: false,
+    default_on: true,
     path_gated: true,
     check,
 };

@@ -10,7 +10,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Boldface & bold-lead-in list overuse",
     tier: Tier::B,
     langs: &[Lang::Md, Lang::Mdx],
-    default_on: false,
+    default_on: true,
     path_gated: false,
     check,
 };

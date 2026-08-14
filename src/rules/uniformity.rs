@@ -40,7 +40,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Mechanical uniformity (templated prose)",
     tier: Tier::B,
     langs: &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst],
-    default_on: false,
+    default_on: true,
     path_gated: false,
     check,
 };

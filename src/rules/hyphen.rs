@@ -11,7 +11,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Hyphenated-compound overuse",
     tier: Tier::B,
     langs: &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst],
-    default_on: false,
+    default_on: true,
     path_gated: false,
     check,
 };

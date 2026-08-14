@@ -9,7 +9,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Dependency with a stdlib equivalent",
     tier: Tier::B,
     langs: &[Lang::Ts, Lang::Tsx],
-    default_on: false,
+    default_on: true,
     path_gated: true,
     check,
 };

@@ -69,7 +69,7 @@ stopslop src/ lib/                 # lint specific paths
 stopslop --format json .           # machine-readable output
 stopslop --select SLOP001          # run only the elision rule
 stopslop --select rhetoric         # run one rule group (see "Rule groups" below)
-stopslop --select ALL              # every rule, including opt-in and custom ones
+stopslop --select ALL              # every rule (SLOP010 still needs --check-imports)
 stopslop --ignore SLOP008          # run everything except stub detection
 stopslop --extend-select SLOP033   # add a rule on top of whatever's already selected
 stopslop --list-rules              # print every rule with its group, tier, and default
@@ -116,8 +116,9 @@ exhaustive, so a new rule can't quietly escape group selection. `--list-rules`
 prints the full mapping.
 
 `ALL` is a reserved selector, not a group: `--select ALL` (or `select =
-["ALL"]` in config) runs every registered rule, including the opt-in ones and
-any `[[custom-rule]]` entries from your config.
+["ALL"]` in config) runs every registered rule plus any `[[custom-rule]]`
+entries from your config. SLOP010 is the one exception: it stays off until
+`--check-imports` is passed.
 
 ## Baseline
 
@@ -162,33 +163,33 @@ Commit the baseline file so CI and local runs agree.
 | SLOP012 | artifact | LLM tool / citation artifact tokens | A, on | Markdown, MDX, Text, reST | A leftover search/citation-tool token (`turn0search0`, `:contentReference[oaicite:1]`, a `【12†L3】` marker, `utm_source=chatgpt.com`) left in text |
 | SLOP013 | artifact | Unfilled template placeholder text | A, on | Markdown, MDX, Text, reST | An unfilled placeholder (`[Your Name]`, `INSERT_SOURCE_URL_30`, a `date: 2025-XX-XX` stub) left in place of real content |
 | SLOP014 | rhetoric | Formulaic cliché phrase | B, on | Markdown, MDX, Text, reST | A stock marketing/narrative cliché (`unlock the power of`, `in today's fast-paced world`, `a testament to`) |
-| SLOP015 | verbosity | Hedging & filler-phrase density | B, off | Markdown, MDX, Text, reST | A document-wide density of hedging/filler phrases (`it's worth noting that`, `in conclusion`, `first and foremost`); an adjacent hedge stack like `might potentially` fires on its own, without waiting for the density threshold, opt-in |
-| SLOP016 | verbosity | Overused-vocabulary density | B, off | Markdown, MDX, Text, reST | A document-wide density of overused vocabulary (`delve`, `tapestry`, `robust`, `leverage`) across enough distinct terms to read as filler, opt-in |
-| SLOP017 | rhetoric | Rhetorical parallelism / false-depth scaffolding density | B, off | Markdown, MDX, Text, reST | A document-wide density of rule-of-three lists, `not only X but also Y` phrasing, and trailing `, underscoring its...` participles, opt-in |
+| SLOP015 | verbosity | Hedging & filler-phrase density | B, on  | Markdown, MDX, Text, reST | A document-wide density of hedging/filler phrases (`it's worth noting that`, `in conclusion`, `first and foremost`); an adjacent hedge stack like `might potentially` fires on its own, without waiting for the density threshold |
+| SLOP016 | verbosity | Overused-vocabulary density | B, on  | Markdown, MDX, Text, reST | A document-wide density of overused vocabulary (`delve`, `tapestry`, `robust`, `leverage`) across enough distinct terms to read as filler |
+| SLOP017 | rhetoric | Rhetorical parallelism / false-depth scaffolding density | B, on  | Markdown, MDX, Text, reST | A document-wide density of rule-of-three lists, `not only X but also Y` phrasing, and trailing `, underscoring its...` participles |
 | SLOP018 | format | Mid-prose em/en dash | B, on | Markdown, MDX, Text, reST | A mid-sentence em dash (`—`), en dash (`–`), or spaced ASCII `--` that should be rewritten out of the sentence (numeric ranges like `2020–2024`, and an attribution dash opening a block or blockquote like `— Oscar Wilde`, are exempt) |
-| SLOP019 | format | Boldface & bold-lead-in list overuse | B, off | Markdown, MDX | Boldface overuse in body prose, or 3+ consecutive `- **Term**: ...` bold-lead-in list items, opt-in |
-| SLOP020 | format | Typographic (smart) quotes in source | B, off | Markdown, MDX, Text, reST | Curly quotes/apostrophes in source where straight ASCII quotes are expected, opt-in |
-| SLOP021 | format | Heading & marker formatting affectations | B, off | Markdown, MDX | Emoji used as a heading/list marker, headings written in Title Case against an otherwise sentence-case document, or headings stacked over two-sentence sections, opt-in |
+| SLOP019 | format | Boldface & bold-lead-in list overuse | B, on  | Markdown, MDX | Boldface overuse in body prose, or 3+ consecutive `- **Term**: ...` bold-lead-in list items |
+| SLOP020 | format | Typographic (smart) quotes in source | B, on  | Markdown, MDX, Text, reST | Curly quotes/apostrophes in source where straight ASCII quotes are expected |
+| SLOP021 | format | Heading & marker formatting affectations | B, on  | Markdown, MDX | Emoji used as a heading/list marker, headings written in Title Case against an otherwise sentence-case document, or headings stacked over two-sentence sections |
 | SLOP022 | rhetoric | Formulaic opener / rhetorical setup | B, on | Markdown, MDX, Text, reST | A throat-clearing or faux-insight opener (`Here's the thing`, `What nobody tells you`, `Plot twist:`), or a self-answered `Question? Answer.` pair opening a line |
 | SLOP023 | rhetoric | Binary contrast / negative listing | B, on | Markdown, MDX, Text, reST | The `It's not X. It's Y.` / `The question isn't X, it's Y` shape, or a `Not a X. Not a Y.` fragment run |
 | SLOP024 | rhetoric | Importance puffery / fake-strong verb | B, on | Markdown, MDX, Text, reST | An inflated significance claim (`marks a pivotal moment`, `solidifies its position`), a `serves as a centralized hub`-style linking verb where plain `is` reads better, or a faux-scale range (`from the singularity of the Big Bang to the enigmatic dance of dark matter`) standing in for an actual magnitude |
 | SLOP025 | sourcing | Unsourced weasel attribution | B, on | Markdown, MDX, Text, reST | Anonymous authority (`experts agree`, `studies show`) with no link, footnote, or citation anywhere on the line, or notability by name-dropping three-plus outlets (`cited in TechCrunch, Forbes, and Wired`) with no per-citation context |
-| SLOP026 | rhetoric | Dramatic colon reveal | B, off | Markdown, MDX, Text, reST | A short noun phrase, a colon, then a lowercase dramatic reveal (`The best part: it learns`), opt-in |
-| SLOP027 | verbosity | Empty filler phrase & adverb density | B, off | Markdown, MDX, Text, reST | A document-wide density of empty phrases (`when it comes to`, `at its core`) and filler adverbs (`simply`, `actually`), opt-in |
-| SLOP028 | verbosity | Weak verb phrase / vague quantifier | B, off | Markdown, MDX, Text, reST | A document-wide density of nominalizations (`made a decision`, `has the ability to`) and vague quantifiers used where a number belongs (`significantly improves`), opt-in |
+| SLOP026 | rhetoric | Dramatic colon reveal | B, on  | Markdown, MDX, Text, reST | A short noun phrase, a colon, then a lowercase dramatic reveal (`The best part: it learns`) |
+| SLOP027 | verbosity | Empty filler phrase & adverb density | B, on  | Markdown, MDX, Text, reST | A document-wide density of empty phrases (`when it comes to`, `at its core`) and filler adverbs (`simply`, `actually`) |
+| SLOP028 | verbosity | Weak verb phrase / vague quantifier | B, on  | Markdown, MDX, Text, reST | A document-wide density of nominalizations (`made a decision`, `has the ability to`) and vague quantifiers used where a number belongs (`significantly improves`) |
 | SLOP029 | rhetoric | Summary-recap ending / fake-profound kicker | B, on | Markdown, MDX, Text, reST | A closing block that restates the piece (`In conclusion`, `Overall`) or lands a mic-drop line (`It's already here.`) |
-| SLOP030 | rhetoric | Dramatic fragmentation / robotic rhythm | B, off | Markdown, MDX, Text, reST | Stacked one-clause fragments (`That's it. That's the whole thing.`), consecutive `And`-initial sentences, or paragraph-wide repeated sentence shapes, opt-in |
-| SLOP031 | rhetoric | Promotional / advertisement language | B, off | Markdown, MDX, Text, reST | Brochure register in technical prose (`boasts a`, `industry-leading`, `a hidden gem`) at document-wide density, opt-in |
-| SLOP032 | verbosity | Hyphenated-compound overuse | B, off | Markdown, MDX, Text, reST | Stacked hyphenated modifiers used as filler (`end-to-end`, `data-driven`, `battle-tested`) at document-wide density, opt-in |
-| SLOP033 | verbosity | Overlong sentence | B, off | Markdown, MDX, Text, reST | A sentence over 50 words, reported with its actual word count (URLs count as one word), opt-in |
-| SLOP034 | verbosity | Synonym rotation across a closed concept set | B, off | Markdown, MDX, Text, reST | One concept named two ways in one document (`check` and `verify`, `config` and `settings`) where technical writing should fix one term, opt-in |
-| SLOP035 | rhetoric | Outline-shaped filler section | B, off | Markdown, MDX, Text, reST | A `Challenges and Future Prospects`-style section heading, or `despite these challenges` boilerplate, standing in for specifics, opt-in |
-| SLOP036 | rhetoric | Diff-anchored documentation | B, off | Markdown, MDX, Text, reST | Docs narrating a change (`was added to replace`, `no longer requires`) instead of describing current behavior; changelogs and migration guides are exempt, opt-in |
-| SLOP037 | stdlib | Reinvented stdlib / native platform feature | B, off | TS, TSX, Python, Go, Rust | Hand-rolled code where a standard-library or platform primitive exists (`JSON.parse(JSON.stringify(x))`, `for i in range(len(xs))`, `ioutil.ReadFile`), opt-in |
-| SLOP038 | stdlib | Dependency with a stdlib equivalent | B, off | TS, TSX | An import of a package the platform already covers (`moment`, `uuid`, `node-fetch`, `left-pad`), opt-in |
-| SLOP039 | structure | Pass-through wrapper function | B, off | TS, TSX, Python, Go, Rust | A function whose whole body forwards its own parameters, unchanged, to another function, opt-in |
-| SLOP040 | structure | Single-implementation interface / abstract | B, off | TS, TSX, Python | An interface or abstract class with exactly one implementor in the same file: abstraction with no second user, opt-in |
-| SLOP041 | verbosity | Mechanical uniformity (templated prose) | B, off | Markdown, MDX, Text, reST | A document of 200+ words where at least 2 of 3 document-level signals trip together: flat sentence-length burstiness, low type-token vocabulary ratio, and repeated word-trigrams, opt-in |
+| SLOP030 | rhetoric | Dramatic fragmentation / robotic rhythm | B, on  | Markdown, MDX, Text, reST | Stacked one-clause fragments (`That's it. That's the whole thing.`), consecutive `And`-initial sentences, or paragraph-wide repeated sentence shapes |
+| SLOP031 | rhetoric | Promotional / advertisement language | B, on  | Markdown, MDX, Text, reST | Brochure register in technical prose (`boasts a`, `industry-leading`, `a hidden gem`) at document-wide density |
+| SLOP032 | verbosity | Hyphenated-compound overuse | B, on  | Markdown, MDX, Text, reST | Stacked hyphenated modifiers used as filler (`end-to-end`, `data-driven`, `battle-tested`) at document-wide density |
+| SLOP033 | verbosity | Overlong sentence | B, on  | Markdown, MDX, Text, reST | A sentence over 50 words, reported with its actual word count (URLs count as one word) |
+| SLOP034 | verbosity | Synonym rotation across a closed concept set | B, on  | Markdown, MDX, Text, reST | One concept named two ways in one document (`check` and `verify`, `config` and `settings`) where technical writing should fix one term |
+| SLOP035 | rhetoric | Outline-shaped filler section | B, on  | Markdown, MDX, Text, reST | A `Challenges and Future Prospects`-style section heading, or `despite these challenges` boilerplate, standing in for specifics |
+| SLOP036 | rhetoric | Diff-anchored documentation | B, on  | Markdown, MDX, Text, reST | Docs narrating a change (`was added to replace`, `no longer requires`) instead of describing current behavior; changelogs and migration guides are exempt |
+| SLOP037 | stdlib | Reinvented stdlib / native platform feature | B, on  | TS, TSX, Python, Go, Rust | Hand-rolled code where a standard-library or platform primitive exists (`JSON.parse(JSON.stringify(x))`, `for i in range(len(xs))`, `ioutil.ReadFile`) |
+| SLOP038 | stdlib | Dependency with a stdlib equivalent | B, on  | TS, TSX | An import of a package the platform already covers (`moment`, `uuid`, `node-fetch`, `left-pad`) |
+| SLOP039 | structure | Pass-through wrapper function | B, on  | TS, TSX, Python, Go, Rust | A function whose whole body forwards its own parameters, unchanged, to another function |
+| SLOP040 | structure | Single-implementation interface / abstract | B, on  | TS, TSX, Python | An interface or abstract class with exactly one implementor in the same file: abstraction with no second user |
+| SLOP041 | verbosity | Mechanical uniformity (templated prose) | B, on  | Markdown, MDX, Text, reST | A document of 200+ words where at least 2 of 3 document-level signals trip together: flat sentence-length burstiness, low type-token vocabulary ratio, and repeated word-trigrams |
 
 Every rule is exactly one of three states, `--list-rules` prints the DEFAULT
 column so you can check any given rule at a glance:
@@ -196,15 +197,13 @@ column so you can check any given rule at a glance:
 - **Tier A, on by default (12 rules)**: mechanical artifacts (SLOP001–009,
   SLOP011–013) with no legitimate reading. A finding here fails the run
   (exit 1) and blocks CI.
-- **Tier B, on by default (7 rules)**: SLOP014, SLOP018, SLOP022–025, SLOP029.
-  Judgment calls that are still right often enough to report by default, but
-  never exit 1: they warn, they don't block.
-- **Tier B, off by default (22 rules)**: SLOP010, SLOP015–017, SLOP019–021,
-  SLOP026–028, SLOP030–041. Narrow (SLOP010's false-positive risk with
-  private registries and dynamic imports) or noisy (density/style judgment
-  calls on prose, or a hand-rolled helper that legitimately differs from its
-  stdlib counterpart). Opt in by code, group, or `--select ALL`
-  (`--select SLOP015`, `--select stdlib`).
+- **Tier B, on by default (28 rules)**: everything else except SLOP010.
+  Judgment calls — density and style checks on prose, stdlib/structure
+  heuristics — that warn without ever exiting 1. Expect some noise; silence
+  what you don't want with `ignore`/`--ignore` by code or group.
+- **Tier B, off by default (1 rule)**: SLOP010, gated behind
+  `--check-imports` because of its false-positive risk with private
+  registries and dynamic imports.
 
 **Behavior change from earlier releases:** SLOP014, SLOP018, SLOP022,
 SLOP023, SLOP024, SLOP025, and SLOP029 used to be Tier A and fail CI. They're
@@ -245,7 +244,7 @@ tool still surfaces every run, just without the power to fail CI. SLOP018
 flags every mid-prose dash outright (the one exemption is a block-opening
 attribution dash like `— Oscar Wilde`).
 
-The rest are document-wide density and style checks, off by default: hedging,
+The rest are document-wide density and style checks, also on by default: hedging,
 overused vocabulary, rhetorical parallelism, boldface overuse, smart quotes,
 heading formatting, promotional register, hyphen stacking, sentence length,
 synonym rotation, outline filler, change-narrating docs, and mechanical
@@ -253,13 +252,11 @@ uniformity. SLOP041 is the one rule in this list that measures statistics
 (burstiness, vocabulary diversity, trigram repetition) instead of matching a
 phrase. It catches templated prose that rotates its vocabulary just enough to
 slide past every phrase-based rule. These are judgment calls rather than
-mechanical certainties, so they're opt-in and warn-only. Enable them with
-`--select SLOP015`, by group
-(`--select verbosity`), or `--select ALL` for everything including custom
-rules. Expect some noise from them: this very README trips SLOP017 under
-`--select ALL`, since its prose is heavy on the enumerations that rule
-counts. That's opt-in Tier B working as intended, a lead to investigate
-rather than a verdict. As with the rest of stopslop, this is a writing-quality
+mechanical certainties, so they're warn-only. Silence the ones you don't want
+by code (`--ignore SLOP015`) or by group (`--ignore verbosity`). Expect some
+noise from them: this very README trips SLOP017, since its prose is heavy on
+the enumerations that rule counts. That's Tier B working as intended, a lead
+to investigate rather than a verdict. As with the rest of stopslop, this is a writing-quality
 gate, not a claim about who or what wrote the text: every rule flags a
 concrete pattern (a stale phrase, an unfilled slot, a density threshold,
 a document-level statistic), never "this is AI-generated."
@@ -334,7 +331,7 @@ preamble or elision comment is junk in a test file too.
 `stopslop.toml` in the current directory (or pass `--config path`):
 
 ```toml
-select = []                 # rule codes/prefixes/groups to run (empty = all default-on rules)
+select = []                 # rule codes/prefixes/groups to run (empty = every rule except SLOP010)
 ignore = ["SLOP009", "verbosity"]  # rule codes/prefixes/groups to subtract
 extend-select = ["SLOP033"] # adds on top of `select`, instead of replacing it
 extend-ignore = ["SLOP016"] # adds on top of `ignore`, same relationship
@@ -411,8 +408,8 @@ Honest caveats:
 
 ## Exit codes
 
-- `0`: no Tier A findings. Tier B findings (default-on or opt-in, and any
-  custom rule declared `tier = "B"`) never affect the exit code: they print,
+- `0`: no Tier A findings. Tier B findings (including any custom rule
+  declared `tier = "B"`) never affect the exit code: they print,
   they don't block.
 - `1`: at least one Tier A finding.
 - `2`: usage error, a path that couldn't be scanned, or a config error
@@ -431,9 +428,8 @@ Honest caveats:
 - **No general code-comment style/verbosity grading.** In code files it
   flags specific junk patterns (preamble, attribution, elision), not
   comment style or verbosity in general. Prose files additionally get the
-  density/style checks in [Prose linting](#prose-linting) above; most are
-  opt-in, warn-only judgment calls, and none of them are a house-style
-  grader.
+  density/style checks in [Prose linting](#prose-linting) above; those are
+  warn-only judgment calls, and none of them are a house-style grader.
 - **`[[custom-rule]]` is a phrase matcher, not a plugin system.** It compiles
   a regex against comments/strings or masked prose. There's no hook for
   custom AST shapes, no arbitrary code execution, and no way to write a
