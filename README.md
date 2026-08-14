@@ -1,16 +1,16 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mgiovani/ai-stop-slop/main/assets/hero.png" alt="stopslop: Like Ruff, but for AI slop. Catch the junk AI leaves in your code.">
+  <img src="https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/hero.png" alt="stopslop: Like Ruff, but for AI slop. Catch the junk AI leaves in your code.">
 </p>
 
 # stopslop
 
 Like Ruff, but for AI slop.
 
-[![CI](https://github.com/mgiovani/ai-stop-slop/actions/workflows/ci.yml/badge.svg)](https://github.com/mgiovani/ai-stop-slop/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/mgiovani/ai-stop-slop/blob/main/LICENSE)
+[![CI](https://github.com/mgiovani/stopslop/actions/workflows/ci.yml/badge.svg)](https://github.com/mgiovani/stopslop/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/mgiovani/stopslop/blob/main/LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/stopslop.svg)](https://crates.io/crates/stopslop)
 
-![stopslop demo](https://raw.githubusercontent.com/mgiovani/ai-stop-slop/main/assets/demo.gif)
+![stopslop demo](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/demo.gif)
 
 Your linter can't see `// ... rest of code unchanged`. ESLint, Ruff, and
 Clippy throw away comment and string content before analysis: exactly
@@ -55,11 +55,11 @@ cargo install stopslop
 
 ```bash
 # latest main, for a merged-but-unreleased fix
-cargo install --git https://github.com/mgiovani/ai-stop-slop
+cargo install --git https://github.com/mgiovani/stopslop
 
 # local checkout, for hacking on stopslop itself
-git clone https://github.com/mgiovani/ai-stop-slop
-cd ai-stop-slop
+git clone https://github.com/mgiovani/stopslop
+cd stopslop
 cargo install --path .
 ```
 
@@ -84,12 +84,12 @@ stopslop --baseline .              # report only findings that aren't in the bas
 
 Example output:
 
-![stopslop findings across Python and TypeScript files](https://raw.githubusercontent.com/mgiovani/ai-stop-slop/main/assets/findings.png)
+![stopslop findings across Python and TypeScript files](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/findings.png)
 
 `--format json` emits a flat array of findings; `--format sarif` emits a
 SARIF 2.1.0 document for GitHub code scanning and similar tools.
 
-![stopslop --format json output](https://raw.githubusercontent.com/mgiovani/ai-stop-slop/main/assets/formats.png)
+![stopslop --format json output](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/formats.png)
 
 ## Rule groups
 
@@ -311,7 +311,7 @@ silently rot:
 stopslop: warning: src/util.ts:14: ai-slop-ignore (SLOP018) suppressed nothing
 ```
 
-![suppressing a finding with ai-slop-ignore](https://raw.githubusercontent.com/mgiovani/ai-stop-slop/main/assets/suppress.gif)
+![suppressing a finding with ai-slop-ignore](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/suppress.gif)
 
 ## Path exemptions
 
@@ -442,7 +442,7 @@ Honest caveats:
 
 ## License
 
-MIT (see [LICENSE](https://github.com/mgiovani/ai-stop-slop/blob/main/LICENSE)).
+MIT (see [LICENSE](https://github.com/mgiovani/stopslop/blob/main/LICENSE)).
 
 stopslop's own CI fails if its source contains slop: every push runs
 `cargo run --quiet -- .` against the whole repo, prose included, alongside

@@ -51,7 +51,7 @@ fn emit_sarif(
                 "id": r.code,
                 "shortDescription": { "text": r.name },
                 "helpUri": format!(
-                    "https://github.com/mgiovani/ai-stop-slop/blob/main/README.md#{}",
+                    "https://github.com/mgiovani/stopslop/blob/main/README.md#{}",
                     r.code.to_lowercase()
                 ),
             })
@@ -90,7 +90,7 @@ fn emit_sarif(
             "tool": {
                 "driver": {
                     "name": "stopslop",
-                    "informationUri": "https://github.com/mgiovani/ai-stop-slop",
+                    "informationUri": "https://github.com/mgiovani/stopslop",
                     "rules": rules,
                 }
             },
