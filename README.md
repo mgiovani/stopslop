@@ -96,9 +96,9 @@ pasting into a PR comment or a report.
 ## Rule groups
 
 `SLOP0NN` numbers are chronological, not thematic, so a numeric prefix can't
-express "just the rhetoric rules". Named groups can, and work anywhere a rule
-code or prefix does — `--select`, `--ignore`, and the `select`/`ignore` keys in
-`stopslop.toml`:
+express "just the rhetoric rules". Named groups can. They work anywhere a rule
+code or prefix does, including `--select`, `--ignore`, and the
+`select`/`ignore` keys in `stopslop.toml`:
 
 | Group | What it covers |
 |-------|----------------|
@@ -204,24 +204,18 @@ column so you can check any given rule at a glance:
   SLOP011–013) with no legitimate reading. A finding here fails the run
   (exit 1) and blocks CI.
 - **Tier B, on by default (28 rules)**: everything else except SLOP010.
-  Judgment calls — density and style checks on prose, stdlib/structure
-  heuristics — that warn without ever exiting 1. Expect some noise; silence
+  Judgment calls (density and style checks on prose, stdlib/structure
+  heuristics) that warn without ever exiting 1. Expect some noise; silence
   what you don't want with `ignore`/`--ignore` by code or group.
 - **Tier B, off by default (1 rule)**: SLOP010, gated behind
   `--check-imports` because of its false-positive risk with private
   registries and dynamic imports.
 
-**Behavior change from earlier releases:** SLOP014, SLOP018, SLOP022,
-SLOP023, SLOP024, SLOP025, and SLOP029 used to be Tier A and fail CI. They're
-now Tier B: still on by default, so you'll still see them, but a run that
-used to exit 1 on a stray em dash now exits 0 and just prints a warning.
 Tier is a fixed property of each rule, and select/ignore can't change it.
 What you can change is which tier the run fails on: `fail-on-tier = "B"` in
 `stopslop.toml` (or `--fail-on-tier B`) puts every finding on the exit-1
-path. If your CI relied on any of these seven blocking the build, the
-`--format json`/`--format sarif` output still carries each finding's code, so
-a CI step that greps for one of these seven codes and fails on a match gets
-the old behavior back.
+path. [CHANGELOG.md](CHANGELOG.md) records which rules changed tier between
+releases.
 
 Findings that have one concrete replacement print it on a second line:
 

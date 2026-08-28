@@ -123,7 +123,12 @@ fn count_scoped_filtered(
 ///    rather than tokens keeps acronyms mid-item ("the API is clear, concise, and correct") and
 ///    sentence-initial capitals ("Clear, concise, and correct prose wins") from tripping it.
 fn is_rhetorical_tricolon(masked: &str, range: std::ops::Range<usize>) -> bool {
-    if masked[..range.start].trim_end().ends_with(',') {
+    // `\w` excludes `-` and `/`, so a match can start mid-token: in "weak-verb phrasing, ..." the
+    // match begins at "verb" and the char right before it is `-`, not the `,` that marks this as
+    // a longer list's tail. Walk back over the rest of the token before looking for that comma.
+    let before = masked[..range.start]
+        .trim_end_matches(|c: char| c.is_alphanumeric() || c == '-' || c == '/' || c == '_');
+    if before.trim_end().ends_with(',') {
         return false;
     }
 
@@ -177,6 +182,15 @@ mod tests {
                 "plain enumeration flagged: {src:?}"
             );
         }
+    }
+
+    /// `\w` excludes `-`, so the match starts at "verb" inside "weak-verb" and the byte right
+    /// before it is `-`, not the comma that makes this a longer list's tail. Found in this
+    /// repo's own README, which enumerates fourteen rule families in one sentence.
+    #[test]
+    fn hyphenated_token_does_not_hide_a_list_tail() {
+        let src = "It covers hedging, overused vocabulary, boldface overuse, smart quotes, heading formatting, colon reveals, filler and adverb density, weak-verb phrasing, dramatic fragmentation, and mechanical uniformity.\nIt also covers alpha, beta, gamma, delta, epsilon, zeta-eta phrasing, theta density, and iota.\nAnd it covers one, two, three, four, five, six-seven forms, eight kinds, and nine.\n";
+        assert!(diagnostics_for(src).is_empty());
     }
 
     #[test]
