@@ -26,6 +26,18 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test
+      - name: Render the findings report
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          cargo run --quiet -- . --format markdown > "$RUNNER_TEMP/report/findings.md" || true
+      - name: Upload the findings report
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: stopslop-report
+          path: ${{ runner.temp }}/report/
+          retention-days: 1
       - name: Dogfood (Tier A fails the build, Tier B prints as warnings)
         id: dogfood
         run: |

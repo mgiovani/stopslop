@@ -87,7 +87,9 @@ Example output:
 ![stopslop findings across Python and TypeScript files](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/findings.png)
 
 `--format json` emits a flat array of findings; `--format sarif` emits a
-SARIF 2.1.0 document for GitHub code scanning and similar tools.
+SARIF 2.1.0 document for GitHub code scanning and similar tools;
+`--format markdown` emits the findings grouped under one heading per tier, for
+pasting into a PR comment or a report.
 
 ![stopslop --format json output](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/formats.png)
 
