@@ -13,13 +13,13 @@ Like Ruff, but for AI slop.
 ![stopslop demo](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/demo.gif)
 
 Your linter can't see `// ... rest of code unchanged`. ESLint, Ruff, and
-Clippy throw away comment and string content before analysis: exactly
-where AI coding artifacts live. stopslop reads what they discard: leaked
-chat preambles, elision comments that silently deleted code, stray markdown
-fences, placeholder credentials, and package imports that don't resolve to
-anything you declared. It reads your prose too: Markdown, MDX, plain text,
-and reST get the same deterministic treatment. One static binary, no LLM at
-scan time: same input, same output, every run.
+Clippy throw away comment and string content before analysis, which is where
+AI coding artifacts live. stopslop reads what they discard: leaked chat
+preambles, elision comments that hide deleted code, stray markdown fences,
+placeholder credentials, and package imports that don't resolve to declared
+dependencies. It reads your prose too: Markdown, MDX, plain text, and reST
+get the same deterministic treatment. One static binary. No LLM at scan time.
+Same input, same output, every run.
 
 - One fast static binary, zero config to get started.
 - Deterministic: no LLM calls, no API calls, no network access at scan time.
@@ -95,8 +95,8 @@ SARIF 2.1.0 document for GitHub code scanning and similar tools.
 
 `SLOP0NN` numbers are chronological, not thematic, so a numeric prefix can't
 express "just the rhetoric rules". Named groups can, and work anywhere a rule
-code or prefix does — `--select`, `--ignore`, and the `select`/`ignore` keys in
-`stopslop.toml`:
+code or prefix does, including `--select`, `--ignore`, and the
+`select`/`ignore` keys in `stopslop.toml`:
 
 | Group | What it covers |
 |-------|----------------|
@@ -200,17 +200,16 @@ column so you can check any given rule at a glance:
   SLOP011–013) with no legitimate reading. A finding here fails the run
   (exit 1) and blocks CI.
 - **Tier B, on by default (28 rules)**: everything else except SLOP010.
-  Judgment calls — density and style checks on prose, stdlib/structure
-  heuristics — that warn without ever exiting 1. Expect some noise; silence
+  Judgment calls, density and style checks on prose, plus stdlib/structure
+  heuristics, that warn without ever exiting 1. Expect some noise; silence
   what you don't want with `ignore`/`--ignore` by code or group.
 - **Tier B, off by default (1 rule)**: SLOP010, gated behind
   `--check-imports` because of its false-positive risk with private
   registries and dynamic imports.
 
-**Behavior change from earlier releases:** SLOP014, SLOP018, SLOP022,
-SLOP023, SLOP024, SLOP025, and SLOP029 used to be Tier A and fail CI. They're
-now Tier B: still on by default, so you'll still see them, but a run that
-used to exit 1 on a stray em dash now exits 0 and just prints a warning.
+**Current tiering:** SLOP014, SLOP018, SLOP022, SLOP023, SLOP024, SLOP025,
+and SLOP029 are Tier B. They stay on by default, so you'll still see them, but
+they warn and do not make the run exit 1.
 Tier is a fixed property of each rule, not something select/ignore/config
 can override: there's no flag that puts a Tier B rule back on the exit-1
 path. If your CI relied on any of these seven blocking the build, the
@@ -348,8 +347,8 @@ baseline = ".stopslop-baseline.json"  # subtract findings recorded here (omit to
 ```
 
 `select` and `ignore` follow Ruff's composition rules: a CLI `--select`
-replaces the config's `select` outright (rather than adding to it), and the
-same for `--ignore`. `extend-select` and `extend-ignore` never replace
+replaces the config's `select` outright (rather than adding to it). The same
+replacement rule applies to `--ignore`. `extend-select` and `extend-ignore` never replace
 anything: the config's `extend-select` and any CLI `--extend-select` are
 unioned together on top of whatever `select` resolved to, and `extend-ignore`
 does the same for `ignore`, subtracted last so an extend-ignore always wins
