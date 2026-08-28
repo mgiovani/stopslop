@@ -1,6 +1,7 @@
 use crate::{
     cli::Format,
     diagnostic::{Diagnostic, Tier},
+    paths::strip_dot_slash,
     registry::RULES,
 };
 use std::collections::HashSet;
@@ -75,7 +76,7 @@ fn emit_sarif(
                 "message": { "text": text },
                 "locations": [ {
                     "physicalLocation": {
-                        "artifactLocation": { "uri": d.path },
+                        "artifactLocation": { "uri": strip_dot_slash(&d.path) },
                         "region": { "startLine": d.line, "startColumn": d.col },
                     }
                 } ],
@@ -99,4 +100,31 @@ fn emit_sarif(
     });
     serde_json::to_writer_pretty(&mut *w, &doc)?;
     writeln!(w)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sarif_uri_is_repo_root_relative() {
+        let diags = vec![Diagnostic {
+            code: "SLOP018",
+            name: "test",
+            tier: Tier::B,
+            path: "./README.md".to_string(),
+            line: 1,
+            col: 1,
+            message: "test".into(),
+            fix: None,
+        }];
+        let mut out = Vec::new();
+        emit_sarif(&diags, &HashSet::new(), &mut out).unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(
+            doc["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]
+                ["uri"],
+            "README.md"
+        );
+    }
 }
