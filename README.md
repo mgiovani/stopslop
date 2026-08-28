@@ -171,7 +171,7 @@ Commit the baseline file so CI and local runs agree.
 | SLOP014 | rhetoric | Formulaic cliché phrase | B, on | Markdown, MDX, Text, reST | A stock marketing/narrative cliché (`unlock the power of`, `in today's fast-paced world`, `a testament to`) |
 | SLOP015 | verbosity | Hedging & filler-phrase density | B, on  | Markdown, MDX, Text, reST | A document-wide density of hedging/filler phrases (`it's worth noting that`, `in conclusion`, `first and foremost`); an adjacent hedge stack like `might potentially` fires on its own, without waiting for the density threshold |
 | SLOP016 | verbosity | Overused-vocabulary density | B, on  | Markdown, MDX, Text, reST | A document-wide density of overused vocabulary (`delve`, `tapestry`, `robust`, `leverage`) across enough distinct terms to read as filler |
-| SLOP017 | rhetoric | Rhetorical parallelism / false-depth scaffolding density | B, on  | Markdown, MDX, Text, reST | A document-wide density of three-item rhetorical lists, `not only X but also Y` phrasing, and trailing `, underscoring its...` participles. Longer enumerations and lists of proper nouns are not counted |
+| SLOP017 | rhetoric | Rhetorical parallelism / false-depth scaffolding density | B, on  | Markdown, MDX, Text, reST | A document-wide density of three-item rhetorical lists and `not only X but also Y` phrasing. Trailing `, underscoring its...` participles count toward the same threshold. Longer enumerations and lists of proper nouns are not counted |
 | SLOP018 | format | Mid-prose em/en dash | B, on | Markdown, MDX, Text, reST | A mid-sentence em dash (`—`), en dash (`–`), or spaced ASCII `--` that should be rewritten out of the sentence (numeric ranges like `2020–2024`, and an attribution dash opening a block or blockquote like `— Oscar Wilde`, are exempt) |
 | SLOP019 | format | Boldface & bold-lead-in list overuse | B, on  | Markdown, MDX | Boldface overuse in body prose, or 3+ consecutive `- **Term**: ...` bold-lead-in list items |
 | SLOP020 | format | Typographic (smart) quotes in source | B, on  | Markdown, MDX, Text, reST | Curly quotes/apostrophes in source where straight ASCII quotes are expected |
@@ -179,7 +179,7 @@ Commit the baseline file so CI and local runs agree.
 | SLOP022 | rhetoric | Formulaic opener / rhetorical setup | B, on | Markdown, MDX, Text, reST | A throat-clearing or faux-insight opener (`Here's the thing`, `What nobody tells you`, `Plot twist:`), or a self-answered `Question? Answer.` pair opening a line |
 | SLOP023 | rhetoric | Binary contrast / negative listing | B, on | Markdown, MDX, Text, reST | The `It's not X. It's Y.` / `The question isn't X, it's Y` shape, or a `Not a X. Not a Y.` fragment run |
 | SLOP024 | rhetoric | Importance puffery / fake-strong verb | B, on | Markdown, MDX, Text, reST | An inflated significance claim (`marks a pivotal moment`, `solidifies its position`), a `serves as a centralized hub`-style linking verb where plain `is` reads better, or a faux-scale range (`from the singularity of the Big Bang to the enigmatic dance of dark matter`) standing in for an actual magnitude |
-| SLOP025 | sourcing | Unsourced weasel attribution | B, on | Markdown, MDX, Text, reST | Anonymous authority (`experts agree`, `studies show`) with no link, footnote, or citation anywhere on the line, or notability by name-dropping three-plus outlets (`cited in TechCrunch, Forbes, and Wired`) with no per-citation context |
+| SLOP025 | sourcing | Unsourced weasel attribution | B, on | Markdown, MDX, Text, reST | Anonymous authority (`experts agree`, `studies show`) with nothing citing it anywhere on the line, whether a link or a footnote. Also flags notability by name-dropping three-plus outlets (`cited in TechCrunch, Forbes, and Wired`) with no per-citation context |
 | SLOP026 | rhetoric | Dramatic colon reveal | B, on  | Markdown, MDX, Text, reST | A short noun phrase, a colon, then a lowercase dramatic reveal (`The best part: it learns`) |
 | SLOP027 | verbosity | Empty filler phrase & adverb density | B, on  | Markdown, MDX, Text, reST | A document-wide density of empty phrases (`when it comes to`, `at its core`) and filler adverbs (`simply`, `actually`) |
 | SLOP028 | verbosity | Weak verb phrase / vague quantifier | B, on  | Markdown, MDX, Text, reST | A document-wide density of nominalizations (`made a decision`, `has the ability to`) and vague quantifiers used where a number belongs (`significantly improves`) |
@@ -256,9 +256,8 @@ phrase. It catches templated prose that rotates its vocabulary just enough to
 slide past every phrase-based rule. These are judgment calls rather than
 mechanical certainties, so they're warn-only. Silence the ones you don't want
 by code (`--ignore SLOP015`) or by group (`--ignore verbosity`). Expect some
-noise from them: this very README trips SLOP017, since its prose is heavy on
-the enumerations that rule counts. That's Tier B working as intended, a lead
-to investigate rather than a verdict. As with the rest of stopslop, this is a writing-quality
+noise from them: a finding here is a lead to investigate rather than a
+verdict. As with the rest of stopslop, this is a writing-quality
 gate, not a claim about who or what wrote the text: every rule flags a
 concrete pattern (a stale phrase, an unfilled slot, a density threshold,
 a document-level statistic), never "this is AI-generated."
@@ -383,8 +382,9 @@ fix = "say what the teams actually do"    # optional: printed as a second "fix:"
 files = ["docs/**"]                   # optional glob list; omit for every supported file
 ```
 
-Codes are auto-assigned `SLOP900`, `SLOP901`, ... in declaration order, one
-per `[[custom-rule]]` entry, and grouped as `custom` in `--list-rules`. Every
+Codes are auto-assigned `SLOP900`, `SLOP901`, ... in declaration order. Each
+`[[custom-rule]]` entry gets one code. They are grouped as `custom` in
+`--list-rules`. Every
 custom rule is on by default, but still subject to `select`/`ignore` and
 suppressible with `ai-slop-ignore: SLOP900` like any built-in rule. An
 invalid regex, an invalid `tier`, or an invalid `files` glob is a config
@@ -404,9 +404,9 @@ Honest caveats:
 
 - If no manifest is found for a language, that language's checks are
   skipped silently rather than risk false positives.
-- It's a static namecheck, not a resolver: workspace/path dependencies,
-  dynamic imports, and unusual build setups can still false-positive or
-  false-negative.
+- It's a static namecheck, not a resolver. It can still false-positive or
+  false-negative on workspace/path dependencies and dynamic imports. Unusual
+  build setups can do the same.
 - It never fails the build on its own (Tier B): treat it as a lead to
   investigate, not a hard gate.
 
@@ -442,8 +442,8 @@ whatever the tier.
   warn-only judgment calls, and none of them are a house-style grader.
 - **`[[custom-rule]]` is a phrase matcher, not a plugin system.** It compiles
   a regex against comments/strings or masked prose. There's no hook for
-  custom AST shapes, no arbitrary code execution, and no way to write a
-  custom rule as sophisticated as, say, SLOP041's document statistics. For
+  custom AST shapes or arbitrary code execution. A custom rule also cannot be
+  as sophisticated as, say, SLOP041's document statistics. For
   anything past "flag this phrase," it's still a Rust module in `src/rules`.
 
 ## License
