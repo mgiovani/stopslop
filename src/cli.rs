@@ -61,6 +61,7 @@ pub enum Format {
     Text,
     Json,
     Sarif,
+    Markdown,
 }
 
 pub fn run(cli: Cli) -> anyhow::Result<i32> {

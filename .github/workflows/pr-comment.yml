@@ -1,0 +1,63 @@
+name: PR comment
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: write
+    steps:
+      - name: Download the findings report
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: stopslop-report
+          path: report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Post or update the findings comment
+        if: steps.download.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          marker='<!-- stopslop-report -->'
+
+          pr=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" --jq '.[0].number // empty')
+          if [ -z "$pr" ]; then
+            echo "No pull request associated with $HEAD_SHA; nothing to comment on."
+            exit 0
+          fi
+
+          existing=$(gh api "repos/$REPO/issues/$pr/comments" --paginate \
+            --jq "map(select(.body | startswith(\"$marker\"))) | .[0].id // empty")
+
+          body="$RUNNER_TEMP/comment.md"
+          if grep -qxF 'No stopslop findings.' report/findings.md; then
+            if [ -z "$existing" ]; then
+              echo "Clean run and no comment to update; staying quiet."
+              exit 0
+            fi
+            printf '%s\n\nstopslop: no findings.\n' "$marker" > "$body"
+          else
+            printf '%s\n\n## stopslop findings\n\n' "$marker" > "$body"
+            head -c 60000 report/findings.md >> "$body"
+            if [ "$(wc -c < report/findings.md)" -gt 60000 ]; then
+              printf '\n_Report truncated at 60000 characters._\n' >> "$body"
+            fi
+          fi
+
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" -f body="$(cat "$body")" --silent
+          else
+            gh api -X POST "repos/$REPO/issues/$pr/comments" -f body="$(cat "$body")" --silent
+          fi
