@@ -2,7 +2,7 @@ use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::Lang;
 use crate::prose::ProseDoc;
-use crate::prose_words::{NEGATIVE_PARALLELISM, RULE_OF_THREE, TRAILING_PARTICIPLE};
+use crate::prose_words::{CLAUSE_MARKER, NEGATIVE_PARALLELISM, RULE_OF_THREE, TRAILING_PARTICIPLE};
 use crate::registry::RuleDef;
 use regex::Regex;
 
@@ -24,7 +24,7 @@ pub static RULE: RuleDef = RuleDef {
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
 
-    let (a, a_first) = count_scoped(doc, &RULE_OF_THREE);
+    let (a, a_first) = count_scoped_filtered(doc, &RULE_OF_THREE, is_rhetorical_tricolon);
     let (b, b_first) = count_scoped(doc, &NEGATIVE_PARALLELISM);
     let (c, c_first) = count_scoped(doc, &TRAILING_PARTICIPLE);
 
@@ -44,11 +44,20 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         return;
     }
 
-    let first_byte = [a_first, b_first, c_first]
-        .into_iter()
-        .flatten()
-        .min()
-        .unwrap();
+    // Anchor and hint follow the signal that actually fired. Anchoring at the minimum byte across
+    // all three and always printing the participial hint meant a run triggered by tricolons
+    // pointed at an enumeration and advised cutting a participle that wasn't there.
+    let (first_byte, fix) = if s >= 2 {
+        (
+            [b_first, c_first].into_iter().flatten().min().unwrap(),
+            "cut the participial tail or make it its own sentence",
+        )
+    } else {
+        (
+            a_first.unwrap(),
+            "three-item lists used as rhetorical scaffolding; drop one or write them out",
+        )
+    };
     let (line, col) = doc.line_col(first_byte);
     out.push(Diagnostic::at_fix(
         rule,
@@ -56,18 +65,30 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         line,
         col,
         format!("rhetorical parallelism / false-depth scaffolding density high ({t} occurrences)"),
-        "cut the participial tail or make it its own sentence",
+        fix,
     ));
 }
 
 /// Counts matches of `re` over `doc.masked`, skipping any in frontmatter/heading/URL spans.
 /// Returns the count and the byte offset of the first counted match (if any).
 fn count_scoped(doc: &ProseDoc<'_>, re: &Regex) -> (usize, Option<usize>) {
+    count_scoped_filtered(doc, re, |_, _| true)
+}
+
+/// `count_scoped` with an extra per-match predicate, given `(masked, match_start..match_end)`.
+fn count_scoped_filtered(
+    doc: &ProseDoc<'_>,
+    re: &Regex,
+    keep: impl Fn(&str, std::ops::Range<usize>) -> bool,
+) -> (usize, Option<usize>) {
     let mut n = 0usize;
     let mut first = None;
     for m in re.find_iter(&doc.masked) {
         let byte = m.start();
         if doc.in_frontmatter(byte) || doc.in_heading(byte) || doc.in_url(byte) {
+            continue;
+        }
+        if !keep(&doc.masked, m.range()) {
             continue;
         }
         n += 1;
@@ -76,6 +97,70 @@ fn count_scoped(doc: &ProseDoc<'_>, re: &Regex) -> (usize, Option<usize>) {
         }
     }
     (n, first)
+}
+
+/// True when a RULE_OF_THREE match is a genuine rhetorical tricolon rather than the tail of an
+/// ordinary enumeration.
+///
+/// `RULE_OF_THREE` matches any comma series of three-or-more items, including the *tail* of a
+/// longer one -- which is why its reported column used to land mid-list ("...race, caste,
+/// >>>color, religion, or sexual<<<"). Two gates, both cheap:
+///
+/// 1. **Exactly three items.** A rule of three is three; a five- or seven-item list is just a
+///    list. The regex matches a longer list's tail, and a tail is always immediately preceded by
+///    the previous item's comma -- so rejecting a match that a comma runs straight into drops the
+///    Contributor Covenant's protected-characteristics enumeration, a list of agent product
+///    names, and "lint, test, build, security scan, and deploy", while keeping "clear, concise,
+///    and correct" and "solo developers, growing startups, or established enterprises". Done by
+///    looking backwards, since the `regex` crate has no lookbehind.
+///
+///    ponytail: known false negative -- a tricolon behind a leading adverbial ("In practice, it
+///    is clear, concise, and correct") reads as a tail and is skipped. Acceptable on a density
+///    rule that needs three matches to fire; tighten only if it shows up in practice.
+///
+/// 2. **Items are phrases, not clauses.** An item carrying a finite verb or subject pronoun
+///    (`prose_words::CLAUSE_MARKER`) makes this a compound sentence, not an enumeration:
+///    "...findings from one rule, it absorbs exactly three, and a fourth is reported" is three
+///    clauses joined by commas.
+///
+/// 3. **Not a proper-noun list.** Two or more of the three items *beginning* with a capitalized
+///    word is a list of names ("GitHub, GitLab, and Bitbucket"), not rhetoric. Counting items
+///    rather than tokens keeps acronyms mid-item ("the API is clear, concise, and correct") and
+///    sentence-initial capitals ("Clear, concise, and correct prose wins") from tripping it.
+fn is_rhetorical_tricolon(masked: &str, range: std::ops::Range<usize>) -> bool {
+    // `\w` excludes `-` and `/`, so a match can start mid-token: in "weak-verb phrasing, ..." the
+    // match begins at "verb" and the char right before it is `-`, not the `,` that marks this as
+    // a longer list's tail. Walk back over the rest of the token before looking for that comma.
+    let before = masked[..range.start]
+        .trim_end_matches(|c: char| c.is_alphanumeric() || c == '-' || c == '/' || c == '_');
+    if before.trim_end().ends_with(',') {
+        return false;
+    }
+
+    let items: Vec<&str> = masked[range].splitn(3, ',').collect();
+
+    // Only the MIDDLE item is checked. It alone is bounded by a comma on both sides; the outer
+    // two are bounded by the regex's 4-word run and routinely spill into the surrounding
+    // sentence -- item 1 of "The output should be clear, concise, and correct" is "The output
+    // should be clear" (sweeping up "should be"), and item 3 of "...dynamic imports, and unusual
+    // build setups can" swallows "can". Judging either would reject ordinary enumerations.
+    if items
+        .get(1)
+        .is_some_and(|item| CLAUSE_MARKER.is_match(item))
+    {
+        return false;
+    }
+
+    let capitalized_items = items
+        .iter()
+        .filter(|item| {
+            item.split_whitespace()
+                .find(|w| !matches!(*w, "and" | "or"))
+                .and_then(|w| w.chars().next())
+                .is_some_and(char::is_uppercase)
+        })
+        .count();
+    capitalized_items < 2
 }
 
 #[cfg(test)]
@@ -99,6 +184,77 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    /// Real strings from a 130-document corpus that the ungated rule-of-three counted. None is
+    /// rhetorical; each is an ordinary enumeration or a list of names.
+    #[test]
+    fn plain_enumerations_do_not_count_as_tricolons() {
+        for src in [
+            "We do not tolerate discrimination on the basis of nationality, personal appearance, race, caste, color, religion, or sexual orientation.\nThe policy covers age, body size, visible disability, ethnicity, and level of experience.\nIt also covers education, socio-economic status, gender identity, and expression.\n",
+            "It works with Claude Code, Codex, Cursor, OpenCode, Gemini CLI, and other agents.\nIt ships configs for GitHub Actions, GitLab CI, CircleCI, Jenkins, and Buildkite.\nIt reads pyproject.toml, package.json, Cargo.toml, go.mod, and Gemfile.\n",
+            "The pipeline defines stages for lint, test, build, security scan, and deploy.\nEach stage reports status, duration, artifacts, cache hits, and exit codes.\nFailures capture logs, environment, git metadata, timing, and the command line.\n",
+            "We support GitHub, GitLab, and Bitbucket.\nWe test on Linux, macOS, and Windows.\nWe target Python, Ruby, and Rust.\n",
+        ] {
+            assert!(
+                diagnostics_for(src).is_empty(),
+                "plain enumeration flagged: {src:?}"
+            );
+        }
+    }
+
+    /// `\w` excludes `-`, so the match starts at "verb" inside "weak-verb" and the byte right
+    /// before it is `-`, not the comma that makes this a longer list's tail. Found in this
+    /// repo's own README, which enumerates fourteen rule families in one sentence.
+    #[test]
+    fn hyphenated_token_does_not_hide_a_list_tail() {
+        let src = "It covers hedging, overused vocabulary, boldface overuse, smart quotes, heading formatting, colon reveals, filler and adverb density, weak-verb phrasing, dramatic fragmentation, and mechanical uniformity.\nIt also covers alpha, beta, gamma, delta, epsilon, zeta-eta phrasing, theta density, and iota.\nAnd it covers one, two, three, four, five, six-seven forms, eight kinds, and nine.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// Commas joining clauses are not an enumeration. Found in this repo's own README.
+    #[test]
+    fn compound_sentences_are_not_tricolons() {
+        let src = "If a file has three accepted findings from one rule, it absorbs exactly three, and a fourth is reported.\nWhen the budget runs out for that rule, we report the surplus, and the count ratchets down.\nOnce the cache is warm for a run, it reuses the parse, and a rescan is skipped.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// Only the middle item is judged: the outer two spill into the surrounding sentence, so
+    /// judging them would reject ordinary enumerations that merely sit next to a verb.
+    #[test]
+    fn clause_words_outside_the_middle_item_do_not_reject() {
+        let src = "The output should be clear, concise, and correct.\nA resolver can miss workspace dependencies, dynamic imports, and unusual build setups.\nIt must handle fences, placeholder credentials, and package imports.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP017");
+    }
+
+    #[test]
+    fn flags_three_abstract_tricolons() {
+        let src = "The output should be clear, concise, and correct.\n\nThe architecture is scalable, maintainable, and robust.\n\nIt suits solo developers, growing startups, or established enterprises.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP017");
+    }
+
+    /// The hint must describe the signal that fired: a tricolon run has no participial tail to cut.
+    #[test]
+    fn tricolon_run_gets_the_tricolon_hint() {
+        let src = "The output should be clear, concise, and correct.\n\nThe architecture is scalable, maintainable, and robust.\n\nIt suits solo developers, growing startups, or established enterprises.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(
+            diags[0].fix.as_deref(),
+            Some("three-item lists used as rhetorical scaffolding; drop one or write them out")
+        );
+    }
+
+    /// An acronym mid-item and a sentence-initial capital are not a proper-noun list.
+    #[test]
+    fn acronyms_and_sentence_initial_capitals_still_count() {
+        let src = "The API is clear, concise, and correct.\n\nClear, concise, and correct prose wins.\n\nThe CLI stays small, sharp, and predictable.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP017");
     }
 
     #[test]

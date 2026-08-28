@@ -16,15 +16,16 @@ pub static RULE: RuleDef = RuleDef {
     check,
 };
 
-// Reasoning-chain leakage ("let's think", "step 1:", ...) shares its phrase list with
+// Reasoning-chain leakage ("let's think", "breaking this down", ...) shares its phrase list with
 // `rules::residue` (SLOP011, the same family in prose) via `REASONING_CHAIN_FRAGMENT`, so a new
-// scaffolding phrase only needs adding in one place. "step 1:" is a real precision/recall
-// tradeoff -- an ordinary numbered-step comment can look similar -- but the family is explicitly
-// about chain-of-thought scaffolding left behind, and it stays anchored to the comment-leader
-// position (`^\s*(?://|#|\*+)\s*`) the same as every other member of this panel.
+// scaffolding phrase only needs adding in one place. "step 1:" is spelled out here instead of
+// living in that fragment: it is a real precision/recall tradeoff -- an ordinary numbered-step
+// comment can look similar -- and the two consumers now resolve it differently. Here it stays
+// anchored to the comment-leader position (`^\s*(?://|#|\*+)\s*`) like the rest of this panel;
+// residue.rs, where `## Step 1:` is ordinary technical writing, rejects that position instead.
 static RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
-        r"(?im)^\s*(?://|#|\*+)\s*(certainly[!,]|sure[!,]|here'?s the (updated|revised|complete|new|fixed)|below is the (updated|complete|full)|as an ai\b|i hope this helps|{REASONING_CHAIN_FRAGMENT})",
+        r"(?im)^\s*(?://|#|\*+)\s*(certainly[!,]|sure[!,]|here'?s the (updated|revised|complete|new|fixed)|below is the (updated|complete|full)|as an ai\b|i hope this helps|step 1:|{REASONING_CHAIN_FRAGMENT})",
     ))
     .unwrap()
 });

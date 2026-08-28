@@ -43,6 +43,15 @@ pub static RULE_OF_THREE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(?:\w+\s+){0,3}\w+,\s+(?:\w+\s+){0,3}\w+,\s+(?:and|or)\s+(?:\w+\s+){0,3}\w+\b")
         .unwrap()
 });
+/// Finite verbs and subject pronouns. An enumeration's items are noun phrases or adjectives
+/// ("clear", "package imports"); an item carrying one of these is a CLAUSE, which makes the whole
+/// match a compound sentence rather than a list -- "...findings from one rule, it absorbs exactly
+/// three, and a fourth is reported" is three clauses, not a tricolon. Consumer:
+/// rules::parallelism.
+pub static CLAUSE_MARKER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(is|are|was|were|be|been|being|has|have|had|does|do|did|will|would|shall|should|can|could|may|might|must|it|they|we|you|i)\b").unwrap()
+});
+
 pub static NEGATIVE_PARALLELISM: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(\bnot only\b[^.?!\n]{0,80}?\bbut(\s+also)?\b|\bnot just\b[^.?!\n]{0,60}?\b(but|it'?s)\b|\bit'?s not (just|only)\b[^.?!\n]{0,60}?\bit'?s\b|\bnot an? \w+[^,.?!\n]{0,40},\s*but\b)").unwrap()
 });
@@ -79,8 +88,13 @@ pub static FILLER_ADVERBS: LazyLock<Regex> = LazyLock::new(|| {
 // to a comment-marker line start; residue.rs matches anywhere in the masked prose stream), so
 // each compiles its own `Regex` around this shared alternation instead of sharing a `LazyLock`.
 // Both ASCII `'` and U+2019 `'` are covered for the two "let's ..." members.
+//
+// `step 1:` is NOT a member here: unlike the rest of the panel it has a legitimate reading
+// (numbered procedural writing), so it needs position context that differs per consumer and
+// can't come from a shared alternation. preamble.rs keeps it inline at comment-leader position;
+// residue.rs owns `RE_NUMBERED_STEP` for the markdown case.
 pub const REASONING_CHAIN_FRAGMENT: &str =
-    "let(?:'|\u{2019})s think|let me think|thinking through this|step 1:|breaking this down|first, let(?:'|\u{2019})s consider";
+    "let(?:'|\u{2019})s think|let me think|thinking through this|breaking this down|first, let(?:'|\u{2019})s consider";
 
 // SLOP015 — adjacent hedge stack (case-insensitive). Consumer: rules::hedging. Checked
 // independent of the density gate: two hedge words stacked back to back is a defect on a SINGLE
@@ -237,9 +251,11 @@ mod tests {
         let re = Regex::new(&format!("(?i){REASONING_CHAIN_FRAGMENT}")).unwrap();
         assert!(re.is_match("let's think about this differently"));
         assert!(re.is_match("let\u{2019}s think about this differently"));
-        assert!(re.is_match("Step 1: parse the input"));
         assert!(re.is_match("breaking this down further"));
         assert!(!re.is_match("we thought this through carefully"));
+        // "step 1:" deliberately left out: it needs per-consumer position context, so each
+        // consumer owns it (see the fragment's doc comment).
+        assert!(!re.is_match("Step 1: parse the input"));
     }
 
     #[test]

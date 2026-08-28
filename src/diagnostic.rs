@@ -10,6 +10,24 @@ pub enum Tier {
     B,
 }
 
+impl Tier {
+    /// Shared by `[[custom-rule]] tier` and the `fail-on-tier` setting so the accepted spellings
+    /// can't drift apart between them.
+    pub fn parse(s: &str) -> Option<Tier> {
+        match s {
+            "A" => Some(Tier::A),
+            "B" => Some(Tier::B),
+            _ => None,
+        }
+    }
+
+    /// True when `self` is at least as severe as `floor`. A is the more severe tier, so
+    /// `fail-on-tier = "B"` admits both tiers and `"A"` admits only A.
+    pub fn at_least_as_severe_as(self, floor: Tier) -> bool {
+        matches!((self, floor), (Tier::A, _) | (Tier::B, Tier::B))
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Diagnostic {
     pub code: &'static str, // "SLOP001"

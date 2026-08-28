@@ -1,7 +1,7 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::Lang;
-use crate::prose::ProseDoc;
+use crate::prose::{CodeSpan, ProseDoc};
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::collections::HashMap;
@@ -68,6 +68,10 @@ fn is_table_line(line: &str) -> bool {
 pub(crate) struct Block {
     pub(crate) text: String,
     pub(crate) first_byte: usize,
+    /// Exclusive end in the ORIGINAL document. `text` is joined and trimmed, so its length does
+    /// not map back to source bytes; callers that need to test "is this byte inside prose?"
+    /// (see rules::synonym_rotation) need the real span.
+    pub(crate) end_byte: usize,
 }
 
 /// All paragraph blocks in the document: maximal contiguous non-blank line runs, excluding
@@ -109,15 +113,60 @@ pub(crate) fn paragraph_blocks(doc: &ProseDoc) -> Vec<Block> {
         }
         let mut text = String::new();
         let first_byte = spans[start].0 + (lines[0].len() - lines[0].trim_start().len());
-        for line in &lines {
+        for (k, _) in lines.iter().enumerate() {
+            let (ls, le) = spans[start + k];
+            let line = with_code_placeholders(&doc.masked, ls, le, &doc.code_spans);
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
             if !text.is_empty() {
                 text.push(' ');
             }
-            text.push_str(line.trim());
+            text.push_str(line);
         }
-        blocks.push(Block { text, first_byte });
+        blocks.push(Block {
+            text,
+            first_byte,
+            end_byte: spans[end - 1].1,
+        });
     }
     blocks
+}
+
+/// The placeholder standing in for each token of a blanked inline `code` span. An ordinary word,
+/// so a sentence built around code reads like prose: it can open a sentence, and the span
+/// contributes the same number of words a reader would count in it.
+const CODE_PLACEHOLDER: &str = "code";
+
+/// Rebuilds one masked line with each inline-code span replaced by [`CODE_PLACEHOLDER`].
+///
+/// `doc.masked` blanks inline code to spaces, which erases the difference between "there was code
+/// here" and "there was nothing here". Every check in this module keys on position or length --
+/// which word opens a sentence, how many words a sentence has -- so reading the blanks as absence
+/// misreports both. "Run `stopslop --format json .` now." masks to "Run    now." -- two words,
+/// and a sentence that only appears to open with "Run" by luck of what got blanked. With
+/// placeholders it reads "Run code code code code now.", matching the four tokens a reader sees
+/// inside the backticks.
+fn with_code_placeholders(masked: &str, ls: usize, le: usize, code_spans: &[CodeSpan]) -> String {
+    let mut out = String::new();
+    let mut cursor = ls;
+    for span in code_spans {
+        if span.end <= ls || span.start >= le {
+            continue;
+        }
+        let (cs, ce) = (span.start.max(ls), span.end.min(le));
+        out.push_str(&masked[cursor..cs]);
+        for i in 0..span.words {
+            if i > 0 {
+                out.push(' ');
+            }
+            out.push_str(CODE_PLACEHOLDER);
+        }
+        cursor = ce;
+    }
+    out.push_str(&masked[cursor..le]);
+    out
 }
 
 /// Splits paragraph text into sentences on runs of `.`/`!`/`?` followed by whitespace or
@@ -279,6 +328,30 @@ mod tests {
         let src = "It works. It scales. It ships. The rest of the rollout needs no further changes from anyone on the team this quarter.\n";
         let diags = diagnostics_for(src);
         assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP030");
+    }
+
+    /// `doc.masked` blanks inline code to spaces, so both sub-checks here used to read the blanks
+    /// as absence. Found on this repo's own README.
+    #[test]
+    fn inline_code_is_not_read_as_absent() {
+        // Opener check: masking left "and" as the first visible token of both sentences.
+        let openers = "`select` and `ignore` follow Ruff's composition rules here. `extend-select` and `extend-ignore` never replace anything at all.\n";
+        assert!(diagnostics_for(openers).is_empty());
+
+        // Word-count check: three ordinary sentences counted as "very short" because the code
+        // spans contributed zero words.
+        let counts = "Run `stopslop --format json .` now. Then read `target/release/output.json` carefully. Finally pipe `jq '.runs[0].results'` through less.\n";
+        assert!(diagnostics_for(counts).is_empty());
+    }
+
+    /// The placeholder stands in per token, not per span: a reader counts `--format json` as two
+    /// words, so collapsing it to one would resurrect the very-short-sentence false positive.
+    #[test]
+    fn code_span_contributes_its_own_token_count() {
+        let one_word_each = "Run `a` now. Then `b` too. Also `c` here. The rollout needs no further changes from anyone on the team this quarter.\n";
+        let diags = diagnostics_for(one_word_each);
+        assert_eq!(diags.len(), 1, "genuinely short sentences must still fire");
         assert_eq!(diags[0].code, "SLOP030");
     }
 

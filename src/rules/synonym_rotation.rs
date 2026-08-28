@@ -3,6 +3,7 @@ use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::Lang;
 use crate::registry::RuleDef;
 use regex::Regex;
+use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 pub static RULE: RuleDef = RuleDef {
@@ -95,33 +96,65 @@ static SETS: LazyLock<Vec<Vec<Member>>> = LazyLock::new(|| {
     ]
 });
 
-/// For each closed concept set, counts in-scope occurrences per member (frontmatter and URLs
-/// skipped). A member "qualifies" once it occurs `>= 2` times. Fires at most one diagnostic per
-/// set, only when two or more distinct members qualify, anchored at the first occurrence of the
-/// second-seen qualifying member (chronologically, by first occurrence).
+/// For each closed concept set, counts occurrences per member within one SECTION's running prose.
+/// A member "qualifies" once it occurs `>= 2` times there. Fires at most one diagnostic per set,
+/// only when two or more distinct members qualify in the same section, anchored at the first
+/// occurrence of the second-seen qualifying member (chronologically, by first occurrence).
+///
+/// Scope is a section rather than the whole file because a document that enumerates
+/// differently-named things gets its "competing" words from unrelated entries -- a skill catalog
+/// flagged `generate, create` where the two words described two different skills. Two scope
+/// decisions, and both are load-bearing:
+///
+/// - **Sections, not paragraphs.** Genuine rotation is one author drifting across a passage; the
+///   rule's own fixture spreads `check` x2 and `verify` x2 over four consecutive paragraphs.
+///   Paragraph scoping would delete that true positive.
+/// - **Only `fragmentation::paragraph_blocks`.** That helper already drops headings, list items,
+///   tables, rules, link-reference definitions, and comment lines -- "bullet lists, tables, and
+///   headings must never be treated as sentences", per its own doc comment. Both known false
+///   positives were list items, and a 17-bullet catalog under one heading is not fixed by section
+///   scoping alone. This also subsumes the separate "skip tokens in headings" concern.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
 
+    let blocks = super::fragmentation::paragraph_blocks(doc);
+    if blocks.is_empty() {
+        return;
+    }
+    let heading_starts: Vec<usize> = doc.headings.iter().map(|h| h.byte_start).collect();
+    let section_of = |byte: usize| heading_starts.partition_point(|&s| s <= byte);
+    let in_prose = |byte: usize| {
+        blocks
+            .iter()
+            .any(|b| byte >= b.first_byte && byte < b.end_byte)
+    };
+
     for set in SETS.iter() {
-        let mut qualifying: Vec<(&str, usize)> = Vec::new(); // (name, first_byte)
+        // section -> [(member name, first byte in that section)]
+        let mut by_section: BTreeMap<usize, Vec<(&str, usize)>> = BTreeMap::new();
         for member in set {
-            let mut count = 0usize;
-            let mut first_byte = None;
+            let mut per_section: BTreeMap<usize, (usize, usize)> = BTreeMap::new();
             for m in member.re.find_iter(&doc.masked) {
                 let byte = m.start();
-                if doc.in_frontmatter(byte) || doc.in_url(byte) {
+                if doc.in_frontmatter(byte) || doc.in_url(byte) || !in_prose(byte) {
                     continue;
                 }
-                count += 1;
-                first_byte.get_or_insert(byte);
+                per_section.entry(section_of(byte)).or_insert((0, byte)).0 += 1;
             }
-            if count >= 2 {
-                qualifying.push((member.name, first_byte.unwrap()));
+            for (section, (count, first_byte)) in per_section {
+                if count >= 2 {
+                    by_section
+                        .entry(section)
+                        .or_default()
+                        .push((member.name, first_byte));
+                }
             }
         }
-        if qualifying.len() < 2 {
+        // At most one diagnostic per set, as before: the earliest section that rotates.
+        let Some(mut qualifying) = by_section.into_values().find(|members| members.len() >= 2)
+        else {
             continue;
-        }
+        };
         qualifying.sort_by_key(|&(_, byte)| byte);
         let first_member = qualifying[0].0;
         let anchor_byte = qualifying[1].1;
@@ -177,6 +210,34 @@ mod tests {
             diags[0].fix.as_deref(),
             Some("pick one term and use it throughout: check")
         );
+    }
+
+    /// A catalog of differently-named things: the competing words describe different entries, so
+    /// they are not one author rotating terms. Both are real strings from a 130-document corpus.
+    #[test]
+    fn list_items_are_not_pooled_together() {
+        let catalog = "## Development\n\n- **ci-generate**: Generate a production-ready CI/CD pipeline config\n- **docs-check**: Check documentation against the codebase and report drift\n- **db-migrate**: Create, validate, and manage database migrations across any framework\n- **test-suite**: Generate test suites by analyzing coverage gaps\n";
+        assert!(diagnostics_for(catalog).is_empty());
+
+        let changelog = "## Security\n\n- Phase 3: Parallel Vulnerability Scanning\n  - Agent 1: Access Control & Authentication (A01, A07)\n  - Agent 2: Configuration & Insecure Design (A02, A06)\n  - Agent 3: Injection & Data Integrity (A05, A08)\n\nThe config file is read once at startup.\n";
+        assert!(diagnostics_for(changelog).is_empty());
+    }
+
+    /// Rotation split across two sections is two authors' vocabularies, not one drifting.
+    #[test]
+    fn sections_are_counted_separately() {
+        let src = "## Setup\n\nCheck the response. Check it twice.\n\n## Teardown\n\nNow verify the response. Verify it again.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// The rule's own fixture spreads the two members over four consecutive paragraphs under one
+    /// heading -- paragraph scoping would have deleted this true positive.
+    #[test]
+    fn rotation_pools_across_paragraphs_within_one_section() {
+        let src = "# Deployment Checklist\n\nCheck the health endpoint before promoting.\n\nCheck it again after five minutes.\n\nNow verify the endpoint reports steady latency.\n\nVerify it once more before closing.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP034");
     }
 
     #[test]

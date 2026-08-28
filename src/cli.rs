@@ -26,7 +26,8 @@ pub struct Cli {
     /// config's `extend-select`, never replaces it).
     #[arg(long, value_delimiter = ',')]
     pub extend_select: Vec<String>,
-    /// Subtract these rule codes/prefixes/groups.
+    /// Subtract these rule codes/prefixes/groups (replaces the config's `ignore`; use
+    /// --extend-ignore to add to it instead). Comma-separated or repeated.
     #[arg(long, value_delimiter = ',')]
     pub ignore: Vec<String>,
     /// Subtracts these rule codes/prefixes/groups last, after select/extend-select (unioned with
@@ -54,6 +55,10 @@ pub struct Cli {
     /// Ignore any stopslop.toml (CLI flags only).
     #[arg(long)]
     pub no_config: bool,
+    /// Lowest tier that exits 1: "A" (default) fails only on Tier A findings, "B" fails on any
+    /// finding. Overrides the config's `fail-on-tier`.
+    #[arg(long)]
+    pub fail_on_tier: Option<String>,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -98,6 +103,14 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         .chain(cli.extend_ignore)
         .collect();
     let check_imports = cli.check_imports || config.check_imports;
+    // Resolved before the walk so a bad spelling is a startup config error, not a surprise after
+    // a full scan has already printed its findings.
+    let fail_on = match cli.fail_on_tier.or(config.fail_on_tier) {
+        Some(s) => Tier::parse(&s).ok_or_else(|| {
+            anyhow::anyhow!("invalid fail-on-tier {s:?}, expected \"A\" or \"B\"")
+        })?,
+        None => Tier::A,
+    };
     let paths = if cli.paths.is_empty() {
         vec![PathBuf::from(".")]
     } else {
@@ -151,12 +164,17 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
     let mut w = stdout.lock();
     output::emit(cli.format, &diags, &settings.enabled, &mut w)?;
 
-    let code = if diags.iter().any(|d| d.tier == Tier::A) {
+    Ok(exit_code(&diags, fail_on))
+}
+
+/// 1 if any finding is at or above `fail_on` in severity, else 0. Split out of `run` so the
+/// tier-gating contract is testable without a filesystem walk.
+fn exit_code(diags: &[Diagnostic], fail_on: Tier) -> i32 {
+    if diags.iter().any(|d| d.tier.at_least_as_severe_as(fail_on)) {
         1
     } else {
         0
-    };
-    Ok(code)
+    }
 }
 
 /// `[per-file-ignores]` post-filter: a glob whose value list (codes and/or group names, expanded
@@ -238,6 +256,26 @@ mod tests {
             message: "test".into(),
             fix: None,
         }
+    }
+
+    fn diag_at(tier: Tier) -> Diagnostic {
+        Diagnostic {
+            tier,
+            ..diag("SLOP017", "a.md")
+        }
+    }
+
+    #[test]
+    fn fail_on_tier_a_ignores_tier_b_findings() {
+        assert_eq!(exit_code(&[diag_at(Tier::B)], Tier::A), 0);
+        assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::A), 1);
+    }
+
+    #[test]
+    fn fail_on_tier_b_gates_on_any_finding() {
+        assert_eq!(exit_code(&[diag_at(Tier::B)], Tier::B), 1);
+        assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::B), 1);
+        assert_eq!(exit_code(&[], Tier::B), 0);
     }
 
     #[test]

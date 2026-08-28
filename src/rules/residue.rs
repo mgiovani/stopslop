@@ -28,12 +28,29 @@ static RE_ANYWHERE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Reasoning-chain leakage: chain-of-thought scaffolding left behind in a deliverable ("let's
-/// think about this", "step 1:", ...). Matched anywhere, same as `RE_ANYWHERE` above -- this
-/// phrasing has no legitimate reason to survive into finished prose either. Shared with
+/// think about this", "breaking this down", ...). Matched anywhere, same as `RE_ANYWHERE` above --
+/// this phrasing has no legitimate reason to survive into finished prose either. Shared with
 /// `rules::preamble` (SLOP002, code comments) via `prose_words::REASONING_CHAIN_FRAGMENT` so the
-/// phrase list can't drift between the two consumers.
+/// phrase list can't drift between the two consumers. `step 1:` is the one member that isn't
+/// shared -- it has a legitimate reading, so it needs position context (see `RE_NUMBERED_STEP`).
 static RE_REASONING_CHAIN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!(r"(?i)\b(?:{REASONING_CHAIN_FRAGMENT})")).unwrap());
+
+/// `Step N:` -- NOT line-initial. Numbered procedural headings and bold lead-ins (`## Step 1:
+/// Detect the framework`, `**Step 1: Mine the conversation.**`, `- Step 1: open the file`) are
+/// standard technical writing, not chat residue; every hit of the unanchored form across a
+/// 130-document corpus was one of those. The residue reading is the phrase surfacing *inside* a
+/// sentence ("...so, step 1: we parse the args"), where no author would number a step.
+///
+/// A markdown structure marker is *required* (`+`, not `*`): the exemption is for `Step N:` that
+/// heads a section or list item, so a bare line-initial `Step 1: parse the config` -- which heads
+/// nothing -- stays residue. `(?m)` makes `^` a line anchor.
+static RE_NUMBERED_STEP: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?im)^[ \t]{0,3}(?:#{1,6}[ \t]+|[-*+][ \t]+|\d+\.[ \t]+|\*\*)+step \d+:").unwrap()
+});
+
+/// The residue form: `Step N:` with real text before it on the same line.
+static RE_MIDLINE_STEP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bstep \d+:").unwrap());
 
 /// Acknowledgment loops ("you're asking about X", "to answer your question, ..."). PARAGRAPH-
 /// INITIAL only, checked separately below via `fragmentation::paragraph_blocks`: a wrapped
@@ -74,12 +91,24 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     ]
     .into_iter()
     .flat_map(|re| re.find_iter(&doc.masked).map(|m| m.start()));
+    // A `Step N:` is structure, not residue, when it sits at the start of its line behind at most
+    // markdown markers. Both regexes end at the same byte on such a line, so matching end offsets
+    // is what distinguishes the two readings.
+    let structural_ends: std::collections::HashSet<usize> = RE_NUMBERED_STEP
+        .find_iter(&doc.masked)
+        .map(|m| m.end())
+        .collect();
+    let step_bytes: Vec<usize> = RE_MIDLINE_STEP
+        .find_iter(&doc.masked)
+        .filter(|m| !structural_ends.contains(&m.end()))
+        .map(|m| m.start())
+        .collect();
     let ack_bytes: Vec<usize> = fragmentation::paragraph_blocks(doc)
         .iter()
         .filter(|b| RE_ACK_LOOP.is_match(&b.text))
         .map(|b| b.first_byte)
         .collect();
-    let by_line = first_byte_per_line(doc, re_bytes.chain(ack_bytes));
+    let by_line = first_byte_per_line(doc, re_bytes.chain(ack_bytes).chain(step_bytes));
     for &byte in by_line.values() {
         let (line, col) = doc.line_col(byte);
         out.push(Diagnostic::at_fix(
@@ -115,6 +144,34 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    /// Every `Step N:` hit across a 130-document corpus was one of these -- numbered procedural
+    /// writing, not chat residue.
+    #[test]
+    fn numbered_step_as_structure_is_not_residue() {
+        for src in [
+            "## Step 1: Detect the framework\n",
+            "### Step 1: Load Eval Cases\n",
+            "**Step 1: Mine the conversation.** Read what the user already said.\n",
+            "- Step 1: open the file\n",
+            "1. Step 1: open the file\n",
+            "- **Step 2: Verify.** Re-run the suite.\n",
+            "# Step 1: Navigate to form\n",
+        ] {
+            assert!(
+                diagnostics_for(src).is_empty(),
+                "structure flagged as residue: {src:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn numbered_step_mid_sentence_is_still_residue() {
+        let diags =
+            diagnostics_for("The parser is straightforward, so step 1: we read the args.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP011");
     }
 
     #[test]

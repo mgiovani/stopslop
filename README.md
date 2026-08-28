@@ -96,9 +96,9 @@ pasting into a PR comment or a report.
 ## Rule groups
 
 `SLOP0NN` numbers are chronological, not thematic, so a numeric prefix can't
-express "just the rhetoric rules". Named groups can, and work anywhere a rule
-code or prefix does — `--select`, `--ignore`, and the `select`/`ignore` keys in
-`stopslop.toml`:
+express "just the rhetoric rules". Named groups can. They work anywhere a rule
+code or prefix does, including `--select`, `--ignore`, and the
+`select`/`ignore` keys in `stopslop.toml`:
 
 | Group | What it covers |
 |-------|----------------|
@@ -141,7 +141,9 @@ or set `baseline = ".stopslop-baseline.json"` in `stopslop.toml`.
 
 Findings are matched by a fingerprint of `code + path + message` with digits
 normalized out, not by line number, so editing above a finding doesn't
-resurrect it and a density count drifting by one doesn't either. The file
+resurrect it and a density count drifting by one doesn't either. Paths are
+normalized as well, with a leading `./` stripped, so a baseline written from
+`git ls-files` (`foo.md`) still matches a `stopslop .` run (`./foo.md`). The file
 stores a **count** per fingerprint: if a file has three accepted findings from
 one rule, it absorbs exactly three, and a fourth is reported. Fix one and the
 budget shrinks with it. The count ratchets down on its own; raising it takes a
@@ -163,21 +165,21 @@ Commit the baseline file so CI and local runs agree.
 | SLOP008 | structure | Stub-only / unimplemented body | A, on | TS, TSX, Python, Go, Rust | A function whose entire body is `pass`/`...`/`throw new Error("not implemented")`/`todo!()`/empty |
 | SLOP009 | structure | Placeholder / sample credential value | A, on | TS, TSX, Python, Go, Rust | A hardcoded `YOUR_API_KEY`, `example.com`, `sk-...`-shaped secret, or other sample value |
 | SLOP010 | structure | Unresolved package import | B, off | TS, TSX, Python, Go, Rust | An imported package that isn't declared in the project's manifest or stdlib (opt-in, `--check-imports`) |
-| SLOP011 | artifact | Assistant-response residue in prose | A, on | Markdown, MDX, Text, reST | A leftover chat-turn phrase (self-ID disclaimer, refusal boilerplate, a line-initial `Certainly!` opener, a trailing `let me know if you have` closer, reasoning-chain scaffolding like `let's think about this`/`Step 1:`, or a paragraph-initial acknowledgment loop like `To answer your question, ...`) left unedited in prose |
+| SLOP011 | artifact | Assistant-response residue in prose | A, on | Markdown, MDX, Text, reST | A leftover chat-turn phrase (self-ID disclaimer, refusal boilerplate, a line-initial `Certainly!` opener, a trailing `let me know if you have` closer, reasoning-chain scaffolding like `let's think about this`, a mid-sentence `step 1:` that isn't heading a section or list item, or a paragraph-initial acknowledgment loop like `To answer your question, ...`) left unedited in prose |
 | SLOP012 | artifact | LLM tool / citation artifact tokens | A, on | Markdown, MDX, Text, reST | A leftover search/citation-tool token (`turn0search0`, `:contentReference[oaicite:1]`, a `【12†L3】` marker, `utm_source=chatgpt.com`) left in text |
 | SLOP013 | artifact | Unfilled template placeholder text | A, on | Markdown, MDX, Text, reST | An unfilled placeholder (`[Your Name]`, `INSERT_SOURCE_URL_30`, a `date: 2025-XX-XX` stub) left in place of real content |
 | SLOP014 | rhetoric | Formulaic cliché phrase | B, on | Markdown, MDX, Text, reST | A stock marketing/narrative cliché (`unlock the power of`, `in today's fast-paced world`, `a testament to`) |
 | SLOP015 | verbosity | Hedging & filler-phrase density | B, on  | Markdown, MDX, Text, reST | A document-wide density of hedging/filler phrases (`it's worth noting that`, `in conclusion`, `first and foremost`); an adjacent hedge stack like `might potentially` fires on its own, without waiting for the density threshold |
 | SLOP016 | verbosity | Overused-vocabulary density | B, on  | Markdown, MDX, Text, reST | A document-wide density of overused vocabulary (`delve`, `tapestry`, `robust`, `leverage`) across enough distinct terms to read as filler |
-| SLOP017 | rhetoric | Rhetorical parallelism / false-depth scaffolding density | B, on  | Markdown, MDX, Text, reST | A document-wide density of rule-of-three lists, `not only X but also Y` phrasing, and trailing `, underscoring its...` participles |
+| SLOP017 | rhetoric | Rhetorical parallelism / false-depth scaffolding density | B, on  | Markdown, MDX, Text, reST | A document-wide density of three-item rhetorical lists and `not only X but also Y` phrasing. Trailing `, underscoring its...` participles count toward the same threshold. Longer enumerations and lists of proper nouns are not counted |
 | SLOP018 | format | Mid-prose em/en dash | B, on | Markdown, MDX, Text, reST | A mid-sentence em dash (`—`), en dash (`–`), or spaced ASCII `--` that should be rewritten out of the sentence (numeric ranges like `2020–2024`, and an attribution dash opening a block or blockquote like `— Oscar Wilde`, are exempt) |
 | SLOP019 | format | Boldface & bold-lead-in list overuse | B, on  | Markdown, MDX | Boldface overuse in body prose, or 3+ consecutive `- **Term**: ...` bold-lead-in list items |
 | SLOP020 | format | Typographic (smart) quotes in source | B, on  | Markdown, MDX, Text, reST | Curly quotes/apostrophes in source where straight ASCII quotes are expected |
-| SLOP021 | format | Heading & marker formatting affectations | B, on  | Markdown, MDX | Emoji used as a heading/list marker, headings written in Title Case against an otherwise sentence-case document, or headings stacked over two-sentence sections |
+| SLOP021 | format | Heading & marker formatting affectations | B, on  | Markdown, MDX | Emoji or a decorative technical symbol used as a heading/list marker (counted and reported separately), headings written in Title Case against an otherwise sentence-case document, or headings stacked over two-sentence sections |
 | SLOP022 | rhetoric | Formulaic opener / rhetorical setup | B, on | Markdown, MDX, Text, reST | A throat-clearing or faux-insight opener (`Here's the thing`, `What nobody tells you`, `Plot twist:`), or a self-answered `Question? Answer.` pair opening a line |
 | SLOP023 | rhetoric | Binary contrast / negative listing | B, on | Markdown, MDX, Text, reST | The `It's not X. It's Y.` / `The question isn't X, it's Y` shape, or a `Not a X. Not a Y.` fragment run |
 | SLOP024 | rhetoric | Importance puffery / fake-strong verb | B, on | Markdown, MDX, Text, reST | An inflated significance claim (`marks a pivotal moment`, `solidifies its position`), a `serves as a centralized hub`-style linking verb where plain `is` reads better, or a faux-scale range (`from the singularity of the Big Bang to the enigmatic dance of dark matter`) standing in for an actual magnitude |
-| SLOP025 | sourcing | Unsourced weasel attribution | B, on | Markdown, MDX, Text, reST | Anonymous authority (`experts agree`, `studies show`) with no link, footnote, or citation anywhere on the line, or notability by name-dropping three-plus outlets (`cited in TechCrunch, Forbes, and Wired`) with no per-citation context |
+| SLOP025 | sourcing | Unsourced weasel attribution | B, on | Markdown, MDX, Text, reST | Anonymous authority (`experts agree`, `studies show`) with nothing citing it anywhere on the line, whether a link or a footnote. Also flags notability by name-dropping three-plus outlets (`cited in TechCrunch, Forbes, and Wired`) with no per-citation context |
 | SLOP026 | rhetoric | Dramatic colon reveal | B, on  | Markdown, MDX, Text, reST | A short noun phrase, a colon, then a lowercase dramatic reveal (`The best part: it learns`) |
 | SLOP027 | verbosity | Empty filler phrase & adverb density | B, on  | Markdown, MDX, Text, reST | A document-wide density of empty phrases (`when it comes to`, `at its core`) and filler adverbs (`simply`, `actually`) |
 | SLOP028 | verbosity | Weak verb phrase / vague quantifier | B, on  | Markdown, MDX, Text, reST | A document-wide density of nominalizations (`made a decision`, `has the ability to`) and vague quantifiers used where a number belongs (`significantly improves`) |
@@ -186,7 +188,7 @@ Commit the baseline file so CI and local runs agree.
 | SLOP031 | rhetoric | Promotional / advertisement language | B, on  | Markdown, MDX, Text, reST | Brochure register in technical prose (`boasts a`, `industry-leading`, `a hidden gem`) at document-wide density |
 | SLOP032 | verbosity | Hyphenated-compound overuse | B, on  | Markdown, MDX, Text, reST | Stacked hyphenated modifiers used as filler (`end-to-end`, `data-driven`, `battle-tested`) at document-wide density |
 | SLOP033 | verbosity | Overlong sentence | B, on  | Markdown, MDX, Text, reST | A sentence over 50 words, reported with its actual word count (URLs count as one word) |
-| SLOP034 | verbosity | Synonym rotation across a closed concept set | B, on  | Markdown, MDX, Text, reST | One concept named two ways in one document (`check` and `verify`, `config` and `settings`) where technical writing should fix one term |
+| SLOP034 | verbosity | Synonym rotation across a closed concept set | B, on  | Markdown, MDX, Text, reST | One concept named two ways within one section's running prose (`check` and `verify`, `config` and `settings`) where technical writing should fix one term. Bullet lists and tables are excluded, so a catalog of differently-named things doesn't count as rotation |
 | SLOP035 | rhetoric | Outline-shaped filler section | B, on  | Markdown, MDX, Text, reST | A `Challenges and Future Prospects`-style section heading, or `despite these challenges` boilerplate, standing in for specifics |
 | SLOP036 | rhetoric | Diff-anchored documentation | B, on  | Markdown, MDX, Text, reST | Docs narrating a change (`was added to replace`, `no longer requires`) instead of describing current behavior; changelogs and migration guides are exempt |
 | SLOP037 | stdlib | Reinvented stdlib / native platform feature | B, on  | TS, TSX, Python, Go, Rust | Hand-rolled code where a standard-library or platform primitive exists (`JSON.parse(JSON.stringify(x))`, `for i in range(len(xs))`, `ioutil.ReadFile`) |
@@ -202,23 +204,18 @@ column so you can check any given rule at a glance:
   SLOP011–013) with no legitimate reading. A finding here fails the run
   (exit 1) and blocks CI.
 - **Tier B, on by default (28 rules)**: everything else except SLOP010.
-  Judgment calls — density and style checks on prose, stdlib/structure
-  heuristics — that warn without ever exiting 1. Expect some noise; silence
+  Judgment calls (density and style checks on prose, stdlib/structure
+  heuristics) that warn without ever exiting 1. Expect some noise; silence
   what you don't want with `ignore`/`--ignore` by code or group.
 - **Tier B, off by default (1 rule)**: SLOP010, gated behind
   `--check-imports` because of its false-positive risk with private
   registries and dynamic imports.
 
-**Behavior change from earlier releases:** SLOP014, SLOP018, SLOP022,
-SLOP023, SLOP024, SLOP025, and SLOP029 used to be Tier A and fail CI. They're
-now Tier B: still on by default, so you'll still see them, but a run that
-used to exit 1 on a stray em dash now exits 0 and just prints a warning.
-Tier is a fixed property of each rule, not something select/ignore/config
-can override: there's no flag that puts a Tier B rule back on the exit-1
-path. If your CI relied on any of these seven blocking the build, the
-`--format json`/`--format sarif` output still carries each finding's code, so
-a CI step that greps for one of these seven codes and fails on a match gets
-the old behavior back.
+Tier is a fixed property of each rule, and select/ignore can't change it.
+What you can change is which tier the run fails on: `fail-on-tier = "B"` in
+`stopslop.toml` (or `--fail-on-tier B`) puts every finding on the exit-1
+path. [CHANGELOG.md](CHANGELOG.md) records which rules changed tier between
+releases.
 
 Findings that have one concrete replacement print it on a second line:
 
@@ -259,9 +256,8 @@ phrase. It catches templated prose that rotates its vocabulary just enough to
 slide past every phrase-based rule. These are judgment calls rather than
 mechanical certainties, so they're warn-only. Silence the ones you don't want
 by code (`--ignore SLOP015`) or by group (`--ignore verbosity`). Expect some
-noise from them: this very README trips SLOP017, since its prose is heavy on
-the enumerations that rule counts. That's Tier B working as intended, a lead
-to investigate rather than a verdict. As with the rest of stopslop, this is a writing-quality
+noise from them: a finding here is a lead to investigate rather than a
+verdict. As with the rest of stopslop, this is a writing-quality
 gate, not a claim about who or what wrote the text: every rule flags a
 concrete pattern (a stale phrase, an unfilled slot, a density threshold,
 a document-level statistic), never "this is AI-generated."
@@ -344,6 +340,7 @@ extend-ignore = ["SLOP016"] # adds on top of `ignore`, same relationship
 exclude = ["**/generated/**"]      # extra walker excludes, on top of .gitignore
 check-imports = false
 baseline = ".stopslop-baseline.json"  # subtract findings recorded here (omit to disable)
+fail-on-tier = "A"          # lowest tier that exits 1; "B" gates the build on every finding
 
 [per-file-ignores]
 "docs/**" = ["SLOP036"]     # codes and/or group names; applied after linting, before baseline
@@ -385,8 +382,9 @@ fix = "say what the teams actually do"    # optional: printed as a second "fix:"
 files = ["docs/**"]                   # optional glob list; omit for every supported file
 ```
 
-Codes are auto-assigned `SLOP900`, `SLOP901`, ... in declaration order, one
-per `[[custom-rule]]` entry, and grouped as `custom` in `--list-rules`. Every
+Codes are auto-assigned `SLOP900`, `SLOP901`, ... in declaration order. Each
+`[[custom-rule]]` entry gets one code. They are grouped as `custom` in
+`--list-rules`. Every
 custom rule is on by default, but still subject to `select`/`ignore` and
 suppressible with `ai-slop-ignore: SLOP900` like any built-in rule. An
 invalid regex, an invalid `tier`, or an invalid `files` glob is a config
@@ -406,20 +404,26 @@ Honest caveats:
 
 - If no manifest is found for a language, that language's checks are
   skipped silently rather than risk false positives.
-- It's a static namecheck, not a resolver: workspace/path dependencies,
-  dynamic imports, and unusual build setups can still false-positive or
-  false-negative.
+- It's a static namecheck, not a resolver. It can still false-positive or
+  false-negative on workspace/path dependencies and dynamic imports. Unusual
+  build setups can do the same.
 - It never fails the build on its own (Tier B): treat it as a lead to
   investigate, not a hard gate.
 
 ## Exit codes
 
-- `0`: no Tier A findings. Tier B findings (including any custom rule
-  declared `tier = "B"`) never affect the exit code: they print,
-  they don't block.
-- `1`: at least one Tier A finding.
+- `0`: nothing at or above the failing tier.
+- `1`: at least one finding at or above the failing tier.
 - `2`: usage error, a path that couldn't be scanned, or a config error
-  (bad glob, bad regex, unknown key, invalid `[[custom-rule]]` field).
+  (bad glob, bad regex, unknown key, invalid `[[custom-rule]]` or
+  `fail-on-tier` value).
+
+The failing tier is `A` by default, so Tier B findings (including any custom
+rule declared `tier = "B"`) print without blocking. Set `fail-on-tier = "B"`
+in `stopslop.toml`, or pass `--fail-on-tier B`, to gate the build on every
+finding instead; the CLI flag wins over the config. A baseline is applied
+before the exit code is computed, so baselined findings never fail a run
+whatever the tier.
 
 ## Non-goals
 
@@ -438,8 +442,8 @@ Honest caveats:
   warn-only judgment calls, and none of them are a house-style grader.
 - **`[[custom-rule]]` is a phrase matcher, not a plugin system.** It compiles
   a regex against comments/strings or masked prose. There's no hook for
-  custom AST shapes, no arbitrary code execution, and no way to write a
-  custom rule as sophisticated as, say, SLOP041's document statistics. For
+  custom AST shapes or arbitrary code execution. A custom rule also cannot be
+  as sophisticated as, say, SLOP041's document statistics. For
   anything past "flag this phrase," it's still a Rust module in `src/rules`.
 
 ## License
