@@ -11,6 +11,9 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -24,4 +27,12 @@ jobs:
       - name: Test
         run: cargo test
       - name: Dogfood (Tier A fails the build, Tier B prints as warnings)
-        run: cargo run --quiet -- .
+        run: |
+          cargo run --quiet -- . --format sarif > stopslop.sarif || true
+          cargo run --quiet -- .
+      - name: Annotate the PR with the findings
+        if: always() && hashFiles('stopslop.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: stopslop.sarif
+          category: stopslop
