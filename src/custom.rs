@@ -60,13 +60,12 @@ fn build_one(index: usize, c: &CustomRuleConfig) -> anyhow::Result<CustomRule> {
             c.pattern
         )
     })?;
-    let tier = match c.tier.as_str() {
-        "A" => Tier::A,
-        "B" => Tier::B,
-        other => anyhow::bail!(
-            "custom-rule[{index}] (pattern {:?}): invalid tier {other:?}, expected \"A\" or \"B\"",
-            c.pattern
-        ),
+    let Some(tier) = Tier::parse(&c.tier) else {
+        anyhow::bail!(
+            "custom-rule[{index}] (pattern {:?}): invalid tier {:?}, expected \"A\" or \"B\"",
+            c.pattern,
+            c.tier
+        )
     };
     let files = if c.files.is_empty() {
         None

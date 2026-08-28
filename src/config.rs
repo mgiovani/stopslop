@@ -24,6 +24,13 @@ pub struct Config {
     /// filter (see cli::run) so it composes with baselines instead of fighting them.
     #[serde(default)]
     pub per_file_ignores: std::collections::BTreeMap<String, Vec<String>>,
+    /// Lowest tier that fails the run. `"A"` (the default) is the historical behaviour: Tier B
+    /// findings print but never affect the exit code. `"B"` puts every finding on the exit-1 path,
+    /// which is what a project wants when it cares about one warn-only rule enough to gate on it.
+    /// `None` (absent) means `"A"`. Kept optional rather than defaulted to a string so the
+    /// `#[derive(Default)]` used for the no-config-file case can't produce an unparseable `""`.
+    #[serde(default)]
+    pub fail_on_tier: Option<String>,
     /// `[[custom-rule]]` entries: user-defined banned-phrase rules, compiled by `crate::custom`.
     #[serde(default)]
     pub custom_rule: Vec<CustomRuleConfig>,

@@ -15,24 +15,41 @@ pub static RULE: RuleDef = RuleDef {
     check,
 };
 
-/// The marker char class: `\p{Emoji_Presentation}` (supported by the `regex` crate's default
-/// unicode feature, verified against 1.10) plus a small allow-list of common text-presentation
-/// symbols the catalog explicitly cites alongside emoji (✓/→ are Emoji=Yes but
-/// Emoji_Presentation=No in Unicode, so the property class alone misses them).
-const MARKER: &str = r"(?:\p{Emoji_Presentation}|[✓→])";
+/// Emoji, counted and reported separately from [`SYMBOL`] below: an arrow is not an emoji, and
+/// reporting one as "emoji used as ... marker" is simply wrong. Separate classes also mean
+/// separate thresholds, so one emoji plus one arrow no longer sum to the ≥2 that fires.
+///
+/// `\p{Emoji_Presentation}` (supported by the `regex` crate's default unicode feature, verified
+/// against 1.10) misses "text-default" emoji -- Emoji=Yes but needing a trailing U+FE0F to render
+/// colored -- so those are allow-listed explicitly, verified against Unicode's `emoji-data.txt`.
+/// Note 🛠 U+1F6E0 is astral AND text-default, so "high codepoint => Emoji_Presentation" is not a
+/// safe shortcut. `\p{Extended_Pictographic}` is deliberately NOT used as the base instead: it is
+/// a forward-compatibility superset for line-breaking/ZWJ and would match unassigned codepoints.
+const EMOJI: &str = r"(?:\p{Emoji_Presentation}|[\u{27A1}\u{2714}\u{25AA}\u{26A0}\u{1F6E0}])";
 
-/// Emoji directly after heading hashes, opening a bullet, or leading a bare line (e.g. a
-/// decorative checkmark/arrow/pin marker). `(?m)` so `^` is per-line. The gap between the
-/// marker-opener (`#`s / bullet char) and the emoji is `[ \t]+`, NOT `\s+`: `\s` matches `\n`,
-/// so an unconstrained gap can glue an empty heading/bullet line to an unrelated emoji-leading
-/// line on the NEXT line (a phantom cross-line match) -- the same "`\s` matches `\n`" anchoring
-/// bug this codebase already guards against elsewhere (see residue.rs's `[ \t]*` opener anchor).
-static EMOJI_MARKER_RE: LazyLock<Regex> = LazyLock::new(|| {
+/// Plain `Sm`/`So` symbols with no emoji properties at all, used decoratively as markers.
+///
+/// Excluded on purpose: `»` U+00BB (quotation punctuation far more often than a bullet);
+/// U+2500-257F box drawing (structural ASCII-art glyphs -- a block/divider pattern, not a
+/// heading prefix); U+2014 em dash (`rules::emdash` owns it); `•` U+2022 (a *fake* bullet, since
+/// GFM won't parse it as a list marker at all -- a different tell needing a different message).
+const SYMBOL: &str = r"[→⇒➔✓✗✘●▸★☆✦]";
+
+/// A marker directly after heading hashes, opening a bullet, or leading a bare line. `(?m)` so
+/// `^` is per-line. The gap between the marker-opener (`#`s / bullet char) and the marker is
+/// `[ \t]+`, NOT `\s+`: `\s` matches `\n`, so an unconstrained gap can glue an empty
+/// heading/bullet line to an unrelated marker-leading line on the NEXT line (a phantom cross-line
+/// match) -- the same "`\s` matches `\n`" anchoring bug this codebase already guards against
+/// elsewhere (see residue.rs's `[ \t]*` opener anchor).
+fn marker_re(class: &str) -> Regex {
     Regex::new(&format!(
-        r"(?m)^[ \t]{{0,3}}(?:#{{1,6}}[ \t]+{MARKER}|[-*+][ \t]+{MARKER}|{MARKER}[ \t]+\S)"
+        r"(?m)^[ \t]{{0,3}}(?:#{{1,6}}[ \t]+{class}|[-*+][ \t]+{class}|{class}[ \t]+\S)"
     ))
     .unwrap()
-});
+}
+
+static EMOJI_MARKER_RE: LazyLock<Regex> = LazyLock::new(|| marker_re(EMOJI));
+static SYMBOL_MARKER_RE: LazyLock<Regex> = LazyLock::new(|| marker_re(SYMBOL));
 
 /// Guard for (b): at least one pair of consecutive lowercase words somewhere outside heading
 /// lines — evidence the document actually uses sentence case, so an all-caps/style doc (which
@@ -111,28 +128,44 @@ fn is_title_case_heading(text: &str) -> bool {
 
 /// (a) emoji-as-marker lines, (b) title-cased headings, and (c) thin sections, each an
 /// independent sub-check that emits at most one diagnostic, anchored at its first offender.
+/// Byte of the first marker line when at least two exist, else None.
+///
+/// Matching runs over `doc.masked` so fenced/inline code is excluded, but the match is then
+/// re-checked against `ctx.source`: masking blanks inline code to spaces, which MANUFACTURES the
+/// marker position this rule keys on. `` - `feat` → **Features** `` masks to `-        → ...`,
+/// where the arrow now looks like it directly follows the bullet even though real content sits
+/// between them in the source. Two of the rule's four hits across a 130-document corpus were this
+/// artifact, and it affects every character in both classes, not just arrows. `ctx.source` is
+/// already consulted elsewhere in this file (see the fence check in sub-check (c)) for the same
+/// "the mask hides the truth" reason.
+fn marker_run(doc: &crate::prose::ProseDoc, ctx: &LintContext, re: &Regex) -> Option<usize> {
+    let mut lines = 0usize;
+    let mut first = None;
+    for m in re.find_iter(&doc.masked) {
+        let byte = m.start();
+        if doc.in_frontmatter(byte) || ctx.source[byte..m.end()] != doc.masked[byte..m.end()] {
+            continue;
+        }
+        lines += 1;
+        first.get_or_insert(byte);
+    }
+    (lines >= 2).then(|| first.unwrap())
+}
+
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
 
-    let mut emoji_lines = 0usize;
-    let mut first_emoji_byte = None;
-    for m in EMOJI_MARKER_RE.find_iter(&doc.masked) {
-        let byte = m.start();
-        if doc.in_frontmatter(byte) {
-            continue;
+    for (re, message) in [
+        (&*EMOJI_MARKER_RE, "emoji used as heading / list marker"),
+        (
+            &*SYMBOL_MARKER_RE,
+            "technical symbol used as heading / list marker",
+        ),
+    ] {
+        if let Some(byte) = marker_run(doc, ctx, re) {
+            let (line, col) = doc.line_col(byte);
+            out.push(Diagnostic::at(rule, ctx, line, col, message.to_string()));
         }
-        emoji_lines += 1;
-        first_emoji_byte.get_or_insert(byte);
-    }
-    if emoji_lines >= 2 {
-        let (line, col) = doc.line_col(first_emoji_byte.unwrap());
-        out.push(Diagnostic::at(
-            rule,
-            ctx,
-            line,
-            col,
-            "emoji used as heading / list marker".to_string(),
-        ));
     }
 
     let eligible: Vec<_> = doc
@@ -251,6 +284,62 @@ mod tests {
         let diags = diagnostics_for(src);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "SLOP021");
+    }
+
+    /// Inline code blanks to spaces in `doc.masked`, so `` - `feat` → **Features** `` used to
+    /// look like a bullet immediately followed by an arrow. Real content sits between them.
+    #[test]
+    fn blanked_inline_code_does_not_manufacture_a_marker() {
+        let src = "- `feat` \u{2192} **Features**\n- `fix` \u{2192} **Bug Fixes**\n- `docs` \u{2192} **Documentation**\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn flags_symbol_markers_separately_from_emoji() {
+        let src = "\u{2192} Report the file path.\n\u{2192} Then delete the scratch file.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP021");
+        assert_eq!(
+            diags[0].message,
+            "technical symbol used as heading / list marker"
+        );
+    }
+
+    /// Separate counters: one emoji and one symbol are one of each, not two of anything.
+    #[test]
+    fn one_emoji_plus_one_symbol_does_not_reach_either_threshold() {
+        let src = "- \u{1F680} Ship it fast.\n\u{2192} Then report the path.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// `\p{Emoji_Presentation}` misses text-default emoji (Emoji=Yes, needs U+FE0F to render
+    /// colored); they are allow-listed explicitly.
+    #[test]
+    fn flags_text_default_emoji_missed_by_the_property_class() {
+        let src = "- \u{26A0} Check the quota first.\n- \u{2714} Then confirm the rollout.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].message, "emoji used as heading / list marker");
+    }
+
+    #[test]
+    fn mid_sentence_arrows_and_excluded_symbols_are_not_markers() {
+        for src in [
+            // Technical notation, not a marker: the arrow is not in marker position.
+            "The pipeline maps input \u{2192} output.\nIt then maps output \u{2192} report.\nFinally report \u{2192} archive.\n",
+            // U+00BB is quotation punctuation.
+            "\u{00BB} First quoted line.\n\u{00BB} Second quoted line.\n\u{00BB} Third quoted line.\n",
+            // Box drawing is structural ASCII art, a different pattern entirely.
+            "\u{250C} root\n\u{251C} child\n\u{2514} leaf\n",
+        ] {
+            assert!(
+                diagnostics_for(src)
+                    .iter()
+                    .all(|d| !d.message.contains("marker")),
+                "flagged as a marker: {src:?}"
+            );
+        }
     }
 
     #[test]

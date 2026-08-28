@@ -68,6 +68,10 @@ fn is_table_line(line: &str) -> bool {
 pub(crate) struct Block {
     pub(crate) text: String,
     pub(crate) first_byte: usize,
+    /// Exclusive end in the ORIGINAL document. `text` is joined and trimmed, so its length does
+    /// not map back to source bytes; callers that need to test "is this byte inside prose?"
+    /// (see rules::synonym_rotation) need the real span.
+    pub(crate) end_byte: usize,
 }
 
 /// All paragraph blocks in the document: maximal contiguous non-blank line runs, excluding
@@ -115,7 +119,11 @@ pub(crate) fn paragraph_blocks(doc: &ProseDoc) -> Vec<Block> {
             }
             text.push_str(line.trim());
         }
-        blocks.push(Block { text, first_byte });
+        blocks.push(Block {
+            text,
+            first_byte,
+            end_byte: spans[end - 1].1,
+        });
     }
     blocks
 }

@@ -29,13 +29,43 @@ pub struct Baseline {
 /// import above it is the same finding. Digits are normalized out for the same reason -- a density
 /// rule's "7 occurrences vs threshold 5" would otherwise un-baseline itself the moment the count
 /// shifted by one, which is exactly the noise a baseline exists to absorb.
+///
+/// The path is `./`-stripped for the same reason `per-file-ignores` strips it (see
+/// `paths::strip_dot_slash`): a walk of `.` yields `./x.md` while naming the file yields `x.md`,
+/// so a baseline written from `git ls-files` wouldn't match a `stopslop .` run and every accepted
+/// finding would come back.
 pub fn fingerprint(d: &Diagnostic) -> String {
     let message: String = d
         .message
         .chars()
         .map(|c| if c.is_ascii_digit() { '#' } else { c })
         .collect();
-    format!("{}|{}|{}", d.code, d.path, message)
+    format!(
+        "{}|{}|{}",
+        d.code,
+        crate::paths::strip_dot_slash(&d.path),
+        message
+    )
+}
+
+/// Re-keys a loaded baseline through the same `./`-stripping the fingerprint now applies, so
+/// baselines written before that normalization keep matching. Without this the fix would
+/// invalidate every existing `./`-keyed baseline -- the exact failure it exists to cure.
+fn normalize_keys(accepted: BTreeMap<String, usize>) -> BTreeMap<String, usize> {
+    let mut out: BTreeMap<String, usize> = BTreeMap::new();
+    for (key, count) in accepted {
+        let normalized = match key.split_once('|') {
+            Some((code, rest)) => match rest.split_once('|') {
+                Some((path, message)) => {
+                    format!("{code}|{}|{message}", crate::paths::strip_dot_slash(path))
+                }
+                None => key,
+            },
+            None => key,
+        };
+        *out.entry(normalized).or_insert(0) += count;
+    }
+    out
 }
 
 impl Baseline {
@@ -46,8 +76,11 @@ impl Baseline {
                 path.display()
             )
         })?;
-        serde_json::from_str(&text)
-            .map_err(|e| anyhow::anyhow!("parsing baseline {}: {e}", path.display()))
+        let b: Baseline = serde_json::from_str(&text)
+            .map_err(|e| anyhow::anyhow!("parsing baseline {}: {e}", path.display()))?;
+        Ok(Baseline {
+            accepted: normalize_keys(b.accepted),
+        })
     }
 
     /// Writes `diags` as the accepted set. Returns the total number of findings recorded.
@@ -129,6 +162,36 @@ mod tests {
             fingerprint(&a),
             fingerprint(&diag("SLOP016", "a.md", 1, "cliché"))
         );
+    }
+
+    #[test]
+    fn fingerprint_ignores_dot_slash_prefix() {
+        assert_eq!(
+            fingerprint(&diag("SLOP017", "x.md", 1, "density high")),
+            fingerprint(&diag("SLOP017", "./x.md", 9, "density high"))
+        );
+    }
+
+    #[test]
+    fn baseline_absorbs_across_path_spellings() {
+        // Written from `git ls-files` (bare paths), read back from `stopslop .` (./ paths).
+        let written = baseline_of(&[diag("SLOP017", "x.md", 1, "density high")]);
+        assert!(written
+            .filter(vec![diag("SLOP017", "./x.md", 4, "density high")])
+            .is_empty());
+
+        // And a 0.5.1-era baseline file, whose keys were written with the ./ still on them, must
+        // keep absorbing after the upgrade. Built as a raw key, not via `fingerprint`, since
+        // `fingerprint` now strips the prefix and would make this assertion vacuous.
+        let legacy = Baseline {
+            accepted: normalize_keys(BTreeMap::from([(
+                "SLOP017|./x.md|density high".to_string(),
+                1,
+            )])),
+        };
+        assert!(legacy
+            .filter(vec![diag("SLOP017", "x.md", 4, "density high")])
+            .is_empty());
     }
 
     fn baseline_of(diags: &[Diagnostic]) -> Baseline {

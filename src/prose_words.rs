@@ -79,8 +79,13 @@ pub static FILLER_ADVERBS: LazyLock<Regex> = LazyLock::new(|| {
 // to a comment-marker line start; residue.rs matches anywhere in the masked prose stream), so
 // each compiles its own `Regex` around this shared alternation instead of sharing a `LazyLock`.
 // Both ASCII `'` and U+2019 `'` are covered for the two "let's ..." members.
+//
+// `step 1:` is NOT a member here: unlike the rest of the panel it has a legitimate reading
+// (numbered procedural writing), so it needs position context that differs per consumer and
+// can't come from a shared alternation. preamble.rs keeps it inline at comment-leader position;
+// residue.rs owns `RE_NUMBERED_STEP` for the markdown case.
 pub const REASONING_CHAIN_FRAGMENT: &str =
-    "let(?:'|\u{2019})s think|let me think|thinking through this|step 1:|breaking this down|first, let(?:'|\u{2019})s consider";
+    "let(?:'|\u{2019})s think|let me think|thinking through this|breaking this down|first, let(?:'|\u{2019})s consider";
 
 // SLOP015 — adjacent hedge stack (case-insensitive). Consumer: rules::hedging. Checked
 // independent of the density gate: two hedge words stacked back to back is a defect on a SINGLE
@@ -237,9 +242,11 @@ mod tests {
         let re = Regex::new(&format!("(?i){REASONING_CHAIN_FRAGMENT}")).unwrap();
         assert!(re.is_match("let's think about this differently"));
         assert!(re.is_match("let\u{2019}s think about this differently"));
-        assert!(re.is_match("Step 1: parse the input"));
         assert!(re.is_match("breaking this down further"));
         assert!(!re.is_match("we thought this through carefully"));
+        // "step 1:" deliberately left out: it needs per-consumer position context, so each
+        // consumer owns it (see the fragment's doc comment).
+        assert!(!re.is_match("Step 1: parse the input"));
     }
 
     #[test]
