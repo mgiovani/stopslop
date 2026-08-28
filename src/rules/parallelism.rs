@@ -2,7 +2,7 @@ use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::Lang;
 use crate::prose::ProseDoc;
-use crate::prose_words::{NEGATIVE_PARALLELISM, RULE_OF_THREE, TRAILING_PARTICIPLE};
+use crate::prose_words::{CLAUSE_MARKER, NEGATIVE_PARALLELISM, RULE_OF_THREE, TRAILING_PARTICIPLE};
 use crate::registry::RuleDef;
 use regex::Regex;
 
@@ -118,7 +118,12 @@ fn count_scoped_filtered(
 ///    is clear, concise, and correct") reads as a tail and is skipped. Acceptable on a density
 ///    rule that needs three matches to fire; tighten only if it shows up in practice.
 ///
-/// 2. **Not a proper-noun list.** Two or more of the three items *beginning* with a capitalized
+/// 2. **Items are phrases, not clauses.** An item carrying a finite verb or subject pronoun
+///    (`prose_words::CLAUSE_MARKER`) makes this a compound sentence, not an enumeration:
+///    "...findings from one rule, it absorbs exactly three, and a fourth is reported" is three
+///    clauses joined by commas.
+///
+/// 3. **Not a proper-noun list.** Two or more of the three items *beginning* with a capitalized
 ///    word is a list of names ("GitHub, GitLab, and Bitbucket"), not rhetoric. Counting items
 ///    rather than tokens keeps acronyms mid-item ("the API is clear, concise, and correct") and
 ///    sentence-initial capitals ("Clear, concise, and correct prose wins") from tripping it.
@@ -132,8 +137,22 @@ fn is_rhetorical_tricolon(masked: &str, range: std::ops::Range<usize>) -> bool {
         return false;
     }
 
-    let capitalized_items = masked[range]
-        .splitn(3, ',')
+    let items: Vec<&str> = masked[range].splitn(3, ',').collect();
+
+    // Only the MIDDLE item is checked. It alone is bounded by a comma on both sides; the outer
+    // two are bounded by the regex's 4-word run and routinely spill into the surrounding
+    // sentence -- item 1 of "The output should be clear, concise, and correct" is "The output
+    // should be clear" (sweeping up "should be"), and item 3 of "...dynamic imports, and unusual
+    // build setups can" swallows "can". Judging either would reject ordinary enumerations.
+    if items
+        .get(1)
+        .is_some_and(|item| CLAUSE_MARKER.is_match(item))
+    {
+        return false;
+    }
+
+    let capitalized_items = items
+        .iter()
         .filter(|item| {
             item.split_whitespace()
                 .find(|w| !matches!(*w, "and" | "or"))
@@ -191,6 +210,23 @@ mod tests {
     fn hyphenated_token_does_not_hide_a_list_tail() {
         let src = "It covers hedging, overused vocabulary, boldface overuse, smart quotes, heading formatting, colon reveals, filler and adverb density, weak-verb phrasing, dramatic fragmentation, and mechanical uniformity.\nIt also covers alpha, beta, gamma, delta, epsilon, zeta-eta phrasing, theta density, and iota.\nAnd it covers one, two, three, four, five, six-seven forms, eight kinds, and nine.\n";
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// Commas joining clauses are not an enumeration. Found in this repo's own README.
+    #[test]
+    fn compound_sentences_are_not_tricolons() {
+        let src = "If a file has three accepted findings from one rule, it absorbs exactly three, and a fourth is reported.\nWhen the budget runs out for that rule, we report the surplus, and the count ratchets down.\nOnce the cache is warm for a run, it reuses the parse, and a rescan is skipped.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// Only the middle item is judged: the outer two spill into the surrounding sentence, so
+    /// judging them would reject ordinary enumerations that merely sit next to a verb.
+    #[test]
+    fn clause_words_outside_the_middle_item_do_not_reject() {
+        let src = "The output should be clear, concise, and correct.\nA resolver can miss workspace dependencies, dynamic imports, and unusual build setups.\nIt must handle fences, placeholder credentials, and package imports.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP017");
     }
 
     #[test]

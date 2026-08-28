@@ -43,6 +43,15 @@ pub static RULE_OF_THREE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(?:\w+\s+){0,3}\w+,\s+(?:\w+\s+){0,3}\w+,\s+(?:and|or)\s+(?:\w+\s+){0,3}\w+\b")
         .unwrap()
 });
+/// Finite verbs and subject pronouns. An enumeration's items are noun phrases or adjectives
+/// ("clear", "package imports"); an item carrying one of these is a CLAUSE, which makes the whole
+/// match a compound sentence rather than a list -- "...findings from one rule, it absorbs exactly
+/// three, and a fourth is reported" is three clauses, not a tricolon. Consumer:
+/// rules::parallelism.
+pub static CLAUSE_MARKER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(is|are|was|were|be|been|being|has|have|had|does|do|did|will|would|shall|should|can|could|may|might|must|it|they|we|you|i)\b").unwrap()
+});
+
 pub static NEGATIVE_PARALLELISM: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(\bnot only\b[^.?!\n]{0,80}?\bbut(\s+also)?\b|\bnot just\b[^.?!\n]{0,60}?\b(but|it'?s)\b|\bit'?s not (just|only)\b[^.?!\n]{0,60}?\bit'?s\b|\bnot an? \w+[^,.?!\n]{0,40},\s*but\b)").unwrap()
 });

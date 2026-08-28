@@ -32,6 +32,15 @@ pub struct ListBlock {
 // borrows `&str` slices of the original source (TextNode's `text` field is `&'a str`), and Rust
 // struct definitions cannot elide a borrowed lifetime the way fn signatures can. `ProseDoc<'a>`
 // tied to the same `'a` as `LintContext<'a>` is the smallest change that actually compiles.
+/// One inline `code` span: its byte range in the source, and how many whitespace-separated
+/// tokens it held before being blanked.
+#[derive(Debug, Clone, Copy)]
+pub struct CodeSpan {
+    pub start: usize,
+    pub end: usize,
+    pub words: usize,
+}
+
 pub struct ProseDoc<'a> {
     /// Same byte length as `source`. Fenced code blocks (``` / ~~~) and inline `code` spans are
     /// blanked to ASCII spaces; every '\n' is preserved, so byte offsets AND line/col map 1:1
@@ -45,6 +54,10 @@ pub struct ProseDoc<'a> {
     /// Byte ranges of URLs / inline-link targets / autolinks / reference defs. NOT blanked in
     /// `masked` (rules opt in/out via `in_url`).
     pub url_spans: Vec<(usize, usize)>,
+    /// Inline `code` spans, which ARE blanked in `masked`. Kept so rules that key on position or
+    /// length can substitute a placeholder instead of reading the blanks as absence (see
+    /// `blank_inline_code`).
+    pub code_spans: Vec<CodeSpan>,
     /// Word count of `masked` EXCLUDING the frontmatter span. Denominator for every density
     /// rule. (Code is already blanked -> contributes 0 words.)
     pub words: usize,
@@ -86,7 +99,7 @@ impl<'a> ProseDoc<'a> {
             .map(|(&f, &i)| f || i)
             .collect();
 
-        blank_inline_code(&line_spans, &mut masked_bytes);
+        let code_spans = blank_inline_code(&line_spans, &mut masked_bytes);
         let masked =
             String::from_utf8(masked_bytes).expect("masking only overwrites char-boundary spans");
 
@@ -105,6 +118,7 @@ impl<'a> ProseDoc<'a> {
             headings,
             list_blocks,
             url_spans,
+            code_spans,
             words,
             ignore_comments,
             line_starts,
@@ -386,23 +400,42 @@ static INLINE_CODE_RE: LazyLock<Regex> =
 /// fence-blanked `masked_bytes`. Multi-line inline spans are not supported.
 /// ponytail: inline code assumed single-line; multi-line inline spans are rare — upgrade to a
 /// CommonMark inline scan only if a fixture demands it.
-fn blank_inline_code(line_spans: &[(usize, usize)], masked_bytes: &mut [u8]) {
+/// Returns the blanked spans, so rules that care about POSITION or LENGTH can tell "there was
+/// code here" from "there was nothing here". Blanking to spaces alone loses that distinction and
+/// has produced false positives three separate times: an arrow after a blanked span looked like a
+/// bullet's marker (SLOP021), and a sentence opening with code read as opening with its next word
+/// while counting zero words for the code (SLOP030, both sub-checks).
+fn blank_inline_code(line_spans: &[(usize, usize)], masked_bytes: &mut [u8]) -> Vec<CodeSpan> {
+    let mut spans = Vec::new();
     for &(ls, le) in line_spans {
-        let ranges: Vec<(usize, usize)> = {
+        // Read BEFORE blanking: this is the only point where the span's real token count is
+        // still available, and a reader counts `--format json` as two words, not one.
+        let ranges: Vec<CodeSpan> = {
             let line_str = std::str::from_utf8(&masked_bytes[ls..le]).unwrap();
             INLINE_CODE_RE
                 .find_iter(line_str)
-                .map(|m| (ls + m.start(), ls + m.end()))
+                .map(|m| CodeSpan {
+                    start: ls + m.start(),
+                    end: ls + m.end(),
+                    words: m
+                        .as_str()
+                        .trim_matches('`')
+                        .split_whitespace()
+                        .count()
+                        .max(1),
+                })
                 .collect()
         };
-        for (s, e) in ranges {
-            for b in &mut masked_bytes[s..e] {
+        for span in ranges {
+            for b in &mut masked_bytes[span.start..span.end] {
                 if *b != b'\n' {
                     *b = b' ';
                 }
             }
+            spans.push(span);
         }
     }
+    spans
 }
 
 /// ATX heading: `^\s{0,3}#{1,6}\s+.*`. `text` = the line with leading #'s/ws and trailing #'s/ws
