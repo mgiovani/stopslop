@@ -31,22 +31,17 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let t = a + b + c;
     let s = b + c;
 
-    // s>=2 and a>=3 are the only two independently reachable trigger conditions. A prior
-    // `t >= t_floor || ... || b >= 3 || c >= 3` formulation was dead weight: t_floor is always
-    // >= 4 (`max(4, ...)`), and t = a + s, so t >= t_floor while a <= 2 and s <= 1 would need
-    // t <= 3 >= 4 -- impossible; i.e. t >= t_floor can only ever be true when a >= 3 or s >= 2
-    // already is. Likewise b >= 3 implies s = b + c >= 3 >= 2, and c >= 3 implies the same. Every
-    // one of those three disjuncts was unreachable except through a>=3/s>=2, so it's the same
-    // truth table with three fewer, untestable-in-isolation branches. ponytail: deleted as dead
-    // disjuncts (proof, not just missing test coverage).
+    // Replaces `t>=t_floor || b>=3 || c>=3`: t_floor>=4 and t=a+s make those disjuncts provably
+    // unreachable unless a>=3 or s>=2 already holds, so removal is proven dead code, not missing
+    // coverage.
     let flagged = s >= 2 || a >= 3;
     if !flagged {
         return;
     }
 
-    // Anchor and hint follow the signal that actually fired. Anchoring at the minimum byte across
-    // all three and always printing the participial hint meant a run triggered by tricolons
-    // pointed at an enumeration and advised cutting a participle that wasn't there.
+    // Anchor and hint follow whichever signal fired: the old min-byte anchor plus always-print
+    // participial hint could point a tricolon run at an enumeration with a nonexistent
+    // participle to cut.
     let (first_byte, fix) = if s >= 2 {
         (
             [b_first, c_first].into_iter().flatten().min().unwrap(),
@@ -128,9 +123,8 @@ fn count_scoped_filtered(
 ///    rather than tokens keeps acronyms mid-item ("the API is clear, concise, and correct") and
 ///    sentence-initial capitals ("Clear, concise, and correct prose wins") from tripping it.
 fn is_rhetorical_tricolon(masked: &str, range: std::ops::Range<usize>) -> bool {
-    // `\w` excludes `-` and `/`, so a match can start mid-token: in "weak-verb phrasing, ..." the
-    // match begins at "verb" and the char right before it is `-`, not the `,` that marks this as
-    // a longer list's tail. Walk back over the rest of the token before looking for that comma.
+    // `\w` excludes `-`/`/`, so a match can start mid-token ("weak-verb" matches at "verb");
+    // walk back over the rest of the token before checking for the list-tail comma.
     let before = masked[..range.start]
         .trim_end_matches(|c: char| c.is_alphanumeric() || c == '-' || c == '/' || c == '_');
     if before.trim_end().ends_with(',') {
@@ -139,11 +133,9 @@ fn is_rhetorical_tricolon(masked: &str, range: std::ops::Range<usize>) -> bool {
 
     let items: Vec<&str> = masked[range].splitn(3, ',').collect();
 
-    // Only the MIDDLE item is checked. It alone is bounded by a comma on both sides; the outer
-    // two are bounded by the regex's 4-word run and routinely spill into the surrounding
-    // sentence -- item 1 of "The output should be clear, concise, and correct" is "The output
-    // should be clear" (sweeping up "should be"), and item 3 of "...dynamic imports, and unusual
-    // build setups can" swallows "can". Judging either would reject ordinary enumerations.
+    // Only the middle item is checked: it alone is comma-bounded on both sides. The outer two
+    // spill into the surrounding sentence (the regex's 4-word run), so judging them would
+    // reject ordinary enumerations.
     if items
         .get(1)
         .is_some_and(|item| CLAUSE_MARKER.is_match(item))

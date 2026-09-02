@@ -233,7 +233,8 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP039 | structure | Pass-through wrapper function | B, on  | TS, TSX, Python, Go, Rust | A function whose whole body forwards its own parameters, unchanged, to another function |
 | SLOP040 | structure | Single-implementation interface / abstract | B, on  | TS, TSX, Python | An interface or abstract class with exactly one implementor in the same file: abstraction with no second user |
 | SLOP041 | verbosity | Mechanical uniformity (templated prose) | B, on  | Markdown, MDX, Text, reST | A document of 200+ words where at least 2 of 3 document-level signals trip together: flat sentence-length burstiness, low type-token vocabulary ratio, and repeated word-trigrams |
-| SLOP042 | verbosity | Comment that restates the code | B, on  | TS, TSX, Python, Go, Rust | A plain comment of 2 to 12 words whose content words all already appear in the one statement it sits on, or only name the construct that statement is (`// increment the counter` above `counter += 1`), so it adds nothing the code doesn't say. Doc comments (including plain comments on constants and class attributes), pragmas, banners, questions, comments with code symbols or quotes in them, trailing comments outside a function body, and any comment carrying a *why* (`because`, `otherwise`, `workaround`, a URL, an issue number) or a condition or warning (`when`, `unless`, `careful`, `not`, `only`) are exempt |
+| SLOP042 | verbosity | Comment that restates the code | B, on  | TS, TSX, Python, Go, Rust | A plain comment of 2 to 12 words whose content words all already appear in the one statement it sits on, or only name the construct that statement is (`// increment the counter` above `counter += 1`), so it adds nothing the code doesn't say. Doc comments (and the plain comments that serve as docs where a language has no doc syntax: Go file scope and struct fields, Python module and class attributes), pragmas, banners, questions, comments with code symbols or quotes in them, comments naming an identifier the statement lacks, and any comment carrying a *why* (`because`, `otherwise`, `workaround`, a URL, an issue number), a constraint (`not`, `only`, `unless`, `before`) or a warning (`careful`, `subtle`) are exempt. Inflection is ignored (`parsed` matches `parse_header`) but abbreviations are not (`max` is not `maximum`) |
+| SLOP043 | verbosity | Comment that runs long | B, on  | TS, TSX, Python, Go, Rust | A plain comment block (consecutive comment lines count as one) of more than 40 words. A reason fits in a sentence or two; a comment that needs three full lines is narrating the code or carrying a design note that belongs in a doc comment, the README or the commit message. Doc comments, godoc (any Go comment outside a function body), license headers, generated files and commented-out code are exempt |
 
 Every rule is exactly one of three states, `--list-rules` prints the DEFAULT
 column so you can check any given rule at a glance:
@@ -352,7 +353,7 @@ stopslop: warning: src/util.ts:14: ai-slop-ignore (SLOP018) suppressed nothing
 ## Path exemptions
 
 Rules that are path-gated (SLOP005, 006, 008, 009, 010, 037, 038, 039, 040,
-042) don't run inside directories or files that look like tests or
+042, 043) don't run inside directories or files that look like tests or
 generated/vendored code, since empty catches, broad excepts, unresolved
 imports, the stdlib/wrapper/single-implementation heuristics, and
 `// Check nfkd`-style test-section labels are all legitimately common there:

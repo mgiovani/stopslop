@@ -17,17 +17,9 @@ pub static RULE: RuleDef = RuleDef {
 
 static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*```[A-Za-z0-9_+-]*\s*$").unwrap());
 
-// The one raw-line rule: scans source text directly (not the AST), then exempts fence lines
-// genuinely enclosed by a comment/string node (doctests, docstrings, block comments).
-//
-// ponytail: deliberately NOT ctx.in_comment_or_string(first_backtick_byte) here. A bare ``` run
-// with no other backticks nearby gets mis-lexed by TS/Go/Python's backtick-aware grammars as a
-// spurious same-line "string" starting exactly at that backtick (error-recovery artifact) —
-// in_comment_or_string would then call the very fence we're hunting for "inside a string" and
-// miss it, defeating the rule's main real-world case (vscode#295126: whole-file fence wrap).
-// Instead require a comment/string node to contain the FULL line (start <= line-start AND
-// end >= line-end): true for a real multi-line doc-comment/docstring/block-comment, never true
-// for a same-line parse artifact.
+// Deliberately not ctx.in_comment_or_string(byte): grammars mis-lex a bare ``` as a same-line
+// string start, so that check would call the fence itself "in a string" and miss it
+// (vscode#295126). Require the enclosing node to contain the FULL line instead.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let mut byte_offset = 0usize;
     for (idx, line) in ctx.source.split('\n').enumerate() {

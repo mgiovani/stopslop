@@ -123,9 +123,9 @@ pub fn extract<'t, 'a>(
     let mut comments = Vec::new();
     let mut strings = Vec::new();
     let mut c = tree.walk();
-    // Node/TreeCursor borrow from `tree` (lifetime 't), independent of `source`'s lifetime 'a.
-    // Byte offsets from the tree apply directly to `source` since it's the exact text that was
-    // parsed, so we don't need the two lifetimes to unify — only extracted `&'a str` slices matter.
+    // Node/TreeCursor borrows `tree` (lifetime 't), independent of `source`'s lifetime 'a. Tree
+    // byte offsets apply directly to `source` since it's the exact parsed text, so the two
+    // lifetimes don't need to unify.
     walk_tree(&mut c, &mut |node| {
         if !node.is_named() {
             return;

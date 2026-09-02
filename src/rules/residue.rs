@@ -91,9 +91,9 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     ]
     .into_iter()
     .flat_map(|re| re.find_iter(&doc.masked).map(|m| m.start()));
-    // A `Step N:` is structure, not residue, when it sits at the start of its line behind at most
-    // markdown markers. Both regexes end at the same byte on such a line, so matching end offsets
-    // is what distinguishes the two readings.
+    // A `Step N:` is structure, not residue, when it opens its line behind markdown markers.
+    // Both regexes end at the same byte there, so matching end offsets is what distinguishes
+    // the two readings.
     let structural_ends: std::collections::HashSet<usize> = RE_NUMBERED_STEP
         .find_iter(&doc.masked)
         .map(|m| m.end())

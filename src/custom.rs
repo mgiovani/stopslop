@@ -16,11 +16,10 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use regex::Regex;
 
 pub struct CustomRule {
-    // Carries code/name/tier so `Diagnostic::at`/`at_fix` (which only read those three fields)
-    // work unmodified. `langs`/`default_on`/`path_gated`/`check` are never read: custom rules are
-    // dispatched by `engine`'s dedicated second pass, not the `RULES` loop, and language scope is
-    // decided by `files`/`ctx.prose` below instead. ponytail: a dummy `RuleDef` is smaller than
-    // teaching `Diagnostic::at` a second, `CustomRule`-shaped input for three fields.
+    // Carries code/name/tier so `Diagnostic::at`/`at_fix` work unmodified; other fields go
+    // unused since custom rules dispatch through `engine`'s own pass, not `RULES`, with
+    // `files`/`ctx.prose` deciding language scope. ponytail: cheaper than a second
+    // `Diagnostic::at` shape.
     def: RuleDef,
     message: &'static str,
     fix: Option<&'static str>,
@@ -88,10 +87,9 @@ fn build_one(index: usize, c: &CustomRuleConfig) -> anyhow::Result<CustomRule> {
         })?)
     };
 
-    // Config loads exactly once per process, so leaking these `String`s to `&'static str` is the
-    // whole cost -- never repeated, never freed until exit. ponytail: the alternative is
-    // `Diagnostic::code`/`.name` becoming `Cow<'static, str>`, which touches every rule module and
-    // every test helper's `Diagnostic { .. }` literal for no runtime benefit.
+    // Config loads once per process, so leaking to `&'static str` is free -- never repeated,
+    // freed only at exit. ponytail: `Cow<'static, str>` is the alternative, but touches every
+    // rule module for no benefit.
     let code: &'static str = Box::leak(format!("SLOP{}", 900 + index).into_boxed_str());
     let name: &'static str = Box::leak(format!("custom rule: {}", c.pattern).into_boxed_str());
     let message: &'static str = Box::leak(c.message.clone().into_boxed_str());

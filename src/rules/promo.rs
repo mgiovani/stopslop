@@ -16,14 +16,9 @@ pub static RULE: RuleDef = RuleDef {
     check,
 };
 
-// Marketing-brochure register in technical prose (case-insensitive, word-bounded).
-// Two catalog members are deliberately OMITTED because an existing panel already owns the
-// exact span:
-// - "boasts an?" is dropped: `boast(s|ed|ing)?` is already matched bare by prose_words.rs's
-//   VOCAB_TIER1 (SLOP016) -- adding it here would double-flag "boasts" under two rules.
-// - "game-chang(er|ing)" is narrowed to just "game-changing": the "game[ -]changer"/"game
-//   changer" form is already matched by prose_words.rs's CLICHE_PHRASES (SLOP014); only the
-//   "-changing" inflection is untaken.
+// "boasts" and "game[-]changer" are omitted: VOCAB_TIER1 (SLOP016) and CLICHE_PHRASES (SLOP014)
+// already match them, so including them here would double-flag. Only the untaken
+// "game-changing" inflection stays.
 static PROMO_PHRASES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(nestled (?:in|among|between)|in the heart of|renowned for|world-renowned|breathtaking|must-visit|must-have|stunning|state-of-the-art|best-in-class|industry-leading|award-winning|unparalleled|unrivaled|second to none|a commitment to excellence|natural beauty|a hidden gem|one-stop shop|game-changing|next-generation|turnkey|rich (?:history|heritage|tradition))\b")
         .unwrap()

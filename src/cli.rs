@@ -179,10 +179,9 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         }
         None => walk::lint_paths(&paths, &config.exclude, &settings)?,
     };
-    // Applied right after the walk, before either baseline step: a path-scoped ignore composes
-    // with a baseline (both subtract findings) instead of the two fighting over which one "owns"
-    // a finding, and a fresh `--write-baseline` shouldn't fossilize findings the config already
-    // declared irrelevant for that path.
+    // Applied before baseline so a path-scoped ignore composes with it instead of the two
+    // fighting over ownership, and `--write-baseline` doesn't fossilize findings the config
+    // already excluded.
     let diags = apply_per_file_ignores(diags, &config.per_file_ignores)?;
 
     if let Some(path) = cli.write_baseline {

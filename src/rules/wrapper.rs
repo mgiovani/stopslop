@@ -383,10 +383,9 @@ fn rust_sole_return_call(body: Node) -> Option<Node> {
     match stmts[0].kind() {
         // implicit tail-expression return: `g(a, b)`, no semicolon, bare in the block
         "call_expression" => Some(stmts[0]),
-        // `return g(a, b);`: the trailing semicolon wraps the return_expression in an
-        // expression_statement. NOT unwrapped for a bare call_expression here -- `g(a, b);`
-        // (semicolon, no `return`) discards the value and returns unit, so it must stay
-        // disqualified rather than being treated as an equivalent forward.
+        // `g(a, b);` (semicolon, no `return`) discards the value and returns unit --
+        // semantically different from a forward, so it must stay disqualified rather than
+        // treated as equivalent.
         "expression_statement" => {
             let inner = stmts[0].named_child(0)?;
             if inner.kind() != "return_expression" {

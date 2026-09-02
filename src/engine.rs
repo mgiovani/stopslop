@@ -27,11 +27,9 @@ pub fn resolve_enabled(
     custom_codes: &[&'static str],
     check_imports: bool,
 ) -> HashSet<&'static str> {
-    // Group names expand to their member codes first, so everything downstream only ever sees
-    // codes and prefixes -- `--select rhetoric` and `--select SLOP014,SLOP017,...` are one path.
-    // `ALL` is expanded by `groups::expand` against the static `RULES` table only (it doesn't
-    // know about custom codes), so append custom codes here whenever a list literally asked for
-    // `ALL` -- the one place custom codes need to ride along with that selector.
+    // Groups expand to member codes first, so downstream only sees codes/prefixes.
+    // `groups::expand`'s `ALL` only knows the static `RULES` table, so custom codes are
+    // appended here for that one selector.
     let expand = |pats: &[String]| -> Vec<String> {
         let mut out = crate::groups::expand(pats);
         if pats.iter().any(|p| p == "ALL") {
