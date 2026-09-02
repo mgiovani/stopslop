@@ -123,22 +123,50 @@ const BANNER_PREFIXES: &[char] = &['-', '=', '*', '#', '~', '_', '+', '|'];
 static URL_OR_ISSUE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"https?://|www\.|#\d+").unwrap());
 
-/// Visits every node once via `ctx.walk`; for each node with named children, scans that node's
-/// own children ONCE (an index over a collected `Vec`, never `next_named_sibling`/
-/// `prev_named_sibling`, which each cost O(index-in-parent) in tree-sitter and turned a run of n
-/// sibling comments into O(n^2)). A comment block's span `[i, j]` is found by extending `j`
-/// forward; the outer loop then jumps straight to `j + 1`, so every child is visited exactly once
-/// overall.
+// Every node whose children can be statements, so every parent a flaggable comment can have
+// (an anchor must be statement-like). The Python compound statements are here because
+// tree-sitter-python hoists a comment that opens a body out of the `block` and makes it a
+// sibling of that block. Kinds a grammar lacks resolve to nothing in `ctx.nodes`.
+const STATEMENT_CONTAINERS: &[&str] = &[
+    "source_file",
+    "module",
+    "program",
+    "block",
+    "statement_list",
+    "statement_block",
+    "declaration_list",
+    "class_body",
+    "switch_case",
+    "switch_default",
+    "expression_case",
+    "default_case",
+    "type_case",
+    "communication_case",
+    "function_definition",
+    "class_definition",
+    "if_statement",
+    "elif_clause",
+    "else_clause",
+    "for_statement",
+    "while_statement",
+    "try_statement",
+    "except_clause",
+    "finally_clause",
+    "with_statement",
+    "match_statement",
+    "case_clause",
+];
+
+/// Scans each container's children ONCE from a collected `Vec`. Never `next_named_sibling`,
+/// `prev_named_sibling` or `parent`: each costs O(index-in-parent) in tree-sitter, which turned
+/// a run of n sibling comments into O(n^2). A comment block's span `[i, j]` is found by
+/// extending `j` forward; the loop then jumps straight to `j + 1`.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|parent| {
-        if parent.named_child_count() == 0 {
-            return;
-        }
+    for parent in ctx.nodes(STATEMENT_CONTAINERS) {
         // Godoc mandates a comment on every exported identifier at file scope, so any comment
-        // there is redundant-but-undeletable rather than slop -- skip the whole scope at once
-        // instead of re-checking each comment's own parent kind.
+        // there is redundant-but-undeletable rather than slop -- skip the whole scope at once.
         if ctx.lang == Lang::Go && parent.kind() == "source_file" {
-            return;
+            continue;
         }
         let mut cursor = parent.walk();
         let kids: Vec<Node> = parent.named_children(&mut cursor).collect();
@@ -168,7 +196,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             }
             i = j + 1;
         }
-    });
+    }
 }
 
 fn evaluate_block(ctx: &LintContext, kids: &[Node], i: usize, j: usize) -> Option<(usize, usize)> {
@@ -498,11 +526,11 @@ mod tests {
         let mut parser = Parser::new();
         parser.set_language(&ts_language(lang)).unwrap();
         let tree = parser.parse(src, None).unwrap();
-        let (comments, strings) = context::extract(&tree, src, lang);
+        let (comments, strings, index) = context::extract(&tree, src, lang);
         let ctx = LintContext {
             display_path: "test".into(),
             source: src,
-            tree: Some(&tree),
+            index: Some(&index),
             lang,
             comments: &comments,
             strings: &strings,
