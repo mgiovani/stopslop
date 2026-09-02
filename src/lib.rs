@@ -21,4 +21,4 @@ pub use diagnostic::{Diagnostic, Tier};
 pub use engine::{lint_file, resolve_enabled, Settings};
 pub use lang::Lang;
 pub use rules::imports_data;
-pub use walk::lint_paths;
+pub use walk::{lint_paths, Stats};

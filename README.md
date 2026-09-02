@@ -69,6 +69,7 @@ cargo install --path .
 stopslop                          # lint the current directory
 stopslop src/ lib/                 # lint specific paths
 stopslop --format json .           # machine-readable output
+stopslop --stats .                 # files/lines scanned, wall time, throughput (stderr)
 stopslop --select SLOP001          # run only the elision rule
 stopslop --select rhetoric         # run one rule group (see "Rule groups" below)
 stopslop --select ALL              # every rule (SLOP010 still needs --check-imports)
@@ -89,7 +90,11 @@ Example output:
 `--format json` emits a flat array of findings; `--format sarif` emits a
 SARIF 2.1.0 document for GitHub code scanning and similar tools;
 `--format markdown` emits the findings grouped under one heading per tier, for
-pasting into a PR comment or a report.
+pasting into a PR comment or a report. `--stats` prints a
+files/lines/wall-time/throughput summary to stderr in text and markdown
+modes; with `--format json` the output becomes
+`{"findings": [...], "stats": {...}}`, and with `--format sarif` the same
+object lands in `runs[0].properties.stats`.
 
 ![stopslop --format json output](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/formats.png)
 
