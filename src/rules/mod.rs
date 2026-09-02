@@ -28,6 +28,7 @@ pub mod recap;
 pub mod redundant_dep;
 pub mod reinvent;
 pub mod residue;
+pub mod restate;
 pub mod sentence_length;
 pub mod single_impl;
 pub mod smartquotes;
