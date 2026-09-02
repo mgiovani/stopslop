@@ -10,13 +10,25 @@ migration notes live here.
 - **SLOP042** (`verbosity`, Tier B, on, path-gated): flags a plain source
   comment of 2 to 12 words whose content words all already appear in the
   single statement it annotates, or only name that statement's construct
-  (`// increment the counter` over `counter += 1`). At least half the words
-  must literally occur in the code. Doc comments, pragmas, questions,
-  comments containing code symbols, trailing comments outside a function
-  body, and comments carrying a *why*, a condition, or a warning word are
-  never flagged; consecutive comment lines count as one block, and the anchor
-  is exactly one statement. Usefulness check only: it makes no claim about
-  who wrote the comment.
+  (`// increment the counter` over `counter += 1`). More than half the words
+  must literally occur in the code, inflection aside (`parsed` meets
+  `parse_header`). Never flagged: doc comments, pragmas, questions, comments
+  containing code symbols or an identifier the statement lacks, and comments
+  carrying a *why*, a constraint, or a warning word. Also exempt are the plain
+  comments that serve as docs where a language has no doc syntax (Go file
+  scope and struct fields, Python module and class attributes). Consecutive
+  comment lines count as one block, and the anchor is exactly one statement.
+  Usefulness check only: it makes no claim about who wrote the comment.
+- **SLOP043** (`verbosity`, Tier B, on, path-gated): flags a plain comment
+  block of more than 40 words. Steidl, Hummel and Jürgens (ICPC 2013) found
+  developers keep 30-plus-word inline comments because they carry global
+  information; that is what a doc comment, a README section or a commit
+  message is for, so past three full lines a plain comment is either
+  narrating the code or misfiling a design note. Doc comments, godoc, license
+  headers, generated files and commented-out code are exempt. On human code
+  (cargo registry, CPython, Go stdlib) 6 to 10 percent of plain comment
+  blocks exceed the cap; this repository's own rate was 21 percent before the
+  rule went in, which is the kind of drift it exists to catch.
 - Outdated installs print `stopslop: X is installed, Y is available` to
   stderr once per day, text format only, and only when stderr is a terminal
   and `CI` is unset. `STOPSLOP_NO_UPDATE_CHECK=1` (or `NO_UPDATE_NOTIFIER`)

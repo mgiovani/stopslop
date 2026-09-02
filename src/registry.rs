@@ -61,4 +61,5 @@ pub static RULES: &[&'static RuleDef] = &[
     &crate::rules::single_impl::RULE,      // SLOP040
     &crate::rules::uniformity::RULE,       // SLOP041
     &crate::rules::restate::RULE,          // SLOP042
+    &crate::rules::comment_length::RULE,   // SLOP043
 ];

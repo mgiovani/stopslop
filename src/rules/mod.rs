@@ -3,6 +3,7 @@ pub mod boldface;
 pub mod citation;
 pub mod cliche;
 pub mod colon_reveal;
+pub mod comment_length;
 pub mod contrast;
 pub mod diff_anchor;
 pub mod elision;
