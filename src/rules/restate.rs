@@ -181,6 +181,15 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         if ctx.lang == Lang::Go && parent.kind() == "source_file" {
             continue;
         }
+        let scope = Scope {
+            kind: parent.kind(),
+            python_class_body: ctx.lang == Lang::Python
+                && (parent.kind() == "class_definition"
+                    || (parent.kind() == "block"
+                        && parent
+                            .parent()
+                            .is_some_and(|gp| gp.kind() == "class_definition"))),
+        };
         let mut cursor = parent.walk();
         let kids: Vec<Node> = parent.named_children(&mut cursor).collect();
         let mut i = 0;
@@ -204,7 +213,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
                 }
                 j += 1;
             }
-            if let Some((line, col)) = evaluate_block(ctx, &kids, i, j) {
+            if let Some((line, col)) = evaluate_block(ctx, &kids, i, j, scope) {
                 out.push(Diagnostic::at_fix(rule, ctx, line, col, MSG, FIX));
             }
             i = j + 1;
@@ -212,7 +221,22 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     }
 }
 
-fn evaluate_block(ctx: &LintContext, kids: &[Node], i: usize, j: usize) -> Option<(usize, usize)> {
+/// What `check` already knows about the container being scanned. Threaded down so the anchor
+/// logic never calls `Node::parent()`, which is O(index-in-parent) and so quadratic over a run
+/// of trailing comments (each one is its own block).
+#[derive(Clone, Copy)]
+struct Scope<'a> {
+    kind: &'a str,
+    python_class_body: bool,
+}
+
+fn evaluate_block(
+    ctx: &LintContext,
+    kids: &[Node],
+    i: usize,
+    j: usize,
+    scope: Scope,
+) -> Option<(usize, usize)> {
     let lines: Vec<String> = kids[i..=j]
         .iter()
         .map(|k| normalize_body(ctx.node_text(k)))
@@ -223,15 +247,18 @@ fn evaluate_block(ctx: &LintContext, kids: &[Node], i: usize, j: usize) -> Optio
     }
     let body_raw = lines.join(" ");
     let body = body_raw.to_lowercase();
-    let (anchor, anchor_is_compound) = find_anchor(ctx, kids, i, j)?;
+    let (anchor, anchor_is_compound) = find_anchor(ctx, kids, i, j, scope)?;
     let raw_head = ctx.node_text(&kids[i]).trim_start().to_lowercase();
     if should_skip(&body, &anchor, &raw_head) || names_other_identifier(&body_raw, &anchor) {
         return None;
     }
     // An attribute-assignment comment is doc by convention (Sphinx reads `#:` there) only for a
-    // noun phrase; a code verb in it (e.g. "set the size") forfeits the exemption and is judged
-    // as a restatement.
-    if is_attribute_assignment(&anchor) && !tokenize(&body).iter().any(|w| CODE_VERBS.contains(w)) {
+    // noun phrase; an imperative ("set the size") forfeits the exemption. Only the first word
+    // decides, so "the return status" keeps it.
+    let imperative = tokenize(&body)
+        .first()
+        .is_some_and(|w| CODE_VERBS.contains(w));
+    if is_attribute_assignment(&anchor) && !imperative {
         return None;
     }
 
@@ -274,7 +301,13 @@ fn evaluate_block(ctx: &LintContext, kids: &[Node], i: usize, j: usize) -> Optio
 /// or leading (the statement starting the row right after the block). `None` when neither
 /// applies. The bool says the anchor is a compound statement (its header opens a body we can't
 /// see, so only that header line is returned); a multi-line simple statement is returned whole.
-fn find_anchor(ctx: &LintContext, kids: &[Node], i: usize, j: usize) -> Option<(String, bool)> {
+fn find_anchor(
+    ctx: &LintContext,
+    kids: &[Node],
+    i: usize,
+    j: usize,
+    scope: Scope,
+) -> Option<(String, bool)> {
     let head = kids[i];
     let tail = kids[j];
     let is_trailing_position = i > 0 && {
@@ -286,15 +319,12 @@ fn find_anchor(ctx: &LintContext, kids: &[Node], i: usize, j: usize) -> Option<(
         // A trailing comment on a Go struct field or Python class attribute is that member's
         // doc by convention (godoc; Sphinx) -- undeletable. Rust/TS have `///`/`/** */` for
         // that, so their plain `//` fields are judged normally.
-        let in_body = head.parent().is_some_and(|p| match p.kind() {
-            "block" | "statement_block" => {
-                !(ctx.lang == Lang::Python
-                    && p.parent().is_some_and(|gp| gp.kind() == "class_definition"))
-            }
+        let in_body = match scope.kind {
+            "block" | "statement_block" => !scope.python_class_body,
             "field_declaration_list" => ctx.lang == Lang::Rust,
             "class_body" | "interface_body" => matches!(ctx.lang, Lang::Ts | Lang::Tsx),
             _ => false,
-        });
+        };
         if !in_body {
             return None;
         }
@@ -320,7 +350,7 @@ fn find_anchor(ctx: &LintContext, kids: &[Node], i: usize, j: usize) -> Option<(
     if !is_statement_like(ctx.lang, next.kind()) {
         return None; // Go struct field, match arm, attribute, ... -- not a statement to restate
     }
-    if is_definition_doc_anchor(ctx.lang, next) {
+    if is_definition_doc_anchor(ctx.lang, next, scope) {
         return None; // a const/module-level/class-attribute declaration is a doc by convention
     }
     // `// Exception types` over the first of several consts on consecutive lines labels the
@@ -359,12 +389,34 @@ const DECLARATION_KINDS: &[&str] = &[
 /// the anchor doesn't carry it whole, the comment points at something else and its tokens
 /// matching the code piecewise (`f`, `add`, `seal`) is coincidence.
 fn names_other_identifier(body_raw: &str, anchor: &str) -> bool {
-    let anchor = anchor.to_lowercase();
+    let anchor_idents: Vec<Vec<String>> = anchor
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .filter(|s| !s.is_empty())
+        .map(ident_tokens)
+        .collect();
     body_raw
         .split_whitespace()
         .map(|w| w.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_'))
         .filter(|w| w.len() > 1 && looks_like_identifier(w))
-        .any(|w| !anchor.contains(&w.to_lowercase()))
+        .map(ident_tokens)
+        .filter(|needle| !needle.is_empty())
+        .any(|needle| {
+            !anchor_idents.iter().any(|toks| {
+                toks.windows(needle.len())
+                    .any(|win| win == needle.as_slice())
+            })
+        })
+}
+
+/// Token-boundary presence, not substring: `TAG` is not "in" `voltage`, but `MTU` is in
+/// `lost_mtu_probe` and `parseConfig` is in `parse_config`.
+fn ident_tokens(ident: &str) -> Vec<String> {
+    ident
+        .split('_')
+        .filter(|p| !p.is_empty())
+        .flat_map(split_camel)
+        .map(|t| t.to_lowercase())
+        .collect()
 }
 
 fn looks_like_identifier(w: &str) -> bool {
@@ -417,14 +469,10 @@ fn is_statement_like(lang: Lang, kind: &str) -> bool {
 /// by convention (there is no other syntax for it), so a restating one is undeletable, the same
 /// argument as for doc comments. Rust and TS have doc syntax for consts and top-level
 /// declarations; a plain `//` there is deletable and is judged like any other.
-fn is_definition_doc_anchor(lang: Lang, node: Node) -> bool {
+fn is_definition_doc_anchor(lang: Lang, node: Node, scope: Scope) -> bool {
     lang == Lang::Python
         && node.kind() == "expression_statement"
-        && node.parent().is_some_and(|p| {
-            p.kind() == "module"
-                || (p.kind() == "block"
-                    && p.parent().is_some_and(|gp| gp.kind() == "class_definition"))
-        })
+        && (scope.kind == "module" || scope.python_class_body)
 }
 
 /// A comment that's the very first thing in a block can end up as the sibling of a wrapper node
@@ -476,7 +524,7 @@ fn should_skip(body: &str, anchor: &str, raw_head: &str) -> bool {
     if words.iter().any(|w| WHY_MARKERS.contains(w)) {
         return true;
     }
-    if body.contains("n't") || URL_OR_ISSUE_RE.is_match(body) {
+    if body.contains("n't") || body.contains("n\u{2019}t") || URL_OR_ISSUE_RE.is_match(body) {
         return true;
     }
     is_symbol_dense(anchor) || REGEX_MARKERS.iter().any(|m| anchor.contains(m))
@@ -485,13 +533,13 @@ fn should_skip(body: &str, anchor: &str, raw_head: &str) -> bool {
 /// An apostrophe that isn't wedged between two letters (`don't`, `file's`) is a quote around a
 /// literal (`'x'`, `'\n'`), which makes the comment a clarification.
 fn has_quote_apostrophe(s: &str) -> bool {
-    let b = s.as_bytes();
-    (0..b.len()).any(|i| {
-        b[i] == b'\''
+    let chars: Vec<char> = s.chars().collect();
+    (0..chars.len()).any(|i| {
+        matches!(chars[i], '\'' | '\u{2019}')
             && !(i > 0
-                && b[i - 1].is_ascii_alphabetic()
-                && i + 1 < b.len()
-                && b[i + 1].is_ascii_alphabetic())
+                && chars[i - 1].is_alphabetic()
+                && i + 1 < chars.len()
+                && chars[i + 1].is_alphabetic())
     })
 }
 
@@ -1121,6 +1169,50 @@ mod tests {
             .len(),
             1
         );
+    }
+
+    #[test]
+    fn identifier_shapes_and_token_boundary_presence() {
+        assert!(looks_like_identifier("MTU"));
+        assert!(looks_like_identifier("parseConfig"));
+        assert!(looks_like_identifier("f_seal"));
+        assert!(!looks_like_identifier("Some"));
+        assert!(!looks_like_identifier("the"));
+        assert!(!names_other_identifier("the MTU probe", "lost_mtu_probe()"));
+        assert!(!names_other_identifier(
+            "see parseConfig",
+            "parse_config(x)"
+        ));
+        assert!(names_other_identifier("the TAG value", "let voltage = 1;"));
+    }
+
+    #[test]
+    fn curly_apostrophe_counts_like_the_ascii_one() {
+        let src = "fn f() {\n    // the file\u{2019}s name\n    let file_name = g();\n    // the \u{2018}x\u{2019} flag\n    let flag = x;\n    // don\u{2019}t clear the flag\n    clear(flag);\n}";
+        assert_eq!(run(Lang::Rust, src).len(), 1);
+    }
+
+    #[test]
+    fn attribute_doc_survives_a_verb_used_as_a_noun() {
+        assert!(run(
+            Lang::Python,
+            "class T:\n    def __init__(self, status):\n        self.status = status  # the return status"
+        )
+        .is_empty());
+    }
+
+    /// Every trailing comment is its own block, so a per-block `Node::parent()` call would make
+    /// this quadratic the way the leading-comment run once was.
+    #[test]
+    fn twenty_thousand_trailing_comments_run_fast() {
+        let body: String = (0..20_000)
+            .map(|i| format!("    a{i} += 1; // step {i}\n"))
+            .collect();
+        let src = format!("fn f() {{\n{body}}}\n");
+        let start = std::time::Instant::now();
+        let d = run(Lang::Rust, &src);
+        assert!(d.is_empty());
+        assert!(start.elapsed().as_secs() < 10, "{:?}", start.elapsed());
     }
 
     #[test]
