@@ -42,6 +42,11 @@ migration notes live here.
 - **Baselines** embedded the path exactly as passed, so one written from
   `git ls-files` re-reported every finding under `stopslop .`. Paths are now
   normalized on both write and load, so existing baselines keep matching.
+- **Column lookup** rescanned from the line start for every diagnostic, so a
+  single-line file with hundreds of thousands of findings degraded
+  quadratically (a 1.8 MB one-line file with 200k em dashes took 18s). Columns
+  now resume from the previous answer on the same line, which brings that file
+  to under 3s. Output is unchanged.
 
 ## 0.5.0
 
