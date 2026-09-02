@@ -175,7 +175,7 @@ fn walk_back(doc: &ProseDoc, byte: usize, memo: &HashMap<usize, bool>) -> bool {
         // A previous line that itself opens with a dash extends the exemption down the run.
         // Walk back onto that dash and retest it in a loop, not recursion (see
         // context::walk_tree), so a non-block-initial dash can't launder the line below it.
-        match dash_start_byte(prev_line, prev_start) {
+        match dash_start_byte(doc, prev_line, prev_start) {
             Some(prev_dash_byte) => match memo.get(&prev_dash_byte) {
                 Some(&decided) => return decided,
                 None => byte = prev_dash_byte,
@@ -188,17 +188,21 @@ fn walk_back(doc: &ProseDoc, byte: usize, memo: &HashMap<usize, bool>) -> bool {
 /// If `line` (the raw, untrimmed content of one line, starting at absolute offset `line_offset`
 /// in `doc.masked`) opens -- after optional whitespace and blockquote `>` markers -- with an em
 /// dash, en dash, or the two-hyphen ASCII form, returns that dash's absolute byte offset.
-fn dash_start_byte(line: &str, line_offset: usize) -> Option<usize> {
+fn dash_start_byte(doc: &ProseDoc, line: &str, line_offset: usize) -> Option<usize> {
     let stripped = line.trim_start_matches(|c: char| c.is_whitespace() || c == '>');
     let lead = line.len() - stripped.len();
     if stripped.starts_with('\u{2014}')
         || stripped.starts_with('\u{2013}')
         || stripped.starts_with("--")
     {
-        Some(line_offset + lead)
-    } else {
-        None
+        return Some(line_offset + lead);
     }
+    // An `&mdash;` opening the line is blank in `masked` and only visible in the side table.
+    doc.entities
+        .iter()
+        .filter(|&&(_, ch)| ch == '\u{2014}')
+        .map(|&(byte, _)| byte)
+        .find(|byte| (line_offset..line_offset + lead).contains(byte))
 }
 
 #[cfg(test)]
@@ -232,6 +236,12 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    #[test]
+    fn html_entity_dash_run_extends_the_attribution_exemption() {
+        let src = "<p>Quote.</p>\n\n<p>&mdash; Wilde,\n&mdash; Irish playwright</p>\n";
+        assert!(diagnostics_for_html(src).is_empty());
     }
 
     #[test]

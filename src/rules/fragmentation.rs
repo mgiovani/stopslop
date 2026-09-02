@@ -141,7 +141,16 @@ fn html_blocks(doc: &ProseDoc, ranges: &[(usize, usize)]) -> Vec<Block> {
             }
             let first_byte = doc.masked[s..e]
                 .find(|c: char| !c.is_whitespace())
-                .map_or(s, |i| s + i);
+                .map(|i| s + i)
+                .into_iter()
+                .chain(
+                    doc.code_spans
+                        .iter()
+                        .map(|c| c.start)
+                        .filter(|c| (s..e).contains(c)),
+                )
+                .min()
+                .unwrap_or(s);
             Some(Block {
                 text,
                 first_byte,
@@ -355,6 +364,13 @@ mod tests {
         let diags = diagnostics_for_html("<h2>Why</h2>\n<p>Fast. Simple. Free.</p>\n");
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].line, 2);
+    }
+
+    #[test]
+    fn html_code_only_paragraph_anchors_on_the_code_span() {
+        let src = "<p><code>a b c</code></p>\n";
+        let blocks = paragraph_blocks(&ProseDoc::parse_html(src));
+        assert_eq!(blocks[0].first_byte, src.find("<code>").unwrap());
     }
 
     #[test]

@@ -93,6 +93,9 @@ pub struct ProseDoc<'a> {
     /// Start byte of every `<strong>`/`<b>` element, for SLOP019; Markdown bold is a `**` pair
     /// the rule finds in the masked stream itself, and HTML tags are blank there.
     pub bold_spans: Vec<usize>,
+    /// `<footer>`, `<aside>`, and `<nav>` element ranges. Their paragraphs are prose to the
+    /// density rules but never the document's ending, which SLOP029 reads. Empty for Markdown.
+    pub footers: Vec<(usize, usize)>,
     line_starts: Vec<usize>, // byte offset of each line start; for line_col
     /// (byte, col) of the last `line_col` answer. Rules ask in byte order, so the next answer on
     /// the same line counts chars from here rather than from the line start -- a 1.8 MB
@@ -163,6 +166,7 @@ impl<'a> ProseDoc<'a> {
             paragraphs: None,
             entities: Vec::new(),
             bold_spans: Vec::new(),
+            footers: Vec::new(),
             line_starts,
             col_memo: Cell::new((0, 1)),
             source,
@@ -221,15 +225,20 @@ impl<'a> ProseDoc<'a> {
             })
             .collect();
 
-        // A block is a leaf when the next block in pre-order starts after it ends.
+        // A leaf block is one paragraph. A block holding another block keeps the text before
+        // that child, because tree-sitter-html leaves an unclosed `<p>` open across the list
+        // that follows it.
         let paragraphs = scan
             .blocks
             .iter()
             .enumerate()
-            .filter(|&(i, &(_, end, is_para))| {
-                is_para && scan.blocks.get(i + 1).is_none_or(|next| next.0 >= end)
+            .filter(|&(_, &(_, _, is_para))| is_para)
+            .filter_map(|(i, &(start, end, _))| match scan.blocks.get(i + 1) {
+                Some(&(child, _, _)) if child < end => {
+                    (!masked[start..child].trim().is_empty()).then_some((start, child))
+                }
+                _ => Some((start, end)),
             })
-            .map(|(_, &(start, end, _))| (start, end))
             .collect();
 
         ProseDoc {
@@ -247,6 +256,7 @@ impl<'a> ProseDoc<'a> {
             paragraphs: Some(paragraphs),
             entities: scan.entities,
             bold_spans: scan.bold_spans,
+            footers: scan.footers,
             line_starts,
             col_memo: Cell::new((0, 1)),
             source,
@@ -314,6 +324,10 @@ impl<'a> ProseDoc<'a> {
     }
 
     /// True if `byte` falls inside any URL / link-target span.
+    pub fn in_footer(&self, byte: usize) -> bool {
+        self.footers.iter().any(|&(s, e)| s <= byte && byte < e)
+    }
+
     pub fn in_url(&self, byte: usize) -> bool {
         self.url_span_at(byte).is_some()
     }
@@ -845,6 +859,10 @@ const NON_PARAGRAPH_TAGS: &[&str] = &[
     "h2", "h3", "h4", "h5", "h6",
 ];
 
+/// Page furniture around the content. Its text is linted, but the last paragraph inside it is
+/// never the piece's ending.
+const FOOTER_TAGS: &[&str] = &["footer", "aside", "nav"];
+
 #[derive(Default)]
 struct HtmlScan {
     headings: Vec<(usize, usize, usize)>, // (level, element start, element end)
@@ -854,6 +872,7 @@ struct HtmlScan {
     code_spans: Vec<CodeSpan>,
     entities: Vec<(usize, char)>,
     bold_spans: Vec<usize>,
+    footers: Vec<(usize, usize)>,
 }
 
 /// The chars the punctuation rules read: the em dash and curly quotes, named or numeric.
@@ -919,6 +938,9 @@ fn restore_html(root: Node, prepared: &str, masked: &mut [u8], scan: &mut HtmlSc
             }
             if tag.eq_ignore_ascii_case("strong") || tag.eq_ignore_ascii_case("b") {
                 scan.bold_spans.push(node.start_byte());
+            }
+            if has_tag(FOOTER_TAGS, tag) {
+                scan.footers.push((node.start_byte(), node.end_byte()));
             }
             if tag.eq_ignore_ascii_case("code") {
                 scan.code_spans.push(CodeSpan {
@@ -1252,6 +1274,31 @@ mod tests {
             ProseDoc::parse_html(html).line_col(html.find('x').unwrap()),
             (1, 17)
         );
+    }
+
+    #[test]
+    fn html_unclosed_p_keeps_the_text_before_the_list_it_swallows() {
+        let src =
+            "<p>Fast. Simple. Free.\n<ul><li>one</li></ul>\n<p>Tail.</p>\n<div><h2>T</h2></div>\n";
+        let doc = ProseDoc::parse_html(src);
+        let paragraphs: Vec<&str> = doc
+            .paragraphs
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|&(s, e)| &src[s..e])
+            .collect();
+        assert_eq!(paragraphs, ["<p>Fast. Simple. Free.\n", "<p>Tail.</p>"]);
+    }
+
+    #[test]
+    fn html_footer_aside_and_nav_ranges_are_recorded() {
+        let src = "<main><p>Body.</p></main>\n<footer><p>Rights.</p></footer>\n<aside><p>Note.</p></aside>\n";
+        let doc = ProseDoc::parse_html(src);
+        assert!(!doc.in_footer(src.find("Body").unwrap()));
+        assert!(doc.in_footer(src.find("Rights").unwrap()));
+        assert!(doc.in_footer(src.find("Note").unwrap()));
+        assert_eq!(doc.paragraphs.as_ref().unwrap().len(), 3);
     }
 
     #[test]

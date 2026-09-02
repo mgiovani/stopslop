@@ -80,8 +80,10 @@ migration notes live here.
   `{{ … }}`/`{% … %}`/`{# … #}` are blanked before the parse. `<h1>`-`<h6>`
   map to headings, and the suppression comments work unchanged. Each leaf
   block element (`<p>`, `<div>`, `<blockquote>`, `<td>`) is one paragraph, so
-  SLOP029, SLOP030, SLOP034, and SLOP041 run on HTML as they do on Markdown;
-  list items, table cells, headings, and form controls are never paragraphs.
+  SLOP029, SLOP030, SLOP034, and SLOP041 run on HTML as they do on Markdown.
+  List items, table cells, headings, and form controls are never paragraphs.
+  A paragraph inside `<footer>`, `<aside>`, or `<nav>` is never the ending
+  SLOP029 reads.
   `<strong>`/`<b>` count toward SLOP019, inline `<code>` counts as words the
   way a backtick span does, SLOP021 checks heading case, and `&mdash;`,
   `&#8212;`, and the curly-quote entities feed SLOP018 and SLOP020 as if

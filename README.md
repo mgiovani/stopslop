@@ -287,7 +287,8 @@ else is blanked, including `<script>`, `<style>`, `<pre>`, `<code>`,
 Django/Jinja `{{ … }}`, `{% … %}`, and `{# … #}` are blanked before parsing
 too. Each leaf block element (`<p>`, `<div>`, `<blockquote>`, `<td>`) is one
 paragraph for the rhythm, recap, synonym, and uniformity rules; list items,
-headings, table cells, and form controls never are. `<strong>`/`<b>` count as
+headings, table cells, and form controls never are, and a `<footer>` is
+never the ending. `<strong>`/`<b>` count as
 bold, inline `<code>` counts as words, and `&mdash;`, `&#8212;`, and the
 curly-quote entities are read as the characters they encode. `&ndash;` and
 every other entity stay blank.

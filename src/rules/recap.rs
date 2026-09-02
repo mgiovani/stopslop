@@ -99,8 +99,11 @@ static HEADING_LINE: LazyLock<Regex> =
 /// than causing the whole block to be skipped.
 fn final_prose_block(doc: &ProseDoc) -> Option<Block> {
     if doc.paragraphs.is_some() {
+        // The ending is the last paragraph outside the page's footer, aside, and nav.
         return crate::rules::fragmentation::paragraph_blocks(doc)
-            .pop()
+            .into_iter()
+            .rev()
+            .find(|b| !doc.in_footer(b.first_byte))
             .map(|b| Block {
                 text: b.text,
                 first_byte: b.first_byte,
@@ -267,6 +270,17 @@ mod tests {
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].line, 2);
         assert!(diagnostics_for_html(&format!("<p>{recap}</p>\n<p>Later text.</p>\n")).is_empty());
+    }
+
+    #[test]
+    fn html_footer_is_not_the_ending() {
+        let recap = "Ultimately, this update saves the team real time every day.";
+        let src = format!(
+            "<article><p>Intro text.</p>\n<p>{recap}</p></article>\n<footer><p>All rights reserved.</p></footer>\n"
+        );
+        let diags = diagnostics_for_html(&src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 2);
     }
 
     #[test]
