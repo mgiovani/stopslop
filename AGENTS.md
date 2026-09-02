@@ -58,7 +58,7 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 - Record a rejected alternative wherever the next reader would otherwise re-propose it. See `context::NodeIndex`.
 - Rename the thing before annotating it. A comment is not a fix for an unclear name.
 - Mark a deliberate shortcut with a `ponytail:` comment naming its ceiling and upgrade path.
-- No rule message and no doc line may claim AI origin. This is a quality gate, and the README non-goals stay true.
+- A rule message may name an AI tell. It never claims a whole file is AI-written and never needs a model, network call, or private key to say so. The README non-goals stay true.
 
 ## Testing
 
