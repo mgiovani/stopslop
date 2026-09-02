@@ -19,11 +19,9 @@ pub static RULE: RuleDef = RuleDef {
 
 static WORD_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\S+").unwrap());
 
-// The spec's example threshold is 35 words. Tuned up to 50: the existing fixture corpus (owned
-// by other rules, e.g. clean_hedging.md) legitimately contains single-clause wrapped sentences
-// up to 47 words long in ordinary, non-slop technical prose (comma-joined clauses, no run-on
-// symptom) -- flagging at 35 would false-positive on fixtures this rule doesn't own and can't
-// edit. 50 stays comfortably above that ceiling while still catching genuine run-on sentences.
+// Tuned to 50, not the spec's 35: fixtures owned by other rules (e.g. clean_hedging.md)
+// legitimately run up to 47 words in non-slop prose. 50 stays above that ceiling while still
+// catching genuine run-ons.
 const OVERLONG_WORDS: usize = 50;
 
 /// (start, end) byte span per line of `masked`, end exclusive of the line's own trailing '\n'.

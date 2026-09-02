@@ -195,13 +195,9 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         }
     }
 
-    // (c) thin sections: a heading whose body (the text up to the next heading, or EOF) is
-    // under ~25 words AND fewer than 2 sentences is a candidate. Excluded: the document's first
-    // H1 (title), a heading immediately followed by a deeper-level heading (legitimate nesting --
-    // the parent isn't expected to carry its own body), a body that's a code fence or table
-    // (checked against ctx.source: `masked` blanks fence markers to spaces, which would hide
-    // them), and reference/appendix-style sections. Fires once the document has 2+ candidates --
-    // a single short section is completely normal.
+    // Checked against ctx.source, not masked: masking blanks fence markers to spaces, which
+    // would hide a code-fenced body. Fires only at 2+ thin candidates -- a single short section
+    // is normal.
     let first_h1 = doc.headings.iter().position(|hd| hd.level == 1);
     let mut thin_count = 0usize;
     let mut first_thin_byte = None;
@@ -344,9 +340,8 @@ mod tests {
 
     #[test]
     fn flags_title_case_headings_with_sentence_case_guard() {
-        // Each heading has a real (2-sentence) body so this stays a pure title-case test: with
-        // no body at all, back-to-back empty H2s would also legitimately trip the (c) thin-
-        // section sub-check below, which is a different concern than this test targets.
+        // Each heading has a real 2-sentence body so this stays a pure title-case test -- an
+        // empty body would also trip the (c) thin-section sub-check, a different concern.
         let src = "# Getting Started With Setup\n\nThis is a normal sentence written in plain lowercase words.\n\n## Configuring Your Local Environment\n\nThis section walks through the environment variables read on startup. Override them locally when testing changes.\n\n## Reviewing The Final Report Now\n\nThis section explains where the report is generated. Reviewers check it before it ships to stakeholders.\n";
         let diags = diagnostics_for(src);
         assert_eq!(diags.len(), 1);
@@ -355,9 +350,9 @@ mod tests {
 
     #[test]
     fn empty_heading_does_not_glue_to_next_lines_emoji() {
-        // An empty ATX heading line followed by an unrelated emoji-leading line must NOT count
-        // as an emoji-after-heading match: the gap can't cross the newline. Only one real
-        // emoji-marker line exists here (the bullet), so this must stay under the >=2 threshold.
+        // An empty heading followed by an unrelated emoji-leading line must not match as
+        // emoji-after-heading -- the gap can't cross the newline. Only the bullet is a real
+        // marker, staying under the >=2 threshold.
         let src = "##\n\u{1F680}Ship it now.\n\n- \u{1F4CC} Pin the release notes.\n- Plain bullet without any emoji here.\n";
         assert!(diagnostics_for(src).is_empty());
     }
@@ -397,10 +392,9 @@ mod tests {
 
     #[test]
     fn clean_nested_and_reference_heading_thin_bodies_excluded() {
-        // "Configuration" has an empty body of its own but is immediately followed by a deeper
-        // heading (legitimate nesting); "Appendix" is a reference-style section. Neither counts
-        // toward the thin-section total, so this must stay clean even though both headings would
-        // otherwise look near-empty.
+        // "Configuration" nests a deeper heading (legitimate nesting); "Appendix" is
+        // reference-style. Neither counts toward the thin-section total, so this stays clean
+        // despite both looking near-empty.
         let src = "# Guide\n\n## Configuration\n\n### Basic Setup\n\nThis subsection has plenty of real detail about configuration options so that it is clearly not a thin section under any reasonable word or sentence count here today.\n\n## Appendix\n\nSee the reference table listed above for details.\n";
         assert!(diagnostics_for(src).is_empty());
     }

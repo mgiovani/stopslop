@@ -152,9 +152,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
                 "weak-verb/vague-quantifier phrase repeated: \"{phrase}\" appears multiple times"
             )
         };
-        // The anchor phrase (whichever one drove this diagnostic) determines the fix: a repeated
-        // phrase wins if that's what fired, otherwise the earliest matched phrase in the
-        // document. `weak_verb_phrase_fix` only recognizes family (a) phrases, so any family (b)
+        // `weak_verb_phrase_fix` only recognizes family (a) phrases, so any family (b)
         // (vague-quantifier) anchor falls through to the shared fallback fix.
         let anchor_phrase: &str = repeated_phrase
             .map(String::as_str)

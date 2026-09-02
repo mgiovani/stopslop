@@ -288,11 +288,9 @@ mod tests {
 
     #[test]
     fn two_tripped_signals_fires_and_names_them() {
-        // A single short clause repeated well past the word floor: near-zero burstiness (every
-        // sentence is the same length) AND low TTR (the same handful of words dominate). Avoid
-        // reusing the exact same opening word 3+ times in a way that would also make SLOP030's
-        // separate per-paragraph check the story here -- this test only cares that SLOP041 fires
-        // and names its own tripped signals.
+        // A short clause repeated past the word floor trips near-zero burstiness and low TTR.
+        // Avoid reusing the same opening word 3+ times, which would also trip SLOP030's
+        // separate per-paragraph check.
         let sentence = "Our platform helps teams ship faster and monitor systems better";
         let src = std::iter::repeat_n(sentence, 30)
             .collect::<Vec<_>>()

@@ -20,11 +20,9 @@ pub static HEDGE_PHRASES: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 // SLOP016 — vocab marker panel. Consumer: rules::vocabulary.
-// TIER-1 weight 2 (distinctive). "paramount" moved here from TIER2 (it was listed for TIER1 in
-// the catalog, but was already present in TIER2 from an earlier pass -- a word can only ever be
-// in ONE tier, since `vocabulary.rs`'s check() would otherwise double-count a single occurrence
-// by matching it in both `find_iter` passes). "ever-evolving" is NOT re-added: it was already
-// present in this exact panel from the start.
+// TIER-1 weight 2 (distinctive). A word may only appear in one tier -- `vocabulary.rs` would
+// double-count it otherwise. "paramount" belongs here, not TIER2; "ever-evolving" already lives
+// here -- don't re-add either.
 pub static VOCAB_TIER1: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(delv(e|es|ed|ing)|underscor(e|es|ed|ing)|showcas(e|es|ed|ing)|meticulous(ly)?|intricate|intricac(y|ies)|commendable|tapestr(y|ies)|testament|boast(s|ed|ing)?|bolster(s|ed|ing)?|garner(s|ed|ing)?|interplay|elucidat(e|es|ed|ing)|unveil(s|ed|ing)?|indelible|quintessential|multifaceted|groundbreaking|seamless(ly)?|holistic|transformative|spearhead(s|ed|ing)?|exemplif(y|ies|ied|ying)|underpin(s|ned|ning)?|myriad|plethora|nuanced|resonat(e|es|ed|ing)|captivat(e|es|ed|ing)|paradigm|synerg(y|ies)|burgeoning|veritable|aforementioned|beacon(s)?|supercharg(e|es|ed|ing)|ever-evolving|interconnected|paramount|noteworthy|emblematic|evocative|poignant)\b").unwrap()
 });
@@ -36,9 +34,9 @@ pub static VOCAB_TIER2: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 // SLOP017 — parallelism sub-patterns. Consumer: rules::parallelism.
-// Each list item allows up to 4 space-separated words (bounded, so no runaway matching across a
-// whole paragraph): the most common AI "trichotomy" phrasing is short multi-word items ("solo
-// developers, growing startups, or established enterprises"), not just single adjectives.
+// Bounded to 4 words/item so matching can't run away across a paragraph; AI "trichotomy"
+// phrasing (e.g. "solo devs, growing startups, or enterprises") uses short multi-word items,
+// not single adjectives.
 pub static RULE_OF_THREE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(?:\w+\s+){0,3}\w+,\s+(?:\w+\s+){0,3}\w+,\s+(?:and|or)\s+(?:\w+\s+){0,3}\w+\b")
         .unwrap()
@@ -59,40 +57,24 @@ pub static TRAILING_PARTICIPLE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r",\s+(highlighting|underscoring|emphasizing|showcasing|reflecting|symbolizing|fostering|cultivating|contributing to|reinforcing|solidifying|cementing|reaffirming|underlining|exemplifying|demonstrating|signaling|embodying|encapsulating|marking|ensuring|encompassing|enabling|allowing|resulting in|leading to|paving the way for|making it possible|making it easier)\b[^.?!\n]*[.?!]").unwrap()
 });
 
-// SLOP027 — empty filler phrases (case-insensitive). Consumer: rules::filler.
-// "needless to say" is deliberately OMITTED: it's already in HEDGE_PHRASES (SLOP015) above.
-// From the catalog's later addition list, "with regard to", "in terms of", and "the fact of the
-// matter is" are NOT re-added: all three were already present in this exact panel from the start.
+// SLOP027 — empty filler phrases. "needless to say" is omitted (already in HEDGE_PHRASES/
+// SLOP015). "with regard to", "in terms of", "the fact of the matter is" are already here from
+// an earlier pass -- don't re-add.
 pub static FILLER_PHRASES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(when it comes to|at its core|in the age of|in the world of|the reality is|the truth is|in terms of|with regard to|with respect to|in order to|going forward|in this article|in this post|let'?s dive in|let'?s take a look|as we'?ve seen|as mentioned earlier|it goes without saying|for all intents and purposes|the fact of the matter is|out of the box|under the hood|gracefully handles|subsequent to)\b").unwrap()
 });
 
-// SLOP027 — filler adverbs. Consumer: rules::filler. Position-gated (capture group 1 is the
-// adverb itself): only counts a sentence-initial adverb (leading markdown list/quote/heading
-// markers allowed before it) or one directly after a
-// copula ("is/are/was/were/be/being/been" or a contracted "'s"/"'re"). This is what keeps
-// "simply" in "the simply typed lambda calculus" (mid-sentence, no copula before it) from
-// counting, while still catching "It's simply a wrapper" / "Simply put, ...".
-// "easily" is the one new addition from the catalog's later pass: "simply"/"just"/"literally"/
-// "essentially"/"arguably" were already present in this exact panel from the start, and
-// "effortlessly" deliberately lives in `VOCAB_TIER2` (SLOP016) instead, not here -- both panels
-// count single words, so the same word can only own one of them (see `prose_words`'s VOCAB_TIER2
-// comment).
+// SLOP027 — filler adverbs. Position-gated: only a sentence-initial adverb or one after a
+// copula counts, so "simply" in "the simply typed lambda calculus" doesn't count, but "It's
+// simply a wrapper" does. "effortlessly" lives in VOCAB_TIER2 instead.
 pub static FILLER_ADVERBS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?im)(?:^[ \t>*_#-]*|[.!?]["')\]]?[ \t]+|\b(?:is|are|was|were|be|being|been)[ \t]+|'(?:s|re)[ \t]+)(just|literally|honestly|simply|actually|truly|fundamentally|importantly|crucially|inherently|inevitably|basically|essentially|arguably|undoubtedly|obviously|clearly|easily)\b"#).unwrap()
 });
 
-// SLOP002 / SLOP011 — reasoning-chain scaffolding left behind from a model's chain-of-thought,
-// shared between `rules::preamble` (code comments) and `rules::residue` (prose). A pattern
-// FRAGMENT, not a compiled `Regex`: the two consumers anchor it differently (preamble.rs anchors
-// to a comment-marker line start; residue.rs matches anywhere in the masked prose stream), so
-// each compiles its own `Regex` around this shared alternation instead of sharing a `LazyLock`.
-// Both ASCII `'` and U+2019 `'` are covered for the two "let's ..." members.
-//
-// `step 1:` is NOT a member here: unlike the rest of the panel it has a legitimate reading
-// (numbered procedural writing), so it needs position context that differs per consumer and
-// can't come from a shared alternation. preamble.rs keeps it inline at comment-leader position;
-// residue.rs owns `RE_NUMBERED_STEP` for the markdown case.
+// SLOP002/SLOP011 — reasoning-chain scaffolding, shared by `rules::preamble` (code) and
+// `rules::residue` (prose) as a FRAGMENT, not a compiled `Regex`, since each anchors it
+// differently. "step 1:" is excluded: it's legitimate procedural writing needing per-consumer
+// position context.
 pub const REASONING_CHAIN_FRAGMENT: &str =
     "let(?:'|\u{2019})s think|let me think|thinking through this|breaking this down|first, let(?:'|\u{2019})s consider";
 

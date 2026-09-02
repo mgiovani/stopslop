@@ -29,10 +29,9 @@ pub struct ListBlock {
     pub items: Vec<ListItem>, // contiguous run (see masking rules for "contiguous")
 }
 
-// ponytail: the spec's ProseDoc has no lifetime parameter, but `ignore_comments: Vec<TextNode>`
-// borrows `&str` slices of the original source (TextNode's `text` field is `&'a str`), and Rust
-// struct definitions cannot elide a borrowed lifetime the way fn signatures can. `ProseDoc<'a>`
-// tied to the same `'a` as `LintContext<'a>` is the smallest change that actually compiles.
+// ponytail: the spec's ProseDoc has no lifetime, but `ignore_comments: Vec<TextNode>` borrows
+// `&str` slices of the source, and structs can't elide a borrowed lifetime like fn signatures
+// can. `ProseDoc<'a>` tied to `LintContext<'a>` is the smallest change that compiles.
 /// One inline `code` span: its byte range in the source, and how many whitespace-separated
 /// tokens it held before being blanked.
 #[derive(Debug, Clone, Copy)]
@@ -318,14 +317,9 @@ fn blank_fences(
     ranges
 }
 
-// The double-backtick alternative's content is `[^\n]+?` (non-greedy, not `[^`\n]*`): the
-// standard CommonMark literal-backtick idiom (`` `` `code with a ` backtick` `` ``) wraps
-// content that itself contains single backticks, so excluding backticks from the content class
-// makes the double-backtick alternative never match that idiom at all — it'd fall through to
-// the single-backtick alternative, which then grabs a bogus 1-backtick-wide submatch and leaves
-// the real code (and any embedded backticks) unblanked. Non-greedy `[^\n]+?` just scans forward
-// for the nearest real `` `` `` closer, backticks-inside included, same trick fence-matching
-// already relies on elsewhere in this file.
+// Content is `[^\n]+?` (non-greedy), not `[^`\n]*`: CommonMark's literal-backtick idiom wraps
+// content with single backticks, so excluding backticks makes double-backtick never match — it
+// falls through to single-backtick with a bogus submatch, leaving real code unblanked.
 /// True if `line` opens with >=4 spaces or a leading tab (CommonMark's indented-code-block
 /// threshold), and isn't itself all whitespace.
 fn is_indented_code_candidate(line: &str) -> bool {

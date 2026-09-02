@@ -17,11 +17,9 @@ pub static RULE: RuleDef = RuleDef {
     check,
 };
 
-// Rust has no language-specific hand-rolled-stdlib pattern here: every common candidate we
-// considered (manual iterator `.fold` sums, hand-rolled min/max via if/else, `.to_string()` +
-// `format!` chains) has too many legitimate non-reinvention uses to clear the near-zero
-// false-positive bar this family needs. Rust still participates via the cross-language
-// email-regex pattern in `check_email_regex` below.
+// Rust has no language-specific pattern here: candidates considered (fold sums, manual min/max,
+// to_string+format! chains) have too many legitimate uses to clear this family's near-zero
+// false-positive bar. Rust still gets the cross-language email-regex check below.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     match ctx.lang {
         Lang::Ts | Lang::Tsx => check_ts(rule, ctx, out),

@@ -666,12 +666,10 @@ mod tests {
         );
     }
 
-    // --- fixture-dir integration: real manifests under tests/fixtures/imports/<lang>, driven
-    // through the actual engine::lint_file pipeline (not the bare `check` fn above). Display
-    // paths are stripped of the "tests/fixtures/imports" prefix (mirrors tests/integration.rs)
-    // so is_test_path() sees only the logical "<lang>/slop_x.ext" name — SLOP010 is path_gated,
-    // and "tests"/"fixtures" are both exempt directory segments (see PLAN §5b), so leaving the
-    // real repo-relative path in would silently skip the rule. Documented in the final report.
+    // --- fixture-dir integration drives the real engine::lint_file pipeline. Display paths
+    // strip the fixtures prefix so is_test_path() sees only "<lang>/file" -- SLOP010 is
+    // path_gated and exempts "tests"/"fixtures" segments, which would otherwise silently skip
+    // the rule.
     fn fixtures_dir(lang: &str) -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/imports")
