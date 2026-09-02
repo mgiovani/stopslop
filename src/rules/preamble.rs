@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::CODE_LANGS;
 use crate::prose_words::REASONING_CHAIN_FRAGMENT;
 use crate::registry::RuleDef;
 use regex::Regex;
@@ -10,7 +10,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP002",
     name: "Chat preamble leaked into code",
     tier: Tier::A,
-    langs: &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust],
+    langs: CODE_LANGS,
     default_on: true,
     path_gated: false,
     check,
