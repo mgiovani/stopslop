@@ -31,7 +31,7 @@ cargo install --path .      # rebuild the binary before dogfooding a new rule
 6. Grep `src/` for each phrase before adding it to a panel. If another rule owns the span, drop the phrase.
 7. Keep the panel in the rule file. `prose_words.rs` holds the panels the prose density rules share and takes no new entries.
 8. Write the message lowercase and specific, and use `Diagnostic::at_fix` whenever a concrete replacement exists.
-9. Install the binary, lint this repo, and fix every finding your rule makes here before opening the PR.
+9. Install the binary and lint this repo. Fix every finding your rule makes here before opening the PR.
 
 ## Engineering principles
 
@@ -59,7 +59,7 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 - Record a rejected alternative wherever the next reader would otherwise re-propose it. See `context::NodeIndex`.
 - Rename the thing before annotating it. A comment is not a fix for an unclear name.
 - Mark a deliberate shortcut with a `ponytail:` comment naming its ceiling and upgrade path.
-- No rule message and no doc line may claim AI origin. This is a quality gate, and the README non-goals stay true.
+- A rule message may name an AI tell. It never claims a whole file is AI-written, and it never needs a model or a private key to say so. The README non-goals stay true.
 
 ## Testing
 

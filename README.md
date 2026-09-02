@@ -41,9 +41,10 @@ truncated edits land. A few examples:
 `stopslop` is a deterministic linter for TypeScript, Python, Go, and Rust.
 Every rule is a tree-sitter AST match or a regex over extracted
 comments/strings: same input, same output, every time. This is a
-**quality gate, not an AI-origin detector**: it doesn't try to prove a human
-didn't write the code, it flags patterns that are junk regardless of who (or
-what) produced them.
+**quality gate that also names AI tells**: it flags patterns that are junk
+regardless of who (or what) produced them, and patterns that are known
+giveaways of machine-generated text or code, so you can rewrite either. It
+never scores a file as "written by AI" and never needs a model to say so.
 
 ## Install
 
@@ -512,8 +513,10 @@ whatever the tier.
 
 ## Non-goals
 
-- **Not an AI-origin detector.** stopslop never claims code *was* written by
-  an AI, only that a pattern in it is junk regardless of origin.
+- **Not an AI-origin verdict.** A rule may name a span as a known AI tell so
+  you can rewrite it, but stopslop never scores a whole file as "written by
+  AI", never runs a model, and never phones home. The verdict stays with the
+  reader.
 - **Not a correctness checker.** It doesn't run your code or understand what
   it's supposed to do: a stub function that's genuinely fine (e.g. an
   intentionally unimplemented trait default) can still need a suppression
