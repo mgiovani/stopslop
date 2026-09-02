@@ -26,6 +26,8 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test
+      - name: Stress (wall-clock guards on generated 8-20 MB inputs)
+        run: cargo test --release --test stress -- --ignored --test-threads=1
       - name: Render the findings report
         if: github.event_name == 'pull_request'
         run: |
