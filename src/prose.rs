@@ -6,6 +6,7 @@
 
 use crate::context::TextNode;
 use regex::Regex;
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
@@ -65,6 +66,10 @@ pub struct ProseDoc<'a> {
     /// for `suppress::apply`. (All HTML comments whose text contains "ai-slop-ignore".)
     pub ignore_comments: Vec<TextNode<'a>>,
     line_starts: Vec<usize>, // byte offset of each line start; for line_col
+    /// (byte, col) of the last `line_col` answer. Rules ask in byte order, so the next answer on
+    /// the same line counts chars from here rather than from the line start -- a 1.8 MB
+    /// single-line file with 200k em dashes took 18s before this.
+    col_memo: Cell<(usize, usize)>,
 }
 
 impl<'a> ProseDoc<'a> {
@@ -122,13 +127,23 @@ impl<'a> ProseDoc<'a> {
             words,
             ignore_comments,
             line_starts,
+            col_memo: Cell::new((0, 1)),
         }
     }
 
     /// 1-based (line, col) for a byte offset into source/masked. Binary-search `line_starts`;
     /// col = 1 + chars from line start to byte (count chars, not bytes).
     pub fn line_col(&self, byte: usize) -> (usize, usize) {
-        compute_line_col(&self.line_starts, &self.masked, byte)
+        let idx = line_index(&self.line_starts, byte);
+        let line_start = self.line_starts[idx];
+        let byte = byte.min(self.masked.len());
+        let (from, base) = match self.col_memo.get() {
+            (b, c) if b >= line_start && b <= byte => (b, c),
+            _ => (line_start, 1),
+        };
+        let col = base + self.masked[from..byte].chars().count();
+        self.col_memo.set((byte, col));
+        (idx + 1, col)
     }
 
     /// Byte range of `byte`'s own line, end exclusive of the trailing '\n'. Binary search rather
@@ -136,11 +151,7 @@ impl<'a> ProseDoc<'a> {
     /// on a single-line document each scan runs the length of the file -- 900 KB of one-line prose
     /// took 24s in SLOP028 before this.
     pub fn line_span(&self, byte: usize) -> (usize, usize) {
-        let idx = match self.line_starts.binary_search(&byte) {
-            Ok(i) => i,
-            Err(0) => 0,
-            Err(i) => i - 1,
-        };
+        let idx = line_index(&self.line_starts, byte);
         let end = self
             .line_starts
             .get(idx + 1)
@@ -185,12 +196,16 @@ pub fn first_byte_per_line(
     by_line
 }
 
-fn compute_line_col(line_starts: &[usize], text: &str, byte: usize) -> (usize, usize) {
-    let idx = match line_starts.binary_search(&byte) {
+fn line_index(line_starts: &[usize], byte: usize) -> usize {
+    match line_starts.binary_search(&byte) {
         Ok(i) => i,
         Err(0) => 0,
         Err(i) => i - 1,
-    };
+    }
+}
+
+fn compute_line_col(line_starts: &[usize], text: &str, byte: usize) -> (usize, usize) {
+    let idx = line_index(line_starts, byte);
     let line_start = line_starts[idx];
     let col = 1 + text[line_start..byte.min(text.len())].chars().count();
     (idx + 1, col)
@@ -688,6 +703,34 @@ mod tests {
         // byte offset of 'r' in "three" (line 3, col 3)
         let byte = src.find("ree").unwrap();
         assert_eq!(doc.line_col(byte), (3, 3));
+    }
+
+    #[test]
+    fn line_col_memo_is_exact_for_any_query_order_and_multibyte_text() {
+        for src in ["héllo — wörld\nsecond — line\n\nx\n", "no — newline", ""] {
+            let doc = ProseDoc::parse(src);
+            let expect = |byte: usize| {
+                let byte = byte.min(src.len());
+                let line_start = src[..byte].rfind('\n').map_or(0, |i| i + 1);
+                let line = 1 + src[..byte].matches('\n').count();
+                (line, 1 + src[line_start..byte].chars().count())
+            };
+            let bytes: Vec<usize> = src.char_indices().map(|(b, _)| b).collect();
+            let forward_then_back = bytes.iter().chain(bytes.iter().rev());
+            let zigzag = bytes
+                .iter()
+                .zip(bytes.iter().rev())
+                .flat_map(|(a, b)| [a, b]);
+            for &byte in forward_then_back.chain(zigzag) {
+                assert_eq!(doc.line_col(byte), expect(byte), "{src:?} byte {byte}");
+            }
+            assert_eq!(doc.line_col(src.len()), expect(src.len()), "{src:?} eof");
+            assert_eq!(
+                doc.line_col(src.len() + 7),
+                expect(src.len()),
+                "{src:?} past eof"
+            );
+        }
     }
 
     #[test]

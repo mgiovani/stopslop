@@ -1,7 +1,8 @@
 use crate::imports_data::DepIndex; // re-exported via rules::imports_data
 use crate::lang::Lang;
 use crate::prose::ProseDoc;
-use tree_sitter::{Node, Tree, TreeCursor};
+use std::collections::HashMap;
+use tree_sitter::{LanguageRef, Node, Tree, TreeCursor};
 
 #[derive(Debug, Clone)]
 pub struct TextNode<'a> {
@@ -16,7 +17,7 @@ pub struct TextNode<'a> {
 pub struct LintContext<'a> {
     pub display_path: String,
     pub source: &'a str,
-    pub tree: Option<&'a Tree>,
+    pub index: Option<&'a NodeIndex<'a>>, // None for prose langs (no tree)
     pub lang: Lang,
     pub comments: &'a [TextNode<'a>],
     pub strings: &'a [TextNode<'a>],
@@ -27,12 +28,22 @@ pub struct LintContext<'a> {
 }
 
 impl<'a> LintContext<'a> {
-    /// One DFS over the whole tree; callers `match node.kind()`. (See ponytail note below.)
-    /// No-op for prose langs (`tree` is `None`).
-    pub fn walk(&self, mut f: impl FnMut(Node<'a>)) {
-        let Some(tree) = self.tree else { return };
-        let mut c: TreeCursor<'a> = tree.walk();
-        walk_tree(&mut c, &mut f);
+    /// Every named node whose kind is in `kinds`, in the tree's pre-order. Anonymous tokens
+    /// (keywords, punctuation) are not indexed; empty for prose langs.
+    pub fn nodes(&self, kinds: &[&str]) -> Vec<Node<'a>> {
+        let Some(index) = self.index else {
+            return Vec::new();
+        };
+        let mut positions: Vec<usize> = kinds
+            .iter()
+            .filter_map(|k| index.kind_id(k))
+            .filter_map(|id| index.by_kind.get(&id))
+            .flatten()
+            .copied()
+            .collect();
+        positions.sort_unstable();
+        positions.dedup();
+        positions.into_iter().map(|i| index.all[i]).collect()
     }
     pub fn pos(&self, node: &Node) -> (usize, usize) {
         let p = node.start_position();
@@ -49,12 +60,37 @@ impl<'a> LintContext<'a> {
     }
 }
 
-/// Single walk that fills both vecs. Comment/string kinds + is_doc rules per §4a table.
-pub fn extract<'a>(
-    tree: &Tree,
+/// Every named node of a tree in pre-order, plus each kind's positions in that order. Built
+/// once per file by `extract`; AST rules query it through `LintContext::nodes` instead of
+/// re-walking the tree, so a file costs one traversal however many rules run (issue #8: a
+/// TypeScript file with every rule on used to get 11). Positions rather than nodes per kind so
+/// a multi-kind query can merge back into pre-order. Anonymous tokens are skipped: they are
+/// ~45% of all nodes and no rule has ever queried one.
+pub struct NodeIndex<'t> {
+    lang: LanguageRef<'t>,
+    all: Vec<Node<'t>>,
+    by_kind: HashMap<u16, Vec<usize>>, // kind id -> positions in `all`
+}
+
+impl NodeIndex<'_> {
+    /// Keyed by `Node::kind_id` rather than `Node::kind`: the id is one FFI read per node, the
+    /// string is that plus a strlen, a UTF-8 check and a longer hash. `None` for a name that is
+    /// not a named kind of this grammar (tree-sitter reserves id 0 for "not found").
+    fn kind_id(&self, kind: &str) -> Option<u16> {
+        match self.lang.id_for_node_kind(kind, true) {
+            0 => None,
+            id => Some(id),
+        }
+    }
+}
+
+/// The single traversal: fills the comment/string vecs (kinds + is_doc rules per §4a table) and
+/// the node index.
+pub fn extract<'t, 'a>(
+    tree: &'t Tree,
     source: &'a str,
     lang: Lang,
-) -> (Vec<TextNode<'a>>, Vec<TextNode<'a>>) {
+) -> (Vec<TextNode<'a>>, Vec<TextNode<'a>>, NodeIndex<'t>) {
     let (comment_kinds, string_kinds): (&[&str], &[&str]) = match lang {
         Lang::Ts | Lang::Tsx => (&["comment"], &["string", "template_string"]),
         Lang::Python => (&["comment"], &["string"]),
@@ -70,6 +106,20 @@ pub fn extract<'a>(
         Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => (&[], &[]),
     };
 
+    let mut index = NodeIndex {
+        lang: tree.language(),
+        all: Vec::new(),
+        by_kind: HashMap::new(),
+    };
+    let comment_ids: Vec<u16> = comment_kinds
+        .iter()
+        .filter_map(|k| index.kind_id(k))
+        .collect();
+    let string_ids: Vec<u16> = string_kinds
+        .iter()
+        .filter_map(|k| index.kind_id(k))
+        .collect();
+
     let mut comments = Vec::new();
     let mut strings = Vec::new();
     let mut c = tree.walk();
@@ -77,27 +127,30 @@ pub fn extract<'a>(
     // Byte offsets from the tree apply directly to `source` since it's the exact text that was
     // parsed, so we don't need the two lifetimes to unify — only extracted `&'a str` slices matter.
     walk_tree(&mut c, &mut |node| {
-        let kind = node.kind();
-        if comment_kinds.contains(&kind) {
+        if !node.is_named() {
+            return;
+        }
+        let id = node.kind_id();
+        index.by_kind.entry(id).or_default().push(index.all.len());
+        index.all.push(node);
+        if comment_ids.contains(&id) {
             comments.push(make_text_node(
                 node,
                 source,
                 is_doc_comment(lang, &source[node.byte_range()]),
             ));
-        } else if string_kinds.contains(&kind) {
+        } else if string_ids.contains(&id) {
             strings.push(make_text_node(node, source, is_doc_string(lang, node)));
         }
     });
-    (comments, strings)
+    (comments, strings, index)
 }
 
-/// Shared pre-order DFS over a `TreeCursor`, visiting every node exactly once. Used by both
-/// `LintContext::walk` (rules) and `extract` (comment/string classification).
+/// Pre-order DFS over a `TreeCursor`, visiting every node exactly once.
 ///
 /// Iterative on purpose: the recursive version cost one stack frame per nesting level and blew
 /// the stack (SIGABRT, not a clean exit code) on ~5k-deep bracket nesting -- 10 KB of generated
-/// or minified source. Both callers start the cursor at the root, so climbing past it ends the
-/// walk.
+/// or minified source. The cursor starts at the root, so climbing past it ends the walk.
 fn walk_tree<'t>(c: &mut TreeCursor<'t>, f: &mut impl FnMut(Node<'t>)) {
     loop {
         f(c.node());
@@ -157,7 +210,78 @@ fn is_doc_string(lang: Lang, node: Node) -> bool {
 mod tests {
     use super::*;
     use crate::lang::Lang;
+    use std::collections::BTreeSet;
     use tree_sitter::Parser;
+
+    /// The index must answer exactly what a kind-filtered pre-order walk over the named nodes
+    /// would, per kind and for several kinds at once, in every grammar. This is the assumption
+    /// every AST rule's `ctx.nodes(...)` query rests on, including that `kind_id` and
+    /// `id_for_node_kind` agree for aliased symbols. The TS and Python samples each carry a
+    /// name that is both a named kind and a keyword (`number` literal vs. type, `lambda`
+    /// expression vs. keyword) so the named-only lookup is exercised where it matters.
+    #[test]
+    fn nodes_query_matches_a_kind_filtered_preorder_walk() {
+        let samples = [
+            (Lang::Ts, "const f = (a: number) => { try { g(42) } catch (e) {} };\n"),
+            (Lang::Python, "import os\nf = lambda: 0\nclass A(B):\n    def f(self):\n        try:\n            pass\n        except Exception:\n            pass\n"),
+            (Lang::Go, "package p\nimport \"fmt\"\nfunc f() { if err != nil { } }\n"),
+            (Lang::Rust, "use std::io;\nfn f() -> i32 { match g() { Err(_) => {} Ok(_) => {} } }\n"),
+        ];
+        for (lang, src) in samples {
+            let mut p = Parser::new();
+            p.set_language(&crate::lang::ts_language(lang)).unwrap();
+            let tree = p.parse(src, None).unwrap();
+            let (comments, strings, index) = extract(&tree, src, lang);
+            let ctx = LintContext {
+                display_path: "t".into(),
+                source: src,
+                index: Some(&index),
+                lang,
+                comments: &comments,
+                strings: &strings,
+                is_test_path: false,
+                is_stub_file: false,
+                deps: None,
+                prose: None,
+            };
+            let mut preorder = Vec::new();
+            walk_tree(&mut tree.walk(), &mut |n| {
+                if n.is_named() {
+                    preorder.push(n);
+                }
+            });
+            let kinds: Vec<&str> = preorder
+                .iter()
+                .map(|n| n.kind())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            for &k in &kinds {
+                let expected: Vec<Node> =
+                    preorder.iter().copied().filter(|n| n.kind() == k).collect();
+                assert_eq!(ctx.nodes(&[k]), expected, "{lang:?} kind {k:?}");
+            }
+            assert_eq!(ctx.nodes(&kinds), preorder, "{lang:?} every kind at once");
+            assert!(ctx.nodes(&["no_such_kind"]).is_empty());
+        }
+    }
+
+    #[test]
+    fn nodes_query_is_empty_for_prose_ctx() {
+        let ctx = LintContext {
+            display_path: "t.md".into(),
+            source: "",
+            index: None,
+            lang: Lang::Md,
+            comments: &[],
+            strings: &[],
+            is_test_path: false,
+            is_stub_file: false,
+            deps: None,
+            prose: None,
+        };
+        assert!(ctx.nodes(&["paragraph"]).is_empty());
+    }
 
     /// The recursive `walk_tree` aborted the process (stack overflow, exit 134) at ~5k nesting
     /// levels -- 10 KB of generated source. Test threads get a smaller stack than main, so a

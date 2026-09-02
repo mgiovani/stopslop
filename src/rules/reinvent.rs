@@ -133,15 +133,12 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
         }
     }
 
-    ctx.walk(|node| {
-        if node.kind() != "new_expression" {
-            return;
-        }
+    for node in ctx.nodes(&["new_expression"]) {
         let Some(ctor) = node.child_by_field_name("constructor") else {
-            return;
+            continue;
         };
         if ctx.node_text(&ctor) != "Promise" {
-            return;
+            continue;
         }
         if contains_call_named(ctx, node, "setTimeout") {
             let (line, col) = ctx.pos(&node);
@@ -154,7 +151,7 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
                 "use `setTimeout` from `node:timers/promises`",
             ));
         }
-    });
+    }
 }
 
 /// Cheap textual check for `<ident> = ...+...` (no regex compile per call): find `ident`, then
@@ -190,13 +187,18 @@ fn contains_call_named(ctx: &LintContext, node: Node, name: &str) -> bool {
 // --- Python ---
 
 fn check_python(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| match node.kind() {
-        "for_statement" => check_python_range_len(rule, ctx, node, out),
-        "call" => check_python_open_chain(rule, ctx, node, out),
-        "function_definition" => check_python_deepcopy_def(rule, ctx, node, out),
-        "if_statement" => check_python_defaultdict(rule, ctx, node, out),
-        _ => {}
-    });
+    for node in ctx.nodes(&["for_statement"]) {
+        check_python_range_len(rule, ctx, node, out);
+    }
+    for node in ctx.nodes(&["call"]) {
+        check_python_open_chain(rule, ctx, node, out);
+    }
+    for node in ctx.nodes(&["function_definition"]) {
+        check_python_deepcopy_def(rule, ctx, node, out);
+    }
+    for node in ctx.nodes(&["if_statement"]) {
+        check_python_defaultdict(rule, ctx, node, out);
+    }
 }
 
 fn check_python_range_len(
@@ -384,31 +386,28 @@ fn check_python_defaultdict(
 // --- Go ---
 
 fn check_go(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if node.kind() != "call_expression" {
-            return;
-        }
+    for node in ctx.nodes(&["call_expression"]) {
         let Some(func) = node.child_by_field_name("function") else {
-            return;
+            continue;
         };
         if func.kind() != "selector_expression" {
-            return;
+            continue;
         }
         let Some(operand) = func.child_by_field_name("operand") else {
-            return;
+            continue;
         };
         if ctx.node_text(&operand) != "ioutil" {
-            return;
+            continue;
         }
         let Some(field) = func.child_by_field_name("field") else {
-            return;
+            continue;
         };
         let field_text = ctx.node_text(&field);
         if !matches!(
             field_text,
             "ReadFile" | "WriteFile" | "ReadAll" | "TempFile" | "TempDir"
         ) {
-            return;
+            continue;
         }
         let (line, col) = ctx.pos(&node);
         out.push(Diagnostic::at_fix(
@@ -419,7 +418,7 @@ fn check_go(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
             format!("`ioutil.{field_text}` has a direct `os`/`io` replacement"),
             "use `os.ReadFile`, `os.WriteFile`, `io.ReadAll`, or `os.CreateTemp`",
         ));
-    });
+    }
 }
 
 // --- All languages: bespoke email-validation regex ---
@@ -460,10 +459,7 @@ fn check_email_regex(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Di
         }
     }
     if matches!(ctx.lang, Lang::Ts | Lang::Tsx) {
-        ctx.walk(|node| {
-            if node.kind() != "regex" {
-                return;
-            }
+        for node in ctx.nodes(&["regex"]) {
             if looks_like_email_regex(ctx.node_text(&node)) {
                 let (line, col) = ctx.pos(&node);
                 out.push(Diagnostic::at_fix(
@@ -475,7 +471,7 @@ fn check_email_regex(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Di
                     "check for a single `@`, then confirm by sending mail",
                 ));
             }
-        });
+        }
     }
 }
 
@@ -489,11 +485,11 @@ mod tests {
         let mut p = Parser::new();
         p.set_language(&crate::lang::ts_language(lang)).unwrap();
         let tree = p.parse(src, None).unwrap();
-        let (comments, strings) = context::extract(&tree, src, lang);
+        let (comments, strings, index) = context::extract(&tree, src, lang);
         let ctx = LintContext {
             display_path: "t".into(),
             source: src,
-            tree: Some(&tree),
+            index: Some(&index),
             lang,
             comments: &comments,
             strings: &strings,

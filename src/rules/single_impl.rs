@@ -45,31 +45,20 @@ fn flag(
 
 fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let mut abstractions: Vec<(&str, Node)> = Vec::new();
-    ctx.walk(|node| {
-        if matches!(
-            node.kind(),
-            "interface_declaration" | "abstract_class_declaration"
-        ) {
-            if let Some(name) = node.child_by_field_name("name") {
-                abstractions.push((ctx.node_text(&name), node));
-            }
+    for node in ctx.nodes(&["interface_declaration", "abstract_class_declaration"]) {
+        if let Some(name) = node.child_by_field_name("name") {
+            abstractions.push((ctx.node_text(&name), node));
         }
-    });
+    }
     if abstractions.is_empty() {
         return;
     }
 
     // (abstraction name referenced, name of the class referencing it)
     let mut refs: Vec<(String, &str)> = Vec::new();
-    ctx.walk(|node| {
-        if !matches!(
-            node.kind(),
-            "class_declaration" | "abstract_class_declaration"
-        ) {
-            return;
-        }
+    for node in ctx.nodes(&["class_declaration", "abstract_class_declaration"]) {
         let Some(impl_name_node) = node.child_by_field_name("name") else {
-            return;
+            continue;
         };
         let impl_name = ctx.node_text(&impl_name_node);
         let mut cursor = node.walk();
@@ -95,7 +84,7 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
                 }
             }
         }
-    });
+    }
 
     for (name, def_node) in &abstractions {
         let matches: Vec<&str> = refs
@@ -120,31 +109,25 @@ fn ts_base_name(ctx: &LintContext, node: Node) -> String {
 
 fn check_python(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let mut abstractions: Vec<(&str, Node)> = Vec::new();
-    ctx.walk(|node| {
-        if node.kind() != "class_definition" {
-            return;
-        }
+    for node in ctx.nodes(&["class_definition"]) {
         if python_is_abstraction(ctx, node) {
             if let Some(name) = node.child_by_field_name("name") {
                 abstractions.push((ctx.node_text(&name), node));
             }
         }
-    });
+    }
     if abstractions.is_empty() {
         return;
     }
 
     let mut refs: Vec<(String, &str)> = Vec::new();
-    ctx.walk(|node| {
-        if node.kind() != "class_definition" {
-            return;
-        }
+    for node in ctx.nodes(&["class_definition"]) {
         let Some(name_node) = node.child_by_field_name("name") else {
-            return;
+            continue;
         };
         let impl_name = ctx.node_text(&name_node);
         let Some(sc) = node.child_by_field_name("superclasses") else {
-            return;
+            continue;
         };
         let mut cursor = sc.walk();
         for base in sc.named_children(&mut cursor) {
@@ -153,7 +136,7 @@ fn check_python(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnos
             }
             refs.push((python_base_name(ctx, base), impl_name));
         }
-    });
+    }
 
     for (name, def_node) in &abstractions {
         let matches: Vec<&str> = refs
@@ -212,11 +195,11 @@ mod tests {
         let mut p = Parser::new();
         p.set_language(&crate::lang::ts_language(lang)).unwrap();
         let tree = p.parse(src, None).unwrap();
-        let (comments, strings) = context::extract(&tree, src, lang);
+        let (comments, strings, index) = context::extract(&tree, src, lang);
         let ctx = LintContext {
             display_path: "t".into(),
             source: src,
-            tree: Some(&tree),
+            index: Some(&index),
             lang,
             comments: &comments,
             strings: &strings,

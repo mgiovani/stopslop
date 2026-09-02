@@ -70,36 +70,33 @@ fn flag(
 }
 
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| match node.kind() {
-        "import_statement" => {
-            let Some(source) = node.child_by_field_name("source") else {
-                return;
-            };
-            let raw = ctx.node_text(&source);
-            let spec = raw.trim_matches(|c| c == '\'' || c == '"' || c == '`');
-            flag(rule, ctx, node, spec, out);
+    for node in ctx.nodes(&["import_statement"]) {
+        let Some(source) = node.child_by_field_name("source") else {
+            continue;
+        };
+        let raw = ctx.node_text(&source);
+        let spec = raw.trim_matches(|c| c == '\'' || c == '"' || c == '`');
+        flag(rule, ctx, node, spec, out);
+    }
+    for node in ctx.nodes(&["call_expression"]) {
+        let Some(func) = node.child_by_field_name("function") else {
+            continue;
+        };
+        if ctx.node_text(&func) != "require" {
+            continue;
         }
-        "call_expression" => {
-            let Some(func) = node.child_by_field_name("function") else {
-                return;
-            };
-            if ctx.node_text(&func) != "require" {
-                return;
-            }
-            let Some(args) = node.child_by_field_name("arguments") else {
-                return;
-            };
-            let mut cursor = args.walk();
-            let named: Vec<Node> = args.named_children(&mut cursor).collect();
-            if named.len() != 1 || named[0].kind() != "string" {
-                return;
-            }
-            let raw = ctx.node_text(&named[0]);
-            let spec = raw.trim_matches(|c| c == '\'' || c == '"' || c == '`');
-            flag(rule, ctx, node, spec, out);
+        let Some(args) = node.child_by_field_name("arguments") else {
+            continue;
+        };
+        let mut cursor = args.walk();
+        let named: Vec<Node> = args.named_children(&mut cursor).collect();
+        if named.len() != 1 || named[0].kind() != "string" {
+            continue;
         }
-        _ => {}
-    });
+        let raw = ctx.node_text(&named[0]);
+        let spec = raw.trim_matches(|c| c == '\'' || c == '"' || c == '`');
+        flag(rule, ctx, node, spec, out);
+    }
 }
 
 #[cfg(test)]
@@ -112,11 +109,11 @@ mod tests {
         let mut p = Parser::new();
         p.set_language(&crate::lang::ts_language(Lang::Ts)).unwrap();
         let tree = p.parse(src, None).unwrap();
-        let (comments, strings) = context::extract(&tree, src, Lang::Ts);
+        let (comments, strings, index) = context::extract(&tree, src, Lang::Ts);
         let ctx = LintContext {
             display_path: "t".into(),
             source: src,
-            tree: Some(&tree),
+            index: Some(&index),
             lang: Lang::Ts,
             comments: &comments,
             strings: &strings,
@@ -145,6 +142,16 @@ mod tests {
         let diags = lint("const { v4 } = require('uuid');\n");
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].fix.as_deref(), Some("use `crypto.randomUUID()`"));
+    }
+
+    /// A non-`require` call first, then the flaggable `require`: a `continue` mistakenly turned
+    /// into `return` would drop the second call too.
+    #[test]
+    fn non_require_call_first_uuid_require_still_flagged() {
+        assert_eq!(
+            lint("foo(bar);\nconst { v4 } = require('uuid');\n").len(),
+            1
+        );
     }
 
     #[test]

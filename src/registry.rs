@@ -2,7 +2,7 @@ use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::Lang;
 
-/// Uniform check fn. Text rules iterate ctx.comments/ctx.strings; AST rules call ctx.walk().
+/// Uniform check fn. Text rules iterate ctx.comments/ctx.strings; AST rules query ctx.nodes().
 pub type CheckFn = fn(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>);
 
 pub struct RuleDef {

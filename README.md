@@ -86,6 +86,9 @@ stopslop --config path.toml        # use a specific config file instead of ./sto
 stopslop --no-config               # ignore any stopslop.toml, CLI flags only
 stopslop --write-baseline .        # record today's findings (see "Baseline" below)
 stopslop --baseline .              # report only findings that aren't in the baseline
+stopslop --staged                  # lint what is about to be committed (index content, not disk)
+stopslop --changed                 # staged + unstaged changes against HEAD
+stopslop --since origin/main       # files changed on this branch, for PR checks
 ```
 
 Example output:
@@ -164,6 +167,26 @@ budget shrinks with it. The count ratchets down on its own; raising it takes a
 deliberate `--write-baseline`.
 
 Commit the baseline file so CI and local runs agree.
+
+## Git-aware selection
+
+`--staged`, `--changed`, and `--since REF` (mutually exclusive) replace the walk
+with a git-selected file list, so linting scales with the size of a diff
+instead of the whole tree. Positional paths, if given, act as git pathspecs
+(`stopslop --staged src/` lints only staged files under `src`).
+
+- `--staged` reads each file's **staged** content (`git show :./path`), so a
+  partially staged file is checked as it will be committed, not as it sits on
+  disk.
+- `--changed` includes both staged and unstaged changes against `HEAD`;
+  untracked files are not included.
+- `--since REF` diffs against the merge base of `REF` and `HEAD` (git 2.30+),
+  so `REF` advancing after the branch forked doesn't pull in its changes.
+  Built for `stopslop --since origin/main` on a PR.
+- An empty selection exits 0. All three compose with `--baseline`, `exclude`,
+  and `[per-file-ignores]` exactly like a normal scan.
+
+Pre-commit hook: `stopslop --staged`.
 
 ## Rules
 

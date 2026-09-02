@@ -29,16 +29,13 @@ fn is_blanket_directive(text: &str) -> bool {
 }
 
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if node.kind() != "as_expression" {
-            return;
-        }
+    for node in ctx.nodes(&["as_expression"]) {
         // as_expression named children are [expression, type] (no fields; see node-types.json).
         let Some(ty) = node.named_child(1) else {
-            return;
+            continue;
         };
         if ty.kind() != "predefined_type" {
-            return; // `as const`, `as Record<..>`, etc. — not an escape kind
+            continue; // `as const`, `as Record<..>`, etc. — not an escape kind
         }
         let text = ctx.node_text(&ty);
         // Only the INNER cast of `x as unknown as T` counts: its parent is itself an
@@ -55,7 +52,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             let (line, col) = ctx.pos(&node);
             out.push(Diagnostic::at(rule, ctx, line, col, msg));
         }
-    });
+    }
 
     for c in ctx.comments {
         if c.text.starts_with("//") && is_blanket_directive(c.text) {

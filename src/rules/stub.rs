@@ -36,21 +36,18 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 // --- Python ---
 
 fn check_python(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if node.kind() != "function_definition" {
-            return;
-        }
+    for node in ctx.nodes(&["function_definition"]) {
         if is_exempt_python(ctx, node) {
-            return;
+            continue;
         }
         let Some(body) = node.child_by_field_name("body") else {
-            return;
+            continue;
         };
         if is_stub_body_python(ctx, body) {
             let (line, col) = ctx.pos(&node);
             out.push(Diagnostic::at(rule, ctx, line, col, MESSAGE));
         }
-    });
+    }
 }
 
 /// @abstractmethod / @overload on the immediate wrapper; nearest enclosing class's
@@ -151,21 +148,18 @@ fn raises_with_message(ctx: &LintContext, raise: Node) -> bool {
 // --- Rust ---
 
 fn check_rust(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if node.kind() != "function_item" {
-            return;
-        }
+    for node in ctx.nodes(&["function_item"]) {
         if is_cfg_test_ancestor(ctx, node) {
-            return;
+            continue;
         }
         let Some(body) = node.child_by_field_name("body") else {
-            return;
+            continue;
         };
         if is_stub_body_rust(ctx, body) {
             let (line, col) = ctx.pos(&node);
             out.push(Diagnostic::at(rule, ctx, line, col, MESSAGE));
         }
-    });
+    }
 }
 
 fn is_stub_body_rust(ctx: &LintContext, body: Node) -> bool {
@@ -208,24 +202,22 @@ static TS_NOT_IMPLEMENTED: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)not.implemented").unwrap());
 
 fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if !matches!(
-            node.kind(),
-            "function_declaration" | "method_definition" | "arrow_function"
-        ) {
-            return;
-        }
+    for node in ctx.nodes(&[
+        "function_declaration",
+        "method_definition",
+        "arrow_function",
+    ]) {
         let Some(body) = node.child_by_field_name("body") else {
-            return;
+            continue;
         };
         if body.kind() != "statement_block" {
-            return;
+            continue;
         }
         if is_stub_body_ts(ctx, body) {
             let (line, col) = ctx.pos(&node);
             out.push(Diagnostic::at(rule, ctx, line, col, MESSAGE));
         }
-    });
+    }
 }
 
 fn is_stub_body_ts(ctx: &LintContext, body: Node) -> bool {
@@ -255,18 +247,15 @@ fn is_stub_body_ts(ctx: &LintContext, body: Node) -> bool {
 // --- Go ---
 
 fn check_go(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if !matches!(node.kind(), "function_declaration" | "method_declaration") {
-            return;
-        }
+    for node in ctx.nodes(&["function_declaration", "method_declaration"]) {
         let Some(body) = node.child_by_field_name("body") else {
-            return;
+            continue;
         };
         if body.kind() == "block" && body.named_child_count() == 0 {
             let (line, col) = ctx.pos(&node);
             out.push(Diagnostic::at(rule, ctx, line, col, MESSAGE));
         }
-    });
+    }
 }
 
 #[cfg(test)]
@@ -280,11 +269,11 @@ mod tests {
         let mut p = Parser::new();
         p.set_language(&crate::lang::ts_language(lang)).unwrap();
         let tree = p.parse(src, None).unwrap();
-        let (comments, strings) = context::extract(&tree, src, lang);
+        let (comments, strings, index) = context::extract(&tree, src, lang);
         let ctx = LintContext {
             display_path: "t".into(),
             source: src,
-            tree: Some(&tree),
+            index: Some(&index),
             lang,
             comments: &comments,
             strings: &strings,

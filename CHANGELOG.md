@@ -30,6 +30,19 @@ migration notes live here.
   `(Vec<Diagnostic>, Stats)`.
 - `fail-on-tier` (config key and `--fail-on-tier` flag) sets the lowest tier
   that exits 1. Previously nothing could put a Tier B rule on the exit-1 path.
+- `--staged`, `--changed`, and `--since REF` (mutually exclusive) lint a
+  git-selected file list instead of walking the tree: staged index content,
+  staged-plus-unstaged changes against `HEAD`, or everything since the merge
+  base with `REF`. Positional paths act as git pathspecs.
+
+### Changed
+
+- **AST rules no longer re-walk the tree.** Every source file used to get one
+  full tree traversal per rule call site (up to 11 for a TypeScript file with
+  all rules on); `extract` now indexes every named node by kind in its single
+  pass and rules query that index. Diagnostics are unchanged. Library:
+  `LintContext.tree` is now `index` and `context::extract` returns the index
+  as a third element.
 
 ### Fixed
 
@@ -52,6 +65,11 @@ migration notes live here.
 - **Baselines** embedded the path exactly as passed, so one written from
   `git ls-files` re-reported every finding under `stopslop .`. Paths are now
   normalized on both write and load, so existing baselines keep matching.
+- **Column lookup** rescanned from the line start for every diagnostic, so a
+  single-line file with hundreds of thousands of findings degraded
+  quadratically (a 1.8 MB one-line file with 200k em dashes took 18s). Columns
+  now resume from the previous answer on the same line, which brings that file
+  to under 3s. Output is unchanged.
 
 ## 0.5.0
 

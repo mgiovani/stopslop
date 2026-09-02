@@ -46,27 +46,24 @@ fn check_python(
     if deps.python.is_empty() {
         return; // no manifest found: never FP
     }
-    ctx.walk(|node| match node.kind() {
-        "import_statement" => {
-            let mut cursor = node.walk();
-            for name_node in node.children_by_field_name("name", &mut cursor) {
-                if let Some(top) = python_top_segment(name_node, ctx) {
-                    flag_python(rule, ctx, deps, name_node, top, out);
+    for node in ctx.nodes(&["import_statement"]) {
+        let mut cursor = node.walk();
+        for name_node in node.children_by_field_name("name", &mut cursor) {
+            if let Some(top) = python_top_segment(name_node, ctx) {
+                flag_python(rule, ctx, deps, name_node, top, out);
+            }
+        }
+    }
+    for node in ctx.nodes(&["import_from_statement"]) {
+        if let Some(module_node) = node.child_by_field_name("module_name") {
+            // relative_import (leading dots, e.g. `from . import x`) -> always skip.
+            if module_node.kind() == "dotted_name" {
+                if let Some(top) = first_identifier_text(module_node, ctx) {
+                    flag_python(rule, ctx, deps, module_node, top, out);
                 }
             }
         }
-        "import_from_statement" => {
-            if let Some(module_node) = node.child_by_field_name("module_name") {
-                // relative_import (leading dots, e.g. `from . import x`) -> always skip.
-                if module_node.kind() == "dotted_name" {
-                    if let Some(top) = first_identifier_text(module_node, ctx) {
-                        flag_python(rule, ctx, deps, module_node, top, out);
-                    }
-                }
-            }
-        }
-        _ => {}
-    });
+    }
 }
 
 fn python_top_segment<'a>(name_node: Node, ctx: &LintContext<'a>) -> Option<&'a str> {
@@ -137,12 +134,9 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, deps: &DepIndex, out: &mu
     if deps.ts.is_empty() {
         return;
     }
-    ctx.walk(|node| {
-        if node.kind() != "import_statement" {
-            return;
-        }
+    for node in ctx.nodes(&["import_statement"]) {
         let Some(source_node) = node.child_by_field_name("source") else {
-            return;
+            continue;
         };
         let raw = ctx.node_text(&source_node);
         let path = raw.trim_matches(|c| c == '\'' || c == '"' || c == '`');
@@ -151,7 +145,7 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, deps: &DepIndex, out: &mu
             let name = imports_data::ts_package_name(path);
             out.push(Diagnostic::at(rule, ctx, line, col, msg(&name)));
         }
-    });
+    }
 }
 
 // --- Go: `import_spec` (covers both single and grouped `import (...)` forms) ---
@@ -160,12 +154,9 @@ fn check_go(rule: &'static RuleDef, ctx: &LintContext, deps: &DepIndex, out: &mu
     if deps.go.is_empty() {
         return;
     }
-    ctx.walk(|node| {
-        if node.kind() != "import_spec" {
-            return;
-        }
+    for node in ctx.nodes(&["import_spec"]) {
         let Some(path_node) = node.child_by_field_name("path") else {
-            return;
+            continue;
         };
         let raw = ctx.node_text(&path_node);
         let path = raw.trim_matches(|c| c == '"' || c == '`');
@@ -173,7 +164,7 @@ fn check_go(rule: &'static RuleDef, ctx: &LintContext, deps: &DepIndex, out: &mu
             let (line, col) = ctx.pos(&node);
             out.push(Diagnostic::at(rule, ctx, line, col, msg(path)));
         }
-    });
+    }
 }
 
 // --- Rust: `use path::to::Item;`, `extern crate name;` ---
@@ -188,24 +179,21 @@ fn check_rust(
         return;
     }
     let locals = local_item_names(ctx);
-    ctx.walk(|node| match node.kind() {
-        "use_declaration" => {
-            if let Some(arg) = node.child_by_field_name("argument") {
-                if let Some(name) = rust_first_segment(arg, ctx) {
-                    if !locals.contains(name) {
-                        flag_rust(rule, ctx, deps, node, name, out);
-                    }
+    for node in ctx.nodes(&["use_declaration"]) {
+        if let Some(arg) = node.child_by_field_name("argument") {
+            if let Some(name) = rust_first_segment(arg, ctx) {
+                if !locals.contains(name) {
+                    flag_rust(rule, ctx, deps, node, name, out);
                 }
             }
         }
-        "extern_crate_declaration" => {
-            if let Some(name_node) = node.child_by_field_name("name") {
-                let name = ctx.node_text(&name_node);
-                flag_rust(rule, ctx, deps, node, name, out);
-            }
+    }
+    for node in ctx.nodes(&["extern_crate_declaration"]) {
+        if let Some(name_node) = node.child_by_field_name("name") {
+            let name = ctx.node_text(&name_node);
+            flag_rust(rule, ctx, deps, node, name, out);
         }
-        _ => {}
-    });
+    }
 }
 
 /// Top-level item names declared in this file (enum/struct/union/type alias/mod). A bare
@@ -213,16 +201,17 @@ fn check_rust(
 /// package import — even though its leftmost segment looks just like a crate name.
 fn local_item_names<'a>(ctx: &LintContext<'a>) -> std::collections::HashSet<&'a str> {
     let mut names = std::collections::HashSet::new();
-    ctx.walk(|node| {
-        if matches!(
-            node.kind(),
-            "enum_item" | "struct_item" | "union_item" | "type_item" | "mod_item"
-        ) {
-            if let Some(name_node) = node.child_by_field_name("name") {
-                names.insert(ctx.node_text(&name_node));
-            }
+    for node in ctx.nodes(&[
+        "enum_item",
+        "struct_item",
+        "union_item",
+        "type_item",
+        "mod_item",
+    ]) {
+        if let Some(name_node) = node.child_by_field_name("name") {
+            names.insert(ctx.node_text(&name_node));
         }
-    });
+    }
     names
 }
 
@@ -265,11 +254,11 @@ mod tests {
         let mut p = Parser::new();
         p.set_language(&crate::lang::ts_language(lang)).unwrap();
         let tree = p.parse(src, None).unwrap();
-        let (comments, strings) = context::extract(&tree, src, lang);
+        let (comments, strings, index) = context::extract(&tree, src, lang);
         let ctx = LintContext {
             display_path: "t".into(),
             source: src,
-            tree: Some(&tree),
+            index: Some(&index),
             lang,
             comments: &comments,
             strings: &strings,
