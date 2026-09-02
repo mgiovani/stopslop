@@ -18,8 +18,8 @@ where AI coding artifacts live. stopslop reads what they discard: leaked
 chat preambles, elision comments that silently deleted code, stray markdown
 fences, placeholder credentials, and package imports that don't resolve to
 anything you declared. It reads your prose too: Markdown, MDX, plain text,
-and reST get the same deterministic treatment. One static binary, no LLM at
-scan time: same input, same output, every run.
+reST, and HTML get the same deterministic treatment. One static binary, no
+LLM at scan time: same input, same output, every run.
 
 - One fast static binary, zero config to get started.
 - Deterministic: no LLM calls, no API calls, no network access at scan time.
@@ -204,32 +204,32 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP008 | structure | Stub-only / unimplemented body | A, on | TS, TSX, Python, Go, Rust | en, pt-BR | A function whose entire body is `pass`/`...`/`throw new Error("not implemented")`/`todo!()`/empty |
 | SLOP009 | structure | Placeholder / sample credential value | A, on | TS, TSX, Python, Go, Rust | en | A hardcoded `YOUR_API_KEY`, `example.com`, `sk-...`-shaped secret, or other sample value |
 | SLOP010 | structure | Unresolved package import | B, off | TS, TSX, Python, Go, Rust | en, pt-BR | An imported package that isn't declared in the project's manifest or stdlib (opt-in, `--check-imports`) |
-| SLOP011 | artifact | Assistant-response residue in prose | A, on | Markdown, MDX, Text, reST | en | A leftover chat-turn phrase (self-ID disclaimer, refusal boilerplate, a line-initial `Certainly!` opener, a trailing `let me know if you have` closer, reasoning-chain scaffolding like `let's think about this`, a mid-sentence `step 1:` that isn't heading a section or list item, or a paragraph-initial acknowledgment loop like `To answer your question, ...`) left unedited in prose |
-| SLOP012 | artifact | LLM tool / citation artifact tokens | A, on | Markdown, MDX, Text, reST | en, pt-BR | A leftover search/citation-tool token (`turn0search0`, `:contentReference[oaicite:1]`, a `【12†L3】` marker, `utm_source=chatgpt.com`) left in text |
-| SLOP013 | artifact | Unfilled template placeholder text | A, on | Markdown, MDX, Text, reST | en | An unfilled placeholder (`[Your Name]`, `INSERT_SOURCE_URL_30`, a `date: 2025-XX-XX` stub) left in place of real content |
-| SLOP014 | rhetoric | Formulaic cliché phrase | B, on | Markdown, MDX, Text, reST | en | A stock marketing/narrative cliché (`unlock the power of`, `in today's fast-paced world`, `a testament to`) |
-| SLOP015 | verbosity | Hedging & filler-phrase density | B, on  | Markdown, MDX, Text, reST | en | A document-wide density of hedging/filler phrases (`it's worth noting that`, `in conclusion`, `first and foremost`); an adjacent hedge stack like `might potentially` fires on its own, without waiting for the density threshold |
-| SLOP016 | verbosity | Overused-vocabulary density | B, on  | Markdown, MDX, Text, reST | en | A document-wide density of overused vocabulary (`delve`, `tapestry`, `robust`, `leverage`) across enough distinct terms to read as filler |
-| SLOP017 | rhetoric | Rhetorical parallelism / false-depth scaffolding density | B, on  | Markdown, MDX, Text, reST | en | A document-wide density of three-item rhetorical lists and `not only X but also Y` phrasing. Trailing `, underscoring its...` participles count toward the same threshold. Longer enumerations and lists of proper nouns are not counted |
-| SLOP018 | format | Mid-prose em/en dash | B, on | Markdown, MDX, Text, reST | en, pt-BR | A mid-sentence em dash (`—`), en dash (`–`), or spaced ASCII `--` that should be rewritten out of the sentence (numeric ranges like `2020–2024`, and an attribution dash opening a block or blockquote like `— Oscar Wilde`, are exempt) |
+| SLOP011 | artifact | Assistant-response residue in prose | A, on | Markdown, MDX, Text, reST, HTML | en | A leftover chat-turn phrase (self-ID disclaimer, refusal boilerplate, a line-initial `Certainly!` opener, a trailing `let me know if you have` closer, reasoning-chain scaffolding like `let's think about this`, a mid-sentence `step 1:` that isn't heading a section or list item, or a paragraph-initial acknowledgment loop like `To answer your question, ...`) left unedited in prose |
+| SLOP012 | artifact | LLM tool / citation artifact tokens | A, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A leftover search/citation-tool token (`turn0search0`, `:contentReference[oaicite:1]`, a `【12†L3】` marker, `utm_source=chatgpt.com`) left in text |
+| SLOP013 | artifact | Unfilled template placeholder text | A, on | Markdown, MDX, Text, reST, HTML | en | An unfilled placeholder (`[Your Name]`, `INSERT_SOURCE_URL_30`, a `date: 2025-XX-XX` stub) left in place of real content |
+| SLOP014 | rhetoric | Formulaic cliché phrase | B, on | Markdown, MDX, Text, reST, HTML | en | A stock marketing/narrative cliché (`unlock the power of`, `in today's fast-paced world`, `a testament to`) |
+| SLOP015 | verbosity | Hedging & filler-phrase density | B, on  | Markdown, MDX, Text, reST, HTML | en | A document-wide density of hedging/filler phrases (`it's worth noting that`, `in conclusion`, `first and foremost`); an adjacent hedge stack like `might potentially` fires on its own, without waiting for the density threshold |
+| SLOP016 | verbosity | Overused-vocabulary density | B, on  | Markdown, MDX, Text, reST, HTML | en | A document-wide density of overused vocabulary (`delve`, `tapestry`, `robust`, `leverage`) across enough distinct terms to read as filler |
+| SLOP017 | rhetoric | Rhetorical parallelism / false-depth scaffolding density | B, on  | Markdown, MDX, Text, reST, HTML | en | A document-wide density of three-item rhetorical lists and `not only X but also Y` phrasing. Trailing `, underscoring its...` participles count toward the same threshold. Longer enumerations and lists of proper nouns are not counted |
+| SLOP018 | format | Mid-prose em/en dash | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A mid-sentence em dash (`—`), en dash (`–`), or spaced ASCII `--` that should be rewritten out of the sentence (numeric ranges like `2020–2024`, and an attribution dash opening a block or blockquote like `— Oscar Wilde`, are exempt) |
 | SLOP019 | format | Boldface & bold-lead-in list overuse | B, on  | Markdown, MDX | en, pt-BR | Boldface overuse in body prose, or 3+ consecutive `- **Term**: ...` bold-lead-in list items |
-| SLOP020 | format | Typographic (smart) quotes in source | B, on  | Markdown, MDX, Text, reST | en, pt-BR | Curly quotes/apostrophes in source where straight ASCII quotes are expected |
+| SLOP020 | format | Typographic (smart) quotes in source | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | Curly quotes/apostrophes in source where straight ASCII quotes are expected |
 | SLOP021 | format | Heading & marker formatting affectations | B, on  | Markdown, MDX | en | Emoji or a decorative technical symbol used as a heading/list marker (counted and reported separately), headings written in Title Case against an otherwise sentence-case document, or headings stacked over two-sentence sections |
-| SLOP022 | rhetoric | Formulaic opener / rhetorical setup | B, on | Markdown, MDX, Text, reST | en | A throat-clearing or faux-insight opener (`Here's the thing`, `What nobody tells you`, `Plot twist:`), or a self-answered `Question? Answer.` pair opening a line |
-| SLOP023 | rhetoric | Binary contrast / negative listing | B, on | Markdown, MDX, Text, reST | en | The `It's not X. It's Y.` / `The question isn't X, it's Y` shape, or a `Not a X. Not a Y.` fragment run |
-| SLOP024 | rhetoric | Importance puffery / fake-strong verb | B, on | Markdown, MDX, Text, reST | en | An inflated significance claim (`marks a pivotal moment`, `solidifies its position`), a `serves as a centralized hub`-style linking verb where plain `is` reads better, or a faux-scale range (`from the singularity of the Big Bang to the enigmatic dance of dark matter`) standing in for an actual magnitude |
-| SLOP025 | sourcing | Unsourced weasel attribution | B, on | Markdown, MDX, Text, reST | en | Anonymous authority (`experts agree`, `studies show`) with nothing citing it anywhere on the line, whether a link or a footnote. Also flags notability by name-dropping three-plus outlets (`cited in TechCrunch, Forbes, and Wired`) with no per-citation context |
-| SLOP026 | rhetoric | Dramatic colon reveal | B, on  | Markdown, MDX, Text, reST | en | A short noun phrase, a colon, then a lowercase dramatic reveal (`The best part: it learns`) |
-| SLOP027 | verbosity | Empty filler phrase & adverb density | B, on  | Markdown, MDX, Text, reST | en | A document-wide density of empty phrases (`when it comes to`, `at its core`) and filler adverbs (`simply`, `actually`) |
-| SLOP028 | verbosity | Weak verb phrase / vague quantifier | B, on  | Markdown, MDX, Text, reST | en | A document-wide density of nominalizations (`made a decision`, `has the ability to`) and vague quantifiers used where a number belongs (`significantly improves`) |
+| SLOP022 | rhetoric | Formulaic opener / rhetorical setup | B, on | Markdown, MDX, Text, reST, HTML | en | A throat-clearing or faux-insight opener (`Here's the thing`, `What nobody tells you`, `Plot twist:`), or a self-answered `Question? Answer.` pair opening a line |
+| SLOP023 | rhetoric | Binary contrast / negative listing | B, on | Markdown, MDX, Text, reST, HTML | en | The `It's not X. It's Y.` / `The question isn't X, it's Y` shape, or a `Not a X. Not a Y.` fragment run |
+| SLOP024 | rhetoric | Importance puffery / fake-strong verb | B, on | Markdown, MDX, Text, reST, HTML | en | An inflated significance claim (`marks a pivotal moment`, `solidifies its position`), a `serves as a centralized hub`-style linking verb where plain `is` reads better, or a faux-scale range (`from the singularity of the Big Bang to the enigmatic dance of dark matter`) standing in for an actual magnitude |
+| SLOP025 | sourcing | Unsourced weasel attribution | B, on | Markdown, MDX, Text, reST, HTML | en | Anonymous authority (`experts agree`, `studies show`) with nothing citing it anywhere on the line, whether a link or a footnote. Also flags notability by name-dropping three-plus outlets (`cited in TechCrunch, Forbes, and Wired`) with no per-citation context |
+| SLOP026 | rhetoric | Dramatic colon reveal | B, on  | Markdown, MDX, Text, reST, HTML | en | A short noun phrase, a colon, then a lowercase dramatic reveal (`The best part: it learns`) |
+| SLOP027 | verbosity | Empty filler phrase & adverb density | B, on  | Markdown, MDX, Text, reST, HTML | en | A document-wide density of empty phrases (`when it comes to`, `at its core`) and filler adverbs (`simply`, `actually`) |
+| SLOP028 | verbosity | Weak verb phrase / vague quantifier | B, on  | Markdown, MDX, Text, reST, HTML | en | A document-wide density of nominalizations (`made a decision`, `has the ability to`) and vague quantifiers used where a number belongs (`significantly improves`) |
 | SLOP029 | rhetoric | Summary-recap ending / fake-profound kicker | B, on | Markdown, MDX, Text, reST | en | A closing block that restates the piece (`In conclusion`, `Overall`) or lands a mic-drop line (`It's already here.`) |
 | SLOP030 | rhetoric | Dramatic fragmentation / robotic rhythm | B, on  | Markdown, MDX, Text, reST | en, pt-BR | Stacked one-clause fragments (`That's it. That's the whole thing.`), consecutive `And`-initial sentences, or paragraph-wide repeated sentence shapes |
-| SLOP031 | rhetoric | Promotional / advertisement language | B, on  | Markdown, MDX, Text, reST | en | Brochure register in technical prose (`boasts a`, `industry-leading`, `a hidden gem`) at document-wide density |
-| SLOP032 | verbosity | Hyphenated-compound overuse | B, on  | Markdown, MDX, Text, reST | en | Stacked hyphenated modifiers used as filler (`end-to-end`, `data-driven`, `battle-tested`) at document-wide density |
-| SLOP033 | verbosity | Overlong sentence | B, on  | Markdown, MDX, Text, reST | en, pt-BR | A sentence over 50 words, reported with its actual word count (URLs count as one word) |
+| SLOP031 | rhetoric | Promotional / advertisement language | B, on  | Markdown, MDX, Text, reST, HTML | en | Brochure register in technical prose (`boasts a`, `industry-leading`, `a hidden gem`) at document-wide density |
+| SLOP032 | verbosity | Hyphenated-compound overuse | B, on  | Markdown, MDX, Text, reST, HTML | en | Stacked hyphenated modifiers used as filler (`end-to-end`, `data-driven`, `battle-tested`) at document-wide density |
+| SLOP033 | verbosity | Overlong sentence | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A sentence over 50 words, reported with its actual word count (URLs count as one word) |
 | SLOP034 | verbosity | Synonym rotation across a closed concept set | B, on  | Markdown, MDX, Text, reST | en | One concept named two ways within one section's running prose (`check` and `verify`, `config` and `settings`) where technical writing should fix one term. Bullet lists and tables are excluded, so a catalog of differently-named things doesn't count as rotation |
-| SLOP035 | rhetoric | Outline-shaped filler section | B, on  | Markdown, MDX, Text, reST | en | A `Challenges and Future Prospects`-style section heading, or `despite these challenges` boilerplate, standing in for specifics |
-| SLOP036 | rhetoric | Diff-anchored documentation | B, on  | Markdown, MDX, Text, reST | en | Docs narrating a change (`was added to replace`, `no longer requires`) instead of describing current behavior; changelogs and migration guides are exempt |
+| SLOP035 | rhetoric | Outline-shaped filler section | B, on  | Markdown, MDX, Text, reST, HTML | en | A `Challenges and Future Prospects`-style section heading, or `despite these challenges` boilerplate, standing in for specifics |
+| SLOP036 | rhetoric | Diff-anchored documentation | B, on  | Markdown, MDX, Text, reST, HTML | en | Docs narrating a change (`was added to replace`, `no longer requires`) instead of describing current behavior; changelogs and migration guides are exempt |
 | SLOP037 | stdlib | Reinvented stdlib / native platform feature | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | Hand-rolled code where a standard-library or platform primitive exists (`JSON.parse(JSON.stringify(x))`, `for i in range(len(xs))`, `ioutil.ReadFile`) |
 | SLOP038 | stdlib | Dependency with a stdlib equivalent | B, on  | TS, TSX | en, pt-BR | An import of a package the platform already covers (`moment`, `uuid`, `node-fetch`, `left-pad`) |
 | SLOP039 | structure | Pass-through wrapper function | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | A function whose whole body forwards its own parameters, unchanged, to another function |
@@ -275,8 +275,20 @@ the type checker.
 
 ## Prose linting
 
-stopslop also lints `.md`, `.mdx`, `.txt`, and `.rst` files: same binary,
-same deterministic regex/structural matching, no LLM involved in the scan.
+stopslop also lints `.md`, `.mdx`, `.txt`, `.rst`, and `.html`/`.htm` files:
+same binary, same deterministic regex/structural matching, no LLM involved
+in the scan.
+
+HTML is parsed with tree-sitter-html, and the rules see what a reader sees:
+visible text, HTML comments, and `href`/`src` attribute values. Everything
+else is blanked, including `<script>`, `<style>`, `<pre>`, `<code>`,
+`<textarea>`, `<template>`, `<svg>`, `<math>`, and `<noscript>` bodies.
+Django/Jinja `{{ … }}`, `{% … %}`, and `{# … #}` are blanked before parsing
+too. Named/numeric entities (`&amp;`, `&mdash;`) are left blank rather than
+decoded: a miss on an entity-encoded dash, never a false positive. Four
+rules stay off HTML until it has a paragraph model: SLOP029, SLOP030,
+SLOP034, and SLOP041.
+
 SLOP011–013 catch mechanical, high-confidence artifacts (leftover chat-turn
 phrasing including reasoning-chain scaffolding and acknowledgment loops,
 citation-tool tokens, unfilled placeholders) and are Tier A: a finding there
@@ -330,7 +342,7 @@ comment syntax:
 - `// ai-slop-ignore-file`: anywhere in the file, drops every finding in
   that file.
 
-In Markdown/MDX/Text/reST files, use the HTML comment form instead:
+In Markdown/MDX/Text/reST/HTML files, use the HTML comment form instead:
 `<!-- ai-slop-ignore -->` / `<!-- ai-slop-ignore-file -->`, with the same
 two-line and whole-file suppression semantics.
 
@@ -448,7 +460,7 @@ array of tables in `stopslop.toml` compiles straight to a regex rule:
 ```toml
 [[custom-rule]]
 pattern = '(?i)\bsynergy\b'          # required: a regex, matched against comments/strings
-                                       # (code files) or masked prose (Markdown/MDX/Text/reST)
+                                       # (code files) or masked prose (Markdown/MDX/Text/reST/HTML)
 message = "banned house phrase: synergy"  # required: the finding text
 tier = "B"                            # optional, "A" or "B", defaults to "B"
 fix = "say what the teams actually do"    # optional: printed as a second "fix:" line

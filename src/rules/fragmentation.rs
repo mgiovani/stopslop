@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{self, PROSE_LANGS};
+use crate::lang::{self, PARAGRAPH_LANGS};
 use crate::prose::{CodeSpan, ProseDoc};
 use crate::registry::RuleDef;
 use regex::Regex;
@@ -11,7 +11,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP030",
     name: "Dramatic fragmentation / robotic rhythm",
     tier: Tier::B,
-    langs: PROSE_LANGS,
+    langs: PARAGRAPH_LANGS,
     natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: false,

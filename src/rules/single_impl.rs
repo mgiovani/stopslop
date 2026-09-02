@@ -19,7 +19,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     match ctx.lang {
         Lang::Ts | Lang::Tsx => check_ts(rule, ctx, out),
         Lang::Python => check_python(rule, ctx, out),
-        Lang::Go | Lang::Rust | Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => {} // rule.langs excludes these; never reached
+        Lang::Go | Lang::Rust | Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html => {} // rule.langs excludes these; never reached
     }
 }
 

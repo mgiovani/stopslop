@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use stopslop::{lint_file, resolve_enabled, Lang, Settings, ALL_NATLANGS};
 
-const LANG_DIRS: &[&str] = &["typescript", "python", "go", "rust", "markdown"];
+const LANG_DIRS: &[&str] = &["typescript", "python", "go", "rust", "markdown", "html"];
 
 fn fixtures_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -102,9 +102,12 @@ const UNEXERCISED_LANGS: &[(&str, Lang)] = &[];
 
 // ponytail: Tsx shares every dispatch arm with Ts and prose rules never dispatch on lang, so a
 // witness in one member covers the family. A no-op for a single member inside a family goes unseen.
+// HTML is its own family: it reaches the rules through a different masking path, so a Markdown
+// witness proves nothing about it.
 fn family(lang: Lang) -> Lang {
     match lang {
         Lang::Tsx => Lang::Ts,
+        Lang::Html => Lang::Html,
         l if l.is_prose() => Lang::Md,
         l => l,
     }

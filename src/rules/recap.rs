@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{NatLang, PROSE_LANGS};
+use crate::lang::{NatLang, PARAGRAPH_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
 use regex::Regex;
@@ -10,7 +10,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP029",
     name: "Summary-recap ending / fake-profound kicker",
     tier: Tier::B,
-    langs: PROSE_LANGS,
+    langs: PARAGRAPH_LANGS,
     natlangs: &[NatLang::En],
     default_on: true,
     path_gated: false,

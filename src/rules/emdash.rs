@@ -123,7 +123,8 @@ fn spaced_ascii_dashes(masked: &str) -> Vec<usize> {
 /// dashes in byte order, so a run of N dialogue lines costs N single-step walks instead of the
 /// N^2 a fresh walk per dash would (the quadratic shape `7d502e5` removed from this rule).
 fn is_block_initial(doc: &ProseDoc, byte: usize, memo: &mut HashMap<usize, bool>) -> bool {
-    let verdict = walk_back(doc, byte, memo);
+    // An HTML dash that opens its `<p>`/`<td>` is the same attribution shape with the tag blanked.
+    let verdict = doc.block_initial(byte) || walk_back(doc, byte, memo);
     memo.insert(byte, verdict);
     verdict
 }
@@ -194,12 +195,19 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        let doc = ProseDoc::parse(src);
+        diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
+    }
+
+    fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
+        diagnostics_in(ProseDoc::parse_html(src), src, Lang::Html)
+    }
+
+    fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
             index: None,
-            lang: Lang::Md,
+            lang,
             comments: &doc.ignore_comments,
             strings: &[],
             is_test_path: false,
@@ -211,6 +219,12 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    #[test]
+    fn html_block_opening_dash_is_attribution() {
+        assert!(diagnostics_for_html("<p>Quote.</p>\n<p>\u{2014} Author</p>\n").is_empty());
+        assert_eq!(diagnostics_for_html("<p>a \u{2014} b</p>\n").len(), 1);
     }
 
     #[test]
