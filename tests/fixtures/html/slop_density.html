@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<title>Density Rules Demo</title>
+</head>
+<body>
+<h1>Density Rule Demonstrations</h1>
+<h2>Hedging</h2>
+<p>It's important to note that caching reduces database load significantly.</p>
+<p>In conclusion, the cache should be enabled for all production services.</p>
+<p>First and foremost, monitor hit rates before tuning eviction policies.</p>
+<h2>Vocabulary</h2>
+<p>This document walks through the caching layer added to the ingestion service last quarter and why the team chose the current design over the earlier prototype.</p>
+<p>The original prototype used a simple hash map with no eviction policy which worked fine in testing but quickly ran into trouble once real traffic arrived. The rewrite delves into the request patterns collected over three months of production logs to figure out which keys actually needed to stay warm. That analysis unveiled a genuinely intricate access pattern: a small meticulous set of hot keys accounted for most of the read volume while a long tail of cold keys barely mattered.</p>
+<p>The new implementation showcases a two-tier structure. A small in-memory ring buffer holds the hottest entries and a disk-backed layer handles everything else. The interplay between the two tiers is what makes the design multifaceted rather than a single blunt cache.</p>
+<p>The migration also elucidates a myriad of smaller decisions that would otherwise be easy to miss. Deciding how to size the ring buffer, when to promote a cold key to hot status, and how much headroom to leave for a traffic spike all took real thought. Each of those choices was nuanced enough that the team wrote a short design note explaining the reasoning since the paradigm behind the eviction policy is not obvious from the code alone.</p>
+<p>The synergy between the ring buffer and the disk layer boasts a measurable win. Median read latency dropped by roughly forty percent under replayed production traffic once the change landed. Load on the origin database also eased once the cache started absorbing the burgeoning read volume from the mobile client which had been growing steadily for months.</p>
+<p>A veritable pile of edge cases turned up during testing, most of them around cache invalidation during a deploy. The aforementioned ring buffer handles most of these cleanly by simply dropping entries on restart rather than trying to keep them consistent across a version change. Overall the rewrite gives the ingestion service a more capable answer to a problem that had been growing for a long time, and the team plans to reuse the same two-tier structure in the next service that needs a cache.</p>
+<h2>Parallelism</h2>
+<p>The new client is not only fast but also simple to integrate, and teams have shipped it without any major issues.</p>
+<p>The dashboard update focuses on clarity, underscoring how the numbers connect to real user behavior.</p>
+<h2>Filler</h2>
+<p>When it comes to rollout safety, teams often skip the boring steps. In terms of monitoring, most outages get caught within minutes. Going forward, keep the checklist next to the runbook.</p>
+<h2>Weak verb</h2>
+<p>The team made a decision to postpone the cutover.</p>
+<p>We have the ability to roll back within minutes if needed.</p>
+<p>The new pipeline significantly improves batch throughput across the board.</p>
+<h2>Hyphen</h2>
+<p>The service is well-known for its user-friendly onboarding flow.</p>
+<p>It ships with long-term support and real-time monitoring built in.</p>
+<h2>Sentence length</h2>
+<p>The monitoring pipeline collects request latency samples every second, forwards them through a small in-process buffer, batches them into one minute windows, writes each window to the metrics store, and then a background job scans the stored windows for the previous six hours to compute rolling percentiles that feed the alerting rules the on-call team configured last spring and reviewed again during the retro.</p>
+<!--
+expect-line: 9 SLOP015
+expect-line: 14 SLOP016
+expect-line: 20 SLOP017
+expect-line: 23 SLOP027
+expect-line: 25 SLOP028
+expect-line: 29 SLOP032
+expect-line: 32 SLOP033
+-->
+</body>
+</html>

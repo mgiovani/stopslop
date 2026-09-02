@@ -26,9 +26,10 @@ pub static RULE: RuleDef = RuleDef {
 /// means bare labels ("Note:", "Warning:", "Example:", "Tip:", "TODO:") never match: none of
 /// them start with one of the listed determiners. A relative clause (`... that makes it work`)
 /// is allowed after the noun since it's still one noun phrase, not a second finite main clause.
+/// `^[ \t]*` rather than `^`: a blanked HTML tag always leaves spaces before the line's text.
 static COLON_REVEAL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?m)(?:^|[.!?]\s+)((?:The|A|An|This|That|One|My|Our|Another)(?:\s+[a-z]+){0,2}\s+(?:part|thing|secret|trick|catch|kicker|twist|magic|truth|surprise|moment|takeaway|punchline|punch line|detail)(?:\s+(?:that|which|who)\s+[a-z]+(?:\s+[a-z]+){0,3})?)\s*:\s+([a-z][^\n]*[.!?])",
+        r"(?m)(?:^[ \t]*|[.!?]\s+)((?:The|A|An|This|That|One|My|Our|Another)(?:\s+[a-z]+){0,2}\s+(?:part|thing|secret|trick|catch|kicker|twist|magic|truth|surprise|moment|takeaway|punchline|punch line|detail)(?:\s+(?:that|which|who)\s+[a-z]+(?:\s+[a-z]+){0,3})?)\s*:\s+([a-z][^\n]*[.!?])",
     )
     .unwrap()
 });
@@ -83,12 +84,19 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        let doc = ProseDoc::parse(src);
+        diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
+    }
+
+    fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
+        diagnostics_in(ProseDoc::parse_html(src), src, Lang::Html)
+    }
+
+    fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
             index: None,
-            lang: Lang::Md,
+            lang,
             comments: &doc.ignore_comments,
             strings: &[],
             is_test_path: false,
@@ -100,6 +108,18 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    #[test]
+    fn indented_markdown_line_still_opens_a_sentence() {
+        assert_eq!(diagnostics_for("   The best part: it learns.\n").len(), 1);
+    }
+
+    #[test]
+    fn html_paragraph_opening_reveal() {
+        let diags = diagnostics_for_html("<p>The best part: it learns.</p>\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!((diags[0].line, diags[0].col), (1, 4));
     }
 
     #[test]

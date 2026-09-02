@@ -18,6 +18,7 @@ cargo install --path .      # rebuild the binary before dogfooding a new rule
 - A rule that wants a new fact gets a `LintContext` field computed once per file, never a new argument threaded through `engine`.
 - `engine` owns selection (`resolve_enabled`) and per-file dispatch (`lint_file`), `walk` owns the parallel file walk, `output` owns rendering, `cli` wires them together.
 - Rules receive source text and an AST index, never a path to open. I/O stays in `walk`, `git`, `config`, `baseline`, and the one manifest scan in `imports_data::DepIndex::discover`, which `cli` runs before the walk.
+- Prose langs share `ProseDoc`. The Markdown family comes from `ProseDoc::parse`, HTML from `ProseDoc::parse_html` (a tree-sitter-html masked stream); rules never dispatch on which, they read `doc` fields (`block_starts`, `block_initial`) instead.
 - `lib.rs` is the public surface. Tests link the library and never shell out to the binary.
 
 ## Adding a rule
@@ -26,7 +27,7 @@ cargo install --path .      # rebuild the binary before dogfooding a new rule
 2. Declare the module in `src/rules/mod.rs` and the static in `registry::RULES`.
 3. Put the code in exactly one `groups.rs` entry. `groups_partition_every_rule` fails otherwise.
 4. Open at Tier B. Tier A is for findings with no judgment call in them, because Tier A fails CI.
-5. Set `langs` to `lang::CODE_LANGS` or `lang::PROSE_LANGS` unless the rule is narrower, and add fixtures under `tests/fixtures/<lang>/` for every language listed: one file carrying `expect:` markers and one clean file carrying none. `every_declared_lang_has_a_fixture_witness` fails when the marked file is missing. Also declare `natlangs`: `lang::ALL_NATLANGS` when the rule has no natural-language lexicon (AST shape, punctuation, statistics), `&[NatLang::En]` otherwise. Add a `tests/fixtures/markdown/pt-br/` witness before declaring `NatLang::PtBr`; `natlang_witness` fails otherwise.
+5. Set `langs` to `lang::CODE_LANGS` or `lang::PROSE_LANGS` unless the rule is narrower, and add fixtures under `tests/fixtures/<lang>/` for every language listed: one file carrying `expect:` markers and one clean file carrying none. `every_declared_lang_has_a_fixture_witness` fails when the marked file is missing. Use `lang::PARAGRAPH_LANGS` instead of `PROSE_LANGS` for a rule that reasons about paragraph blocks; a rule declaring `Html` needs a witness under `tests/fixtures/html/`. Also declare `natlangs`: `lang::ALL_NATLANGS` when the rule has no natural-language lexicon (AST shape, punctuation, statistics), `&[NatLang::En]` otherwise. Add a `tests/fixtures/markdown/pt-br/` witness before declaring `NatLang::PtBr`; `natlang_witness` fails otherwise.
 6. Grep `src/` for each phrase before adding it to a panel. If another rule owns the span, drop the phrase.
 7. Keep the panel in the rule file. `prose_words.rs` holds the panels the prose density rules share and takes no new entries.
 8. Write the message lowercase and specific, and use `Diagnostic::at_fix` whenever a concrete replacement exists.

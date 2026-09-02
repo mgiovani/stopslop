@@ -33,8 +33,8 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         Lang::Ts | Lang::Tsx => check_ts(rule, ctx, out),
         Lang::Go => check_go(rule, ctx, out),
         Lang::Rust => check_rust(rule, ctx, out),
-        Lang::Python => {}                                 // owned by SLOP006
-        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => {} // rule.langs excludes prose; never reached
+        Lang::Python => {} // owned by SLOP006
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html => {} // rule.langs excludes prose; never reached
     }
 }
 

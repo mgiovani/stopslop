@@ -548,7 +548,7 @@ fn is_comment_kind(lang: Lang, kind: &str) -> bool {
     match lang {
         Lang::Rust => kind == "line_comment" || kind == "block_comment",
         Lang::Ts | Lang::Tsx | Lang::Python | Lang::Go => kind == "comment",
-        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => false,
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html => false,
     }
 }
 
