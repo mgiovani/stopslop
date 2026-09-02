@@ -7,6 +7,11 @@ migration notes live here.
 
 ### Added
 
+- Outdated installs print `stopslop: X is installed, Y is available` to
+  stderr once per day, text format only, and only when stderr is a terminal
+  and `CI` is unset. `STOPSLOP_NO_UPDATE_CHECK=1` (or `NO_UPDATE_NOTIFIER`)
+  disables it. Network and cache errors are swallowed and never affect the
+  exit code.
 - `--stats` reports files scanned, files skipped, lines scanned, wall time and
   lines/s. Text and markdown modes print it to stderr, leaving stdout
   untouched; `--format json` wraps the array as `{findings, stats}` only when

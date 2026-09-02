@@ -10,7 +10,9 @@ use crate::{
     walk,
 };
 use clap::{Parser, ValueEnum};
+use std::io::IsTerminal;
 use std::path::PathBuf;
+use update_informer::Check;
 
 #[derive(Parser)]
 #[command(name = "stopslop", version, about = "Like Ruff, but for AI slop.")]
@@ -180,8 +182,37 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
     if let (Some(s), Format::Text | Format::Markdown) = (stats, cli.format) {
         eprint!("{}", output::render_stats(&s));
     }
+    if matches!(cli.format, Format::Text) {
+        update_notice();
+    }
 
     Ok(exit_code(&diags, fail_on))
+}
+
+/// One stderr line when crates.io has a newer stable release, checked at most once per 24h
+/// (update-informer caches under the platform cache dir). Skipped in CI, on opt-out, and when
+/// stderr is not a terminal, so scripts and the pr-comment workflow never see it. Every failure
+/// (offline, timeout, unwritable cache) is swallowed: this must never change the exit code.
+fn update_notice() {
+    let opted_out = ["CI", "STOPSLOP_NO_UPDATE_CHECK", "NO_UPDATE_NOTIFIER"]
+        .iter()
+        .any(|k| std::env::var_os(k).is_some());
+    if opted_out || !std::io::stderr().is_terminal() {
+        return;
+    }
+    let current = env!("CARGO_PKG_VERSION");
+    let informer = update_informer::new(update_informer::registry::Crates, "stopslop", current);
+    // The crate reports the newest published version, not crates.io's max_stable_version, so a
+    // pre-release is filtered here rather than advertised.
+    if let Ok(Some(latest)) = informer.check_version() {
+        let latest = latest.semver();
+        if latest.pre.is_empty() {
+            eprintln!(
+                "stopslop: {current} is installed, {latest} is available. \
+                 Run `cargo install stopslop` to update."
+            );
+        }
+    }
 }
 
 /// 1 if any finding is at or above `fail_on` in severity, else 0. Split out of `run` so the
