@@ -70,19 +70,6 @@ struct Block {
     first_byte: usize,
 }
 
-fn line_spans(masked: &str) -> Vec<(usize, usize)> {
-    let mut spans = Vec::new();
-    let mut start = 0usize;
-    for (i, b) in masked.bytes().enumerate() {
-        if b == b'\n' {
-            spans.push((start, i));
-            start = i + 1;
-        }
-    }
-    spans.push((start, masked.len()));
-    spans
-}
-
 fn is_blank(line: &str) -> bool {
     line.trim().is_empty()
 }
@@ -111,7 +98,7 @@ static HEADING_LINE: LazyLock<Regex> =
 /// than causing the whole block to be skipped.
 fn final_prose_block(doc: &ProseDoc) -> Option<Block> {
     let masked = &doc.masked;
-    let spans = line_spans(masked);
+    let spans = &doc.line_spans;
     let mut idx = spans.len();
     loop {
         while idx > 0 && is_blank(&masked[spans[idx - 1].0..spans[idx - 1].1]) {

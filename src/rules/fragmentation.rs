@@ -27,19 +27,6 @@ static CONJ_OPENER: LazyLock<Regex> =
 /// Sentences whose word count difference (max - min) is at most this are "robotically uniform".
 const RHYTHM_SPREAD: usize = 2;
 
-fn line_spans(masked: &str) -> Vec<(usize, usize)> {
-    let mut spans = Vec::new();
-    let mut start = 0usize;
-    for (i, b) in masked.bytes().enumerate() {
-        if b == b'\n' {
-            spans.push((start, i));
-            start = i + 1;
-        }
-    }
-    spans.push((start, masked.len()));
-    spans
-}
-
 fn is_blank(line: &str) -> bool {
     line.trim().is_empty()
 }
@@ -84,7 +71,7 @@ pub(crate) struct Block {
 /// rare enough that skipping it whole is the conservative, low-risk choice.
 pub(crate) fn paragraph_blocks(doc: &ProseDoc) -> Vec<Block> {
     let masked = &doc.masked;
-    let spans = line_spans(masked);
+    let spans = &doc.line_spans;
     let mut blocks = Vec::new();
     let mut i = 0usize;
     while i < spans.len() {

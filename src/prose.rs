@@ -64,6 +64,10 @@ pub struct ProseDoc<'a> {
     /// `<!-- ai-slop-ignore -->` / `<!-- ai-slop-ignore-file -->` HTML comments, as TextNodes,
     /// for `suppress::apply`. (All HTML comments whose text contains "ai-slop-ignore".)
     pub ignore_comments: Vec<TextNode<'a>>,
+    /// (start, end) byte span per line of `masked`, end exclusive of the line's own trailing
+    /// '\n'. Computed once here so rules that need to walk the document line by line (e.g.
+    /// SLOP029/030/033) don't each rebuild their own copy with a private newline scan.
+    pub line_spans: Vec<(usize, usize)>,
     line_starts: Vec<usize>, // byte offset of each line start; for line_col
     /// (byte, col) of the last `line_col` answer. Rules ask in byte order, so the next answer on
     /// the same line counts chars from here rather than from the line start -- a 1.8 MB
@@ -125,6 +129,7 @@ impl<'a> ProseDoc<'a> {
             code_spans,
             words,
             ignore_comments,
+            line_spans,
             line_starts,
             col_memo: Cell::new((0, 1)),
         }
