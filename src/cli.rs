@@ -78,6 +78,9 @@ pub struct Cli {
     /// extension or unreadable); paths dropped by .gitignore or `exclude` are never walked.
     #[arg(long)]
     pub stats: bool,
+    /// Worker threads for the walk; 0 picks automatically.
+    #[arg(short = 'j', long = "threads", default_value_t = 0)]
+    pub threads: usize,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -177,7 +180,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
                 }
             })?
         }
-        None => walk::lint_paths(&paths, &config.exclude, &settings)?,
+        None => walk::lint_paths(&paths, &config.exclude, &settings, cli.threads)?,
     };
     // Applied before baseline so a path-scoped ignore composes with it instead of the two
     // fighting over ownership, and `--write-baseline` doesn't fossilize findings the config
