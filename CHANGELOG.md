@@ -65,6 +65,13 @@ migration notes live here.
 
 ### Changed
 
+- Config discovery walks from the current directory up to the filesystem root
+  for `stopslop.toml` and takes the nearest one, so a run from a nested cwd no
+  longer silently lints with defaults. When no project file exists it falls
+  back to `$XDG_CONFIG_HOME/stopslop/stopslop.toml` (`~/.config/...` when the
+  variable is unset or empty, macOS included). The user-level file is a
+  fallback, never merged with a project config. `--config` and `--no-config`
+  behave as before.
 - Regex word boundaries are ASCII-scoped (`(?-u:\b)`), which keeps the regex
   crate on its lazy DFA for documents with em dashes, curly quotes or accents:
   an 8 MB prose file went from 11.3 s to 0.83 s, the cargo-registry corpus

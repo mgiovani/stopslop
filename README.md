@@ -83,8 +83,8 @@ stopslop --ignore SLOP008          # run everything except stub detection
 stopslop --select artifact --extend-select SLOP033  # add a rule on top of a narrower select
 stopslop --list-rules              # print every rule with its group, tier, and default
 stopslop --check-imports .         # also run SLOP010 (unresolved import) — opt-in
-stopslop --config path.toml        # use a specific config file instead of ./stopslop.toml
-stopslop --no-config               # ignore any stopslop.toml, CLI flags only
+stopslop --config path.toml        # use a specific config file instead of the discovered one
+stopslop --no-config               # ignore any project or user-level stopslop.toml, CLI flags only
 stopslop --write-baseline .        # record today's findings (see "Baseline" below)
 stopslop --baseline .              # report only findings that aren't in the baseline
 stopslop --staged                  # lint what is about to be committed (index content, not disk)
@@ -386,7 +386,15 @@ preamble or elision comment is junk in a test file too.
 
 ## Config file
 
-`stopslop.toml` in the current directory (or pass `--config path`):
+The nearest `stopslop.toml` walking up from the current directory to the
+filesystem root, so a run from a nested cwd (an editor task runner, a
+pre-commit hook) still finds the repo-root file. When no project file exists,
+stopslop reads `$XDG_CONFIG_HOME/stopslop/stopslop.toml`, which is
+`~/.config/stopslop/stopslop.toml` when the variable is unset or empty, on
+every platform including macOS. The user-level file is a fallback, never a
+merge layer: a project that ships its own `stopslop.toml` is unaffected by
+whatever sits in `~/.config`, so CI and local runs stay reproducible. Pass
+`--config path` to use a specific file instead:
 
 ```toml
 select = []                 # rule codes/prefixes/groups to run (empty = every rule except SLOP010)
@@ -420,7 +428,7 @@ are. It's a post-lint filter, applied after the walk and before baseline
 filtering, so it composes with a baseline instead of fighting it. An invalid
 glob is a config error (exit 2).
 
-Use `--no-config` to ignore any `stopslop.toml` present. CLI flags for
+Use `--no-config` to ignore any project or user-level `stopslop.toml`. CLI flags for
 `select`/`ignore`/`check-imports`/`baseline` override the config file; see
 [User-defined rules](#user-defined-rules) below for `[[custom-rule]]`.
 
