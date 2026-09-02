@@ -1,4 +1,4 @@
-use crate::context::LintContext;
+use crate::context::{self, LintContext};
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::Lang;
 use crate::registry::RuleDef;
@@ -22,10 +22,12 @@ const MSG: &str = "comment restates the code it annotates";
 const FIX: &str = "delete it or say why instead; if the name it restates is unclear, rename that";
 
 // Word panels live here per project convention (bulky per-rule lists stay with their one
-// consumer rather than in a shared file -- see prose_words.rs's own doc comment).
+// consumer rather than in a shared file -- see prose_words.rs's own doc comment). Entries are
+// stored already depluralized ("doe", not "does") since `tokenize` runs `depluralize` before
+// these sets are ever checked against.
 const STOPWORDS_RAW: &str = "the a an this that these those it its to of for in on at by with \
 from as and or is are be was were been we our you your here now then into onto up down out \
-over all each every any some also just will can do does done has have had which what \
+over all each every any some also just will can do doe done has have had which what \
 via per current given one two s t";
 
 static STOPWORDS: LazyLock<HashSet<&'static str>> =
@@ -121,37 +123,62 @@ const BANNER_PREFIXES: &[char] = &['-', '=', '*', '#', '~', '_', '+', '|'];
 static URL_OR_ISSUE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"https?://|www\.|#\d+").unwrap());
 
+/// Visits every node once via `ctx.walk`; for each node with named children, scans that node's
+/// own children ONCE (an index over a collected `Vec`, never `next_named_sibling`/
+/// `prev_named_sibling`, which each cost O(index-in-parent) in tree-sitter and turned a run of n
+/// sibling comments into O(n^2)). A comment block's span `[i, j]` is found by extending `j`
+/// forward; the outer loop then jumps straight to `j + 1`, so every child is visited exactly once
+/// overall.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if !is_comment_kind(ctx.lang, node.kind()) {
+    ctx.walk(|parent| {
+        if parent.named_child_count() == 0 {
             return;
         }
-        if is_doc_comment_text(ctx.lang, ctx.node_text(&node)) {
+        // Godoc mandates a comment on every exported identifier at file scope, so any comment
+        // there is redundant-but-undeletable rather than slop -- skip the whole scope at once
+        // instead of re-checking each comment's own parent kind.
+        if ctx.lang == Lang::Go && parent.kind() == "source_file" {
             return;
         }
-        // Godoc mandates a top-level comment on every exported identifier, so it's
-        // redundant-but-undeletable rather than slop.
-        if ctx.lang == Lang::Go
-            && node
-                .parent()
-                .map(|p| p.kind() == "source_file")
-                .unwrap_or(false)
-        {
-            return;
-        }
-        if is_continuation(ctx, node) {
-            return; // consumed by the block head when that node was visited
-        }
-        if let Some((line, col)) = evaluate_block(ctx, node) {
-            out.push(Diagnostic::at_fix(rule, ctx, line, col, MSG, FIX));
+        let mut cursor = parent.walk();
+        let kids: Vec<Node> = parent.named_children(&mut cursor).collect();
+        let mut i = 0;
+        while i < kids.len() {
+            if !is_comment_kind(ctx.lang, kids[i].kind())
+                || context::is_doc_comment(ctx.lang, ctx.node_text(&kids[i]))
+            {
+                i += 1;
+                continue;
+            }
+            let mut j = i;
+            while j + 1 < kids.len() {
+                let next = kids[j + 1];
+                let continues = is_comment_kind(ctx.lang, next.kind())
+                    && next.start_position().row == kids[j].end_position().row + 1
+                    && !context::is_doc_comment(ctx.lang, ctx.node_text(&next))
+                    && is_leading(ctx, kids[j])
+                    && is_leading(ctx, next);
+                if !continues {
+                    break;
+                }
+                j += 1;
+            }
+            if let Some((line, col)) = evaluate_block(ctx, &kids, i, j) {
+                out.push(Diagnostic::at_fix(rule, ctx, line, col, MSG, FIX));
+            }
+            i = j + 1;
         }
     });
 }
 
-fn evaluate_block(ctx: &LintContext, head: Node) -> Option<(usize, usize)> {
-    let (tail, body) = build_block(ctx, head);
-    let (anchor, anchor_is_multiline) = find_anchor(ctx, head, tail)?;
-    let raw_head = ctx.node_text(&head).trim_start().to_lowercase();
+fn evaluate_block(ctx: &LintContext, kids: &[Node], i: usize, j: usize) -> Option<(usize, usize)> {
+    let body: String = kids[i..=j]
+        .iter()
+        .map(|k| normalize_body(ctx.node_text(k)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let (anchor, anchor_is_multiline) = find_anchor(ctx, kids, i, j)?;
+    let raw_head = ctx.node_text(&kids[i]).trim_start().to_lowercase();
     if should_skip(&body, &anchor, &raw_head) || is_attribute_assignment(&anchor) {
         return None;
     }
@@ -183,52 +210,20 @@ fn evaluate_block(ctx: &LintContext, head: Node) -> Option<(usize, usize)> {
     // lexicon (a lone shared noun like "type" or "file" doesn't make a block-summary redundant).
     let coherent = matched * 2 >= content_words.len();
 
-    (all_explained && coherent).then(|| ctx.pos(&head))
+    (all_explained && coherent).then(|| ctx.pos(&kids[i]))
 }
 
-/// Merges `head` with any consecutive leading comment lines that continue it, returning the
-/// last node in that chain plus the merged, normalized body text.
-fn build_block<'a>(ctx: &LintContext<'a>, head: Node<'a>) -> (Node<'a>, String) {
-    let mut tail = head;
-    let mut parts = vec![normalize_body(ctx.node_text(&tail))];
-    while is_leading(ctx, tail) {
-        let Some(next) = tail.next_named_sibling() else {
-            break;
-        };
-        if !is_comment_kind(ctx.lang, next.kind())
-            || next.start_position().row != tail.end_position().row + 1
-        {
-            break;
-        }
-        let next_text = ctx.node_text(&next);
-        if is_doc_comment_text(ctx.lang, next_text) {
-            break;
-        }
-        parts.push(normalize_body(next_text));
-        tail = next;
-    }
-    (tail, parts.join(" "))
-}
-
-/// A comment is a continuation (already absorbed by an earlier block head) when it directly
-/// follows another comment that itself opened its own line.
-fn is_continuation(ctx: &LintContext, node: Node) -> bool {
-    let Some(prev) = node.prev_named_sibling() else {
-        return false;
-    };
-    is_comment_kind(ctx.lang, prev.kind())
-        && prev.end_position().row + 1 == node.start_position().row
-        && is_leading(ctx, prev)
-}
-
-/// Anchors the block to exactly one statement: trailing (code before it, same row) or leading
-/// (the statement starting the row right after the block). `None` when neither applies. The
-/// bool says whether the anchor spans more than one source row.
-fn find_anchor(ctx: &LintContext, head: Node, tail: Node) -> Option<(String, bool)> {
-    let is_trailing_position = head.prev_named_sibling().is_some_and(|prev| {
+/// Anchors the block `kids[i..=j]` to exactly one statement: trailing (code before it, same row)
+/// or leading (the statement starting the row right after the block). `None` when neither
+/// applies. The bool says whether the anchor spans more than one source row.
+fn find_anchor(ctx: &LintContext, kids: &[Node], i: usize, j: usize) -> Option<(String, bool)> {
+    let head = kids[i];
+    let tail = kids[j];
+    let is_trailing_position = i > 0 && {
+        let prev = kids[i - 1];
         !is_comment_kind(ctx.lang, prev.kind())
             && prev.end_position().row == head.start_position().row
-    });
+    };
     if is_trailing_position {
         // Trailing comments outside a function body are definition docs by convention in all
         // four languages (a struct field, a top-level const, a Python class attribute), the
@@ -242,8 +237,11 @@ fn find_anchor(ctx: &LintContext, head: Node, tail: Node) -> Option<(String, boo
         if !in_body {
             return None;
         }
-        let line_start = line_start_byte(ctx.source, head.start_byte());
-        return Some((ctx.source[line_start..head.start_byte()].to_string(), false));
+        // The actual previous statement's own last line, not a slice of the raw physical row --
+        // a row can carry more than one statement (`parse(x); increment(y); // parse x` anchors
+        // to `increment(y);` alone, never to the whole line).
+        let prev_text = ctx.node_text(&kids[i - 1]);
+        return Some((prev_text.rsplit('\n').next()?.to_string(), false));
     }
     if !is_leading(ctx, head) {
         // Shares its row with code but isn't glued to a real trailing statement (e.g.
@@ -251,7 +249,7 @@ fn find_anchor(ctx: &LintContext, head: Node, tail: Node) -> Option<(String, boo
         return None;
     }
 
-    let raw_next = tail.next_named_sibling()?;
+    let raw_next = *kids.get(j + 1)?;
     if is_comment_kind(ctx.lang, raw_next.kind())
         || raw_next.start_position().row != tail.end_position().row + 1
     {
@@ -276,12 +274,20 @@ fn find_anchor(ctx: &LintContext, head: Node, tail: Node) -> Option<(String, boo
 
 /// `self.size = 0  # file size` in an `__init__` (or `this.x = ...` in a constructor) is the
 /// attribute's documentation by convention (Sphinx even reads `#:` there), not a restatement.
+/// Walks past the attribute name instead of scanning for the first `=`, so `self.count -= 1` and
+/// `self.size != other.size` (both contain a bare `=` that isn't an assignment) aren't exempted.
 fn is_attribute_assignment(code: &str) -> bool {
     let code = code.trim_start();
-    (code.starts_with("self.") || code.starts_with("this."))
-        && code
-            .find('=')
-            .is_some_and(|i| !matches!(code.as_bytes().get(i + 1), Some(b'=')))
+    let Some(rest) = code
+        .strip_prefix("self.")
+        .or_else(|| code.strip_prefix("this."))
+    else {
+        return false;
+    };
+    let after_name =
+        rest.trim_start_matches(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+    let mut chars = after_name.trim_start().chars();
+    matches!(chars.next(), Some('=')) && !matches!(chars.next(), Some('='))
 }
 
 /// Struct fields, table/dict entries, match arms, enum variants, and attributes aren't the kind
@@ -382,29 +388,14 @@ fn is_comment_kind(lang: Lang, kind: &str) -> bool {
     }
 }
 
-/// Same test as `context::is_doc_comment`, matched directly on node text.
-fn is_doc_comment_text(lang: Lang, text: &str) -> bool {
-    match lang {
-        Lang::Ts | Lang::Tsx => text.starts_with("/**"),
-        Lang::Rust => {
-            text.starts_with("///")
-                || text.starts_with("//!")
-                || text.starts_with("/**")
-                || text.starts_with("/*!")
-        }
-        Lang::Python | Lang::Go | Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => false,
-    }
-}
-
 /// True when nothing but whitespace precedes `node` on its own start row (i.e. it isn't a
-/// trailing comment glued to code).
+/// trailing comment glued to code). `start_position().column` is a byte offset within the row
+/// for UTF-8 input, so the line start is O(1) arithmetic -- no backward scan over the row.
 fn is_leading(ctx: &LintContext, node: Node) -> bool {
-    let line_start = line_start_byte(ctx.source, node.start_byte());
-    ctx.source[line_start..node.start_byte()].trim().is_empty()
-}
-
-fn line_start_byte(source: &str, byte: usize) -> usize {
-    source[..byte].rfind('\n').map(|i| i + 1).unwrap_or(0)
+    let line_start = node.start_byte() - node.start_position().column;
+    ctx.source[line_start..node.start_byte()]
+        .chars()
+        .all(char::is_whitespace)
 }
 
 fn is_symbol_dense(line: &str) -> bool {
@@ -500,7 +491,6 @@ fn depluralize(w: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context;
     use crate::lang::ts_language;
     use tree_sitter::Parser;
 
@@ -683,15 +673,6 @@ mod tests {
     }
 
     #[test]
-    fn single_word_comment_skipped() {
-        assert!(run(
-            Lang::Go,
-            "package main\nfunc f(chroot *string) {\n\t// Chroot\n\tif chroot != nil {\n\t}\n}"
-        )
-        .is_empty());
-    }
-
-    #[test]
     fn clarification_with_new_vocabulary_kept_unflagged() {
         assert!(run(
             Lang::Rust,
@@ -740,15 +721,6 @@ mod tests {
     }
 
     #[test]
-    fn lexicon_only_comment_not_flagged() {
-        assert!(run(
-            Lang::Rust,
-            "fn f() {\n    // initialize\n    let x = Foo::new();\n}"
-        )
-        .is_empty());
-    }
-
-    #[test]
     fn coherence_ratio_below_half_not_flagged() {
         assert!(run(
             Lang::Rust,
@@ -780,8 +752,6 @@ mod tests {
         assert!(RULE.path_gated);
     }
 
-    /// Coordinator round 3, #1: a multi-line anchor (a whole `if` block) hides its body, so the
-    /// CODE_VERBS lexicon can't excuse "print" -- only the header's literal words count.
     #[test]
     fn multiline_anchor_gets_no_lexicon_excuse() {
         assert!(run(
@@ -791,15 +761,11 @@ mod tests {
         .is_empty());
     }
 
-    /// Coordinator round 3, #2: one typed identifier, however it splits on case/underscore, is
-    /// a label, not a sentence.
     #[test]
     fn single_typed_word_skipped() {
         assert!(run(Lang::Rust, "fn f() {\n    // MAX_DATA\n    max_data();\n}").is_empty());
     }
 
-    /// Coordinator round 3, #3: a quoted literal is a Clean Code clarification, not a
-    /// restatement, even though the quoted word matches the code.
     #[test]
     fn quoted_clarification_skipped() {
         assert!(run(
@@ -809,7 +775,6 @@ mod tests {
         .is_empty());
     }
 
-    /// Coordinator round 3, #4: a banner/section divider is a heading, not a description.
     #[test]
     fn banner_skipped() {
         assert!(run(
@@ -819,7 +784,6 @@ mod tests {
         .is_empty());
     }
 
-    /// Coordinator round 3, #5 (leading): a `const` is documentation by convention.
     #[test]
     fn const_item_anchor_skipped() {
         assert!(run(
@@ -829,8 +793,6 @@ mod tests {
         .is_empty());
     }
 
-    /// Coordinator round 3, #5 (trailing): a Python class attribute's trailing comment is a
-    /// doc by convention, the same undeletable shape as a struct field's.
     #[test]
     fn python_class_attribute_trailing_doc_skipped() {
         assert!(run(
@@ -840,9 +802,6 @@ mod tests {
         .is_empty());
     }
 
-    /// Coordinator round 3, #6: a comment glued to a keyword line (`} else { /* ... */`) is
-    /// neither a clean trailing comment nor a leading one -- it must not fall through and
-    /// anchor to the next statement.
     #[test]
     fn comment_glued_to_keyword_line_skipped() {
         assert!(run(
@@ -879,6 +838,8 @@ mod tests {
         .is_empty());
     }
 
+    /// Round 4, #4: `is_attribute_assignment` must not treat `-=`/`!=` (or any operator ending
+    /// in `=`) as a plain assignment -- only a lone `=` after the attribute name counts.
     #[test]
     fn attribute_assignment_doc_not_flagged() {
         assert!(run(
@@ -894,7 +855,15 @@ mod tests {
         assert_eq!(
             run(
                 Lang::Python,
-                "def f(self):\n    # check the sizes\n    self.size == other.size\n"
+                "def f(self):\n    # decrement the count\n    self.count -= 1\n"
+            )
+            .len(),
+            1
+        );
+        assert_eq!(
+            run(
+                Lang::Python,
+                "def f(self, other):\n    # check the sizes\n    self.size != other.size\n"
             )
             .len(),
             1
@@ -905,5 +874,143 @@ mod tests {
     fn is_symbol_dense_detects_dense_lines() {
         assert!(is_symbol_dense("x = a+b*c-d/e%f^g&h|i&&j==k;"));
         assert!(!is_symbol_dense("counter += 1;"));
+    }
+
+    // -- round 4 (perf + correctness review) --------------------------------------------------
+
+    #[test]
+    fn ts_program_level_const_not_flagged() {
+        assert!(run(Lang::Ts, "// the api version\nconst API_VERSION = \"2.0\";").is_empty());
+    }
+
+    #[test]
+    fn python_module_level_assignment_not_flagged() {
+        assert!(run(Lang::Python, "# the default config\nDEFAULT_CONFIG = {}").is_empty());
+    }
+
+    #[test]
+    fn url_skipped() {
+        assert!(run(
+            Lang::Rust,
+            "fn f() {\n    // see https://docs.rs/parse\n    parse(x);\n}"
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn issue_ref_skipped() {
+        assert!(run(
+            Lang::Rust,
+            "fn f() {\n    // parse per #123\n    parse(x);\n}"
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn apostrophe_contraction_skipped() {
+        assert!(run(
+            Lang::Rust,
+            "fn f() {\n    // don't increment the counter\n    counter += 1;\n}"
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn exactly_twelve_words_flags_thirteen_does_not() {
+        let anchor =
+            "let set_get_init_loop_check_call_create_make_build_define_declare_assign = 1;";
+        assert_eq!(
+            run(
+                Lang::Rust,
+                &format!(
+                    "fn f() {{\n    // set get init loop check call create make build define declare assign\n    {anchor}\n}}"
+                )
+            )
+            .len(),
+            1
+        );
+        assert!(run(
+            Lang::Rust,
+            &format!(
+                "fn f() {{\n    // set get init loop check call create make build define declare assign extra\n    {anchor}\n}}"
+            )
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn rust_block_comment_star_stripping_flags() {
+        assert_eq!(
+            run(
+                Lang::Rust,
+                "fn f() {\n    /*\n     * increment the\n     * counter\n     */\n    counter += 1;\n}"
+            )
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn merged_block_diagnostic_reports_first_comment_line() {
+        let diags = run(
+            Lang::Rust,
+            "fn f() {\n    // increment\n    // the counter\n    counter += 1;\n}",
+        );
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 2);
+    }
+
+    /// Round 4, #3: the trailing anchor is the actual previous statement, never a slice of the
+    /// raw physical row -- a row can carry more than one statement.
+    #[test]
+    fn trailing_anchor_uses_previous_statement_only() {
+        assert!(run(
+            Lang::Rust,
+            "fn f() {\n    parse(x);\n    increment(y); // parse x\n}"
+        )
+        .is_empty());
+        assert_eq!(
+            run(Lang::Rust, "fn f() {\n    increment(y); // increment y\n}").len(),
+            1
+        );
+    }
+
+    /// Replaces the old `single_word_comment_skipped`, which exited on the typed-word check
+    /// before ever reaching the one-this-names: 4 typed words, all but "counter" a stopword.
+    #[test]
+    fn one_content_word_after_stopwords_skipped() {
+        assert!(run(
+            Lang::Rust,
+            "fn f() {\n    // the an a counter\n    counter += 1;\n}"
+        )
+        .is_empty());
+    }
+
+    /// Replaces the old `lexicon_only_comment_not_flagged`, which exited on the 1-content-word
+    /// check before ever reaching the coherence ratio it was meant to exercise.
+    #[test]
+    fn lexicon_only_comment_fails_coherence() {
+        assert!(run(
+            Lang::Rust,
+            "fn f() {\n    // initialize and setup\n    let x = Foo::new();\n}"
+        )
+        .is_empty());
+    }
+
+    /// Per-comment `next_named_sibling` calls made a run of n sibling comments O(n^2): 26s for
+    /// 40k lines in release. The merged block exceeds the 12-word cap, so 0 findings is right;
+    /// the bound is loose because CI runners are slow, and the quadratic version takes minutes.
+    #[test]
+    fn twenty_thousand_consecutive_comments_runs_fast() {
+        let mut src = String::from("fn f() {\n");
+        for _ in 0..20_000 {
+            src.push_str("    // increment the counter\n");
+        }
+        src.push_str("    counter += 1;\n}");
+        let start = std::time::Instant::now();
+        let diags = run(Lang::Rust, &src);
+        let elapsed = start.elapsed();
+        assert_eq!(diags.len(), 0);
+        assert!(elapsed.as_secs() < 10, "took {elapsed:?}");
     }
 }

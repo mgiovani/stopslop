@@ -82,7 +82,7 @@ pub fn extract<'a>(
             comments.push(make_text_node(
                 node,
                 source,
-                is_doc_comment(lang, node, source),
+                is_doc_comment(lang, &source[node.byte_range()]),
             ));
         } else if string_kinds.contains(&kind) {
             strings.push(make_text_node(node, source, is_doc_string(lang, node)));
@@ -126,8 +126,7 @@ fn make_text_node<'t, 'a>(node: Node<'t>, source: &'a str, is_doc: bool) -> Text
 
 /// is_doc(comment) per §4a: Ts/Tsx `/**`; Python never (docstrings are strings); Go never;
 /// Rust `///` `//!` `/**` `/*!`.
-fn is_doc_comment(lang: Lang, node: Node, source: &str) -> bool {
-    let text = &source[node.byte_range()];
+pub(crate) fn is_doc_comment(lang: Lang, text: &str) -> bool {
     match lang {
         Lang::Ts | Lang::Tsx => text.starts_with("/**"),
         Lang::Python | Lang::Go => false,
