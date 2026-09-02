@@ -7,6 +7,13 @@ migration notes live here.
 
 ### Added
 
+- **SLOP042** (`verbosity`, Tier B, on): flags a plain source comment whose
+  content words all already appear in the single statement it annotates
+  (`// increment the counter` over `counter += 1`). Doc comments, pragmas,
+  questions, comments over 12 words, and comments carrying a *why* or a
+  warning word are never flagged; consecutive comment lines count as one
+  block, and the anchor is exactly one statement. Usefulness check only: it
+  makes no claim about who wrote the comment.
 - Outdated installs print `stopslop: X is installed, Y is available` to
   stderr once per day, text format only, and only when stderr is a terminal
   and `CI` is unset. `STOPSLOP_NO_UPDATE_CHECK=1` (or `NO_UPDATE_NOTIFIER`)
