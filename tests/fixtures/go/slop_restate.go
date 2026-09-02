@@ -10,8 +10,7 @@ func (h *HitCounter) RecordHit() {
 }
 
 func (h *HitCounter) RecordBatch(n int) {
-	// increment the count
-	h.count += n
+	h.count += n // increment the count
 }
 
 func main() {

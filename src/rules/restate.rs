@@ -258,7 +258,7 @@ fn find_anchor(ctx: &LintContext, kids: &[Node], i: usize, j: usize) -> Option<(
         // same undeletable shape as godoc -- so only trailing comments actually inside a
         // function/method body count.
         let in_body = head.parent().is_some_and(|p| {
-            matches!(p.kind(), "block" | "statement_block")
+            matches!(p.kind(), "block" | "statement_block" | "statement_list")
                 && !(ctx.lang == Lang::Python
                     && p.parent().is_some_and(|gp| gp.kind() == "class_definition"))
         });
