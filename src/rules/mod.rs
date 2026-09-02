@@ -14,6 +14,7 @@ pub mod filler;
 pub mod fragmentation;
 pub mod heading_style;
 pub mod hedging;
+pub mod html_title;
 pub mod hyphen;
 pub mod imports;
 pub mod imports_data;

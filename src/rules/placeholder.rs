@@ -4,14 +4,23 @@ use regex::Regex;
 
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{NatLang, CODE_LANGS};
+use crate::lang::{Lang, NatLang};
 use crate::registry::RuleDef;
 
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP009",
     name: "Placeholder / sample credential value",
     tier: Tier::A,
-    langs: CODE_LANGS,
+    // Every code lang's string literals, plus HTML attribute values (`ctx.strings` carries
+    // `name="value"` there, see `ProseDoc::attr_values`).
+    langs: &[
+        Lang::Ts,
+        Lang::Tsx,
+        Lang::Python,
+        Lang::Go,
+        Lang::Rust,
+        Lang::Html,
+    ],
     natlangs: &[NatLang::En],
     default_on: true,
     path_gated: true,
@@ -31,13 +40,21 @@ static RE_CI: LazyLock<Regex> = LazyLock::new(|| {
 static RE_CS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"sk-[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{12,}|ghp_[A-Za-z0-9]{20,}|xox[baprs]-").unwrap()
 });
+/// HTML attributes: the four placeholder-image generators, and an `alt` whose whole value is a
+/// generic word (AccessGuru and A11YN both report generic alt text as the recurring defect in
+/// generated markup). `picsum.photos` serves real photographs for demos and is not a placeholder;
+/// `alt=""` is the correct markup for a decorative image and never matches. Each string is one
+/// whole `name="value"` attribute (`ProseDoc::attr_values`), so `^alt=` cannot hit `data-alt=`.
+static RE_HTML: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)via\.placeholder\.com|placehold\.co|placekitten\.com|dummyimage\.com|^alt=["'](?:image|img|photo|picture|placeholder|image description|alt text|description)["']$"#).unwrap()
+});
 
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     for s in ctx.strings {
         if s.is_doc {
             continue;
         }
-        if RE_CI.is_match(s.text) || RE_CS.is_match(s.text) {
+        if RE_CI.is_match(s.text) || RE_CS.is_match(s.text) || RE_HTML.is_match(s.text) {
             out.push(Diagnostic::at(rule, ctx, s.line, s.col, MESSAGE));
         }
     }
@@ -88,6 +105,24 @@ mod tests {
             !RE_CI.is_match("https://api.production.com")
                 && !RE_CS.is_match("https://api.production.com")
         );
+    }
+
+    #[test]
+    fn flags_placeholder_image_host_and_generic_alt() {
+        assert!(RE_HTML.is_match("src=\"https://via.placeholder.com/150\"")); // ai-slop-ignore
+        assert!(RE_HTML.is_match("src=\"https://placehold.co/600x400\"")); // ai-slop-ignore
+        assert!(RE_HTML.is_match("alt=\"image\""));
+        assert!(RE_HTML.is_match("alt='Image description'"));
+        assert!(RE_HTML.is_match("ALT=\"IMAGE\""));
+    }
+
+    #[test]
+    fn clean_decorative_descriptive_alt_and_demo_photo_host() {
+        assert!(!RE_HTML.is_match("alt=\"\""));
+        assert!(!RE_HTML.is_match("alt=\"image of the office lobby\""));
+        assert!(!RE_HTML.is_match("src=\"https://picsum.photos/200\""));
+        assert!(!RE_HTML.is_match("data-alt=\"image\""));
+        assert!(!RE_HTML.is_match("title=\"image\""));
     }
 
     #[test]

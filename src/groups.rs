@@ -10,7 +10,7 @@ pub static GROUPS: &[(&str, &[&str])] = &[
     (
         "artifact",
         &[
-            "SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP011", "SLOP012", "SLOP013",
+            "SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP011", "SLOP012", "SLOP013", "SLOP044",
         ],
     ),
     // Structural code smells: swallowed errors, escaped types, stubs, speculative abstraction.

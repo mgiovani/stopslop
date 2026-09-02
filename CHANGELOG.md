@@ -62,6 +62,16 @@ migration notes live here.
 - `bench/gen_inputs.py` and `bench/run.sh` generate the stress inputs from
   issue #21 and print a base-vs-new hyperfine table; `tests/stress.rs` bounds
   the wall clock on them and runs in CI as `cargo test --release -- --ignored`.
+- **SLOP044** (`artifact`, Tier B, on, HTML only): flags `<title>Document</title>`,
+  the editor `!` expansion a generated page ships with, and an empty `<title>`.
+  Any other title is the author's call.
+- HTML attribute values reach `ctx.strings` as `name="value"` entries, so
+  **SLOP009** now runs on HTML: its existing panel (`example.com`, `YOUR_X`,
+  `John Doe`, secret shapes) plus a placeholder-image host
+  (`via.placeholder.com`, `placehold.co`, `placekitten.com`, `dummyimage.com`)
+  or an `alt` whose whole value is a generic word (`alt="image"`). `alt=""` is
+  correct for a decorative image and `picsum.photos` serves real photos; neither
+  matches. **SLOP013** also flags a `<!-- your content here -->` comment.
 - **HTML prose linting** (`.html`, `.htm`, new `Lang::Html`). A tree-sitter-html
   parse restores only what a reader sees into the masked stream: visible
   text plus HTML comments and `href`/`src` attribute values; `<script>`,
