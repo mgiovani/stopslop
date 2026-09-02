@@ -62,6 +62,22 @@ migration notes live here.
 - `bench/gen_inputs.py` and `bench/run.sh` generate the stress inputs from
   issue #21 and print a base-vs-new hyperfine table; `tests/stress.rs` bounds
   the wall clock on them and runs in CI as `cargo test --release -- --ignored`.
+- **HTML prose linting** (`.html`, `.htm`, new `Lang::Html`). A tree-sitter-html
+  parse restores only what a reader sees into the masked stream: visible
+  text plus HTML comments and `href`/`src` attribute values; `<script>`,
+  `<style>`, `<pre>`, `<code>`, `<textarea>`, `<template>`, `<svg>`,
+  `<math>`, and `<noscript>` subtrees are skipped, and Django/Jinja
+  `{{ … }}`/`{% … %}`/`{# … #}` are blanked before the parse. Named/numeric
+  entities stay blank rather than decoded, a miss on an entity-encoded dash
+  rather than a false positive. `<h1>`-`<h6>` map to headings, and the
+  suppression comments work unchanged. 21 rules (SLOP011-018, 020, 022-028,
+  031-033, 035, 036) run on HTML unchanged; SLOP029, SLOP030, SLOP034, and
+  SLOP041 stay off HTML behind the new `lang::PARAGRAPH_LANGS` until it has a
+  paragraph model. New dependency: `tree-sitter-html`, because neither std
+  nor regex can express "blank everything that is not a text node" (a `>`
+  inside an attribute value or a `</script>` inside a JS string defeats a
+  regex strip). See
+  [#29](https://github.com/mgiovani/stopslop/issues/29).
 
 ### Changed
 
@@ -87,6 +103,15 @@ migration notes live here.
   pass and rules query that index. Diagnostics are unchanged. Library:
   `LintContext.tree` is now `index` and `context::extract` returns the index
   as a third element.
+- **SLOP026** now also matches a colon reveal that opens a line with 1-3
+  leading spaces instead of only a line-initial one; this also catches the
+  shape in indented Markdown lines.
+- HTML-specific rule behavior: **SLOP033** closes a sentence at every HTML
+  block element, so a `<select>` of sixty `<option>`s doesn't read as one
+  60-word sentence; **SLOP011** treats a `Step N:` that opens a heading or
+  list item as structure rather than residue, and finds a block-opening
+  `You're asking about …`; **SLOP018** keeps its attribution-dash exemption
+  for `<p>— Author</p>`.
 
 ### Fixed
 
