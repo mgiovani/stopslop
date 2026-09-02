@@ -35,6 +35,7 @@ pub static GROUPS: &[(&str, &[&str])] = &[
         "verbosity",
         &[
             "SLOP015", "SLOP016", "SLOP027", "SLOP028", "SLOP032", "SLOP033", "SLOP034", "SLOP041",
+            "SLOP042",
         ],
     ),
     // Claims with no checkable source behind them.

@@ -25,6 +25,7 @@ pub mod promo;
 pub mod puffery;
 pub mod py_except;
 pub mod recap;
+pub mod redundant_comment;
 pub mod redundant_dep;
 pub mod reinvent;
 pub mod residue;

@@ -21,7 +21,7 @@ static DIRECTIVE: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Strips a comment's opening delimiter so the directive can be anchored to what follows it.
 /// Longest-first ordering matters: `///` must be tried before `//`, `/**` before `/*`.
-fn comment_body(text: &str) -> &str {
+pub(crate) fn comment_body(text: &str) -> &str {
     let text = text.trim_start();
     for delim in ["<!--", "///", "//!", "//", "/**", "/*!", "/*", "#"] {
         if let Some(rest) = text.strip_prefix(delim) {
