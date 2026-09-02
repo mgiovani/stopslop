@@ -62,10 +62,11 @@ pub struct Cli {
     /// Enable SLOP010 (package-import resolution).
     #[arg(long)]
     pub check_imports: bool,
-    /// Path to a config file (default: stopslop.toml in the current directory, if present).
+    /// Path to a config file (default: the nearest stopslop.toml walking up from the current
+    /// directory, else $XDG_CONFIG_HOME/stopslop/stopslop.toml, ~/.config when unset).
     #[arg(long)]
     pub config: Option<PathBuf>,
-    /// Ignore any stopslop.toml (CLI flags only).
+    /// Ignore any project or user-level stopslop.toml (CLI flags only).
     #[arg(long)]
     pub no_config: bool,
     /// Lowest tier that exits 1: "A" (default) fails only on Tier A findings, "B" fails on any
