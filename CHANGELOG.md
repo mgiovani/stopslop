@@ -20,6 +20,10 @@ migration notes live here.
   `(Vec<Diagnostic>, Stats)`.
 - `fail-on-tier` (config key and `--fail-on-tier` flag) sets the lowest tier
   that exits 1. Previously nothing could put a Tier B rule on the exit-1 path.
+- `--staged`, `--changed`, and `--since REF` (mutually exclusive) lint a
+  git-selected file list instead of walking the tree: staged index content,
+  staged-plus-unstaged changes against `HEAD`, or everything since the merge
+  base with `REF`. Positional paths act as git pathspecs.
 
 ### Fixed
 

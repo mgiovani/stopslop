@@ -5,6 +5,7 @@ pub mod context;
 pub mod custom;
 pub mod diagnostic;
 pub mod engine;
+pub mod git;
 pub mod groups;
 pub mod lang;
 pub mod output;

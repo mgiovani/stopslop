@@ -3,7 +3,7 @@ use crate::{
     config::Config,
     custom,
     diagnostic::{Diagnostic, Tier},
-    engine, groups,
+    engine, git, groups,
     imports_data::DepIndex,
     output,
     registry::RULES,
@@ -11,7 +11,7 @@ use crate::{
 };
 use clap::{Parser, ValueEnum};
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use update_informer::Check;
 
 #[derive(Parser)]
@@ -19,6 +19,17 @@ use update_informer::Check;
 pub struct Cli {
     /// Paths to scan (default: current directory).
     pub paths: Vec<PathBuf>,
+    /// Lint only files staged in the git index, reading their staged content rather than the
+    /// working tree, so a partially staged file is checked as it will be committed.
+    #[arg(long, group = "git_scope")]
+    pub staged: bool,
+    /// Lint only tracked files with staged or unstaged changes against HEAD. Untracked files are
+    /// not included.
+    #[arg(long, group = "git_scope")]
+    pub changed: bool,
+    /// Lint only files changed since the merge base with REF, e.g. `--since origin/main` on a PR.
+    #[arg(long, value_name = "REF", group = "git_scope")]
+    pub since: Option<String>,
     #[arg(long, value_enum, default_value_t = Format::Text)]
     pub format: Format,
     /// Only run these rule codes/prefixes/groups (resets defaults). Comma-separated or repeated.
@@ -147,7 +158,27 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         custom_rules,
     };
 
-    let (diags, stats) = walk::lint_paths(&paths, &config.exclude, &settings)?;
+    let scope = if cli.staged {
+        Some(git::Scope::Staged)
+    } else if cli.changed {
+        Some(git::Scope::Changed)
+    } else {
+        cli.since.map(git::Scope::Since)
+    };
+    let (diags, stats) = match scope {
+        Some(scope) => {
+            let files = git::changed_files(Path::new("."), &scope, &paths)?;
+            let staged = matches!(scope, git::Scope::Staged);
+            walk::lint_files(&files, &config.exclude, &settings, move |p| {
+                if staged {
+                    git::staged_source(Path::new("."), p)
+                } else {
+                    std::fs::read_to_string(p)
+                }
+            })?
+        }
+        None => walk::lint_paths(&paths, &config.exclude, &settings)?,
+    };
     // Applied right after the walk, before either baseline step: a path-scoped ignore composes
     // with a baseline (both subtract findings) instead of the two fighting over which one "owns"
     // a finding, and a fresh `--write-baseline` shouldn't fossilize findings the config already

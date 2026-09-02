@@ -1,6 +1,6 @@
 use crate::{diagnostic::Diagnostic, engine, engine::Settings, lang::Lang};
-use ignore::{overrides::OverrideBuilder, WalkBuilder, WalkState};
-use std::path::PathBuf;
+use ignore::{overrides::Override, overrides::OverrideBuilder, WalkBuilder, WalkState};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
@@ -25,6 +25,73 @@ impl Stats {
     }
 }
 
+/// Per-file body shared by `lint_paths` (parallel walk) and `lint_files` (fixed list).
+#[derive(Default)]
+struct Accumulator {
+    diags: Mutex<Vec<Diagnostic>>,
+    // Atomics, not the diags Mutex: the walk is parallel and one relaxed add per file is cheaper
+    // than taking the diag lock that already runs per file.
+    files: AtomicU64,
+    skipped: AtomicU64,
+    lines: AtomicU64,
+}
+
+impl Accumulator {
+    fn lint(
+        &self,
+        path: &Path,
+        cwd: &Path,
+        settings: &Settings,
+        read: impl FnOnce(&Path) -> std::io::Result<String>,
+    ) {
+        let lang = match Lang::from_path(path) {
+            Some(l) => l,
+            None => {
+                self.skipped.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+        };
+        let source = match read(path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("stopslop: skipping {}: {e}", path.display());
+                self.skipped.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+        };
+        self.files.fetch_add(1, Ordering::Relaxed);
+        self.lines
+            .fetch_add(source.lines().count() as u64, Ordering::Relaxed);
+        let mut found = engine::lint_file(display_path(path, cwd), &source, lang, settings);
+        self.diags.lock().unwrap().append(&mut found);
+    }
+
+    fn finish(self) -> (Vec<Diagnostic>, Stats) {
+        let mut diags = self.diags.into_inner().unwrap();
+        diags.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
+        let stats = Stats {
+            files: self.files.into_inner(),
+            skipped: self.skipped.into_inner(),
+            lines: self.lines.into_inner(),
+            ..Default::default()
+        };
+        (diags, stats)
+    }
+}
+
+/// `[glob]` -> negated-glob override matching config `exclude` entries, shared by both entry
+/// points so config excludes apply the same way to a walked root or a git-selected file list.
+fn exclude_override(cwd: &Path, exclude: &[String]) -> anyhow::Result<Option<Override>> {
+    if exclude.is_empty() {
+        return Ok(None);
+    }
+    let mut ov = OverrideBuilder::new(cwd);
+    for glob in exclude {
+        ov.add(&format!("!{glob}"))?;
+    }
+    Ok(Some(ov.build()?))
+}
+
 pub fn lint_paths(
     roots: &[PathBuf],
     exclude: &[String],
@@ -47,20 +114,11 @@ pub fn lint_paths(
         builder.add(root);
     }
     builder.hidden(false).git_ignore(true).parents(true);
-    if !exclude.is_empty() {
-        let mut ov = OverrideBuilder::new(&cwd);
-        for glob in exclude {
-            ov.add(&format!("!{glob}"))?;
-        }
-        builder.overrides(ov.build()?);
+    if let Some(ov) = exclude_override(&cwd, exclude)? {
+        builder.overrides(ov);
     }
 
-    let diags: Mutex<Vec<Diagnostic>> = Mutex::new(Vec::new());
-    // Atomics, not the diags Mutex: the walk is parallel and one relaxed add per file is cheaper
-    // than taking the diag lock that already runs per file.
-    let files = AtomicU64::new(0);
-    let skipped = AtomicU64::new(0);
-    let lines = AtomicU64::new(0);
+    let acc = Accumulator::default();
     builder.build_parallel().run(|| {
         Box::new(|entry| {
             let entry = match entry {
@@ -70,41 +128,37 @@ pub fn lint_paths(
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 return WalkState::Continue;
             }
-            let path = entry.path();
-            let lang = match Lang::from_path(path) {
-                Some(l) => l,
-                None => {
-                    skipped.fetch_add(1, Ordering::Relaxed);
-                    return WalkState::Continue;
-                }
-            };
-            let source = match std::fs::read_to_string(path) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("stopslop: skipping {}: {e}", path.display());
-                    skipped.fetch_add(1, Ordering::Relaxed);
-                    return WalkState::Continue;
-                }
-            };
-            files.fetch_add(1, Ordering::Relaxed);
-            lines.fetch_add(source.lines().count() as u64, Ordering::Relaxed);
-            let display_path = display_path(path, &cwd);
-            let mut found = engine::lint_file(display_path, &source, lang, settings);
-            let mut guard = diags.lock().unwrap();
-            guard.append(&mut found);
+            acc.lint(entry.path(), &cwd, settings, |p| std::fs::read_to_string(p));
             WalkState::Continue
         })
     });
 
-    let mut diags = diags.into_inner().unwrap();
-    diags.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
-    let stats = Stats {
-        files: files.into_inner(),
-        skipped: skipped.into_inner(),
-        lines: lines.into_inner(),
-        ..Default::default()
-    };
-    Ok((diags, stats))
+    Ok(acc.finish())
+}
+
+/// Sequential entry point over a fixed file list (from `git::changed_files`), rather than a
+/// walked directory tree. A diff-sized file list is small; `lint_paths` above is the parallel
+/// shape to copy if a pre-commit ever needs to lint thousands of files at once.
+pub fn lint_files(
+    files: &[PathBuf],
+    exclude: &[String],
+    settings: &Settings,
+    read: impl Fn(&Path) -> std::io::Result<String>,
+) -> anyhow::Result<(Vec<Diagnostic>, Stats)> {
+    let cwd = std::env::current_dir()?;
+    let ov = exclude_override(&cwd, exclude)?;
+    let acc = Accumulator::default();
+    for path in files {
+        // Config `exclude` globs keep applying to git-selected files, same as a walked root.
+        if ov
+            .as_ref()
+            .is_some_and(|ov| ov.matched(path, false).is_ignore())
+        {
+            continue;
+        }
+        acc.lint(path, &cwd, settings, &read);
+    }
+    Ok(acc.finish())
 }
 
 fn display_path(path: &std::path::Path, cwd: &std::path::Path) -> String {
@@ -188,5 +242,62 @@ mod tests {
         assert!(stats.skipped >= 1, "the fixture dir's .gitkeep has no Lang");
         assert_eq!(stats.lines, expected_lines);
         assert!(stats.lines > 0);
+    }
+
+    fn go_settings() -> Settings {
+        Settings {
+            enabled: resolve_enabled(&[], &[], &[], &[], &[], false),
+            deps: None,
+            custom_rules: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn lint_files_matches_lint_paths() {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/go");
+        let settings = go_settings();
+        let files = go_files(&dir);
+
+        let (from_files, _) =
+            lint_files(&files, &[], &settings, |p| std::fs::read_to_string(p)).unwrap();
+        let (from_paths, _) = lint_paths(std::slice::from_ref(&dir), &[], &settings).unwrap();
+
+        assert!(
+            !from_paths.is_empty(),
+            "fixture dir should produce findings"
+        );
+        // Diagnostic has no PartialEq; comparing Debug output is equivalent and avoids adding one
+        // just for this test.
+        assert_eq!(format!("{from_files:?}"), format!("{from_paths:?}"));
+    }
+
+    #[test]
+    fn lint_files_applies_exclude() {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/go");
+        let settings = go_settings();
+        let files = go_files(&dir);
+
+        let (diags, stats) = lint_files(&files, &["**/*.go".to_string()], &settings, |p| {
+            std::fs::read_to_string(p)
+        })
+        .unwrap();
+
+        assert!(diags.is_empty());
+        assert_eq!(stats.files, 0);
+    }
+
+    #[test]
+    fn lint_files_read_error_is_skipped_not_failed() {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/go");
+        let settings = go_settings();
+        let files = go_files(&dir);
+
+        let (diags, stats) = lint_files(&files, &[], &settings, |_| {
+            Err(std::io::Error::other("boom"))
+        })
+        .unwrap();
+
+        assert!(diags.is_empty());
+        assert_eq!(stats.skipped, files.len() as u64);
     }
 }
