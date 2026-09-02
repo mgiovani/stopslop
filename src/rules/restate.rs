@@ -1,6 +1,6 @@
 use crate::context::{self, LintContext};
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::{Lang, CODE_LANGS};
 use crate::registry::RuleDef;
 use crate::suppress::comment_body;
 use regex::Regex;
@@ -12,7 +12,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP042",
     name: "Comment that restates the code",
     tier: Tier::B,
-    langs: &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust],
+    langs: CODE_LANGS,
     default_on: true,
     path_gated: true,
     check,
@@ -258,7 +258,7 @@ fn find_anchor(ctx: &LintContext, kids: &[Node], i: usize, j: usize) -> Option<(
         // same undeletable shape as godoc -- so only trailing comments actually inside a
         // function/method body count.
         let in_body = head.parent().is_some_and(|p| {
-            matches!(p.kind(), "block" | "statement_block")
+            matches!(p.kind(), "block" | "statement_block" | "statement_list")
                 && !(ctx.lang == Lang::Python
                     && p.parent().is_some_and(|gp| gp.kind() == "class_definition"))
         });
