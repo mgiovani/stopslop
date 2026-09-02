@@ -51,6 +51,11 @@ what) produced them.
 cargo install stopslop
 ```
 
+Once a day, an outdated install prints a one-line update notice to stderr
+(never in CI, never for `--format json|sarif|markdown`, never when stderr is
+not a terminal). Set `STOPSLOP_NO_UPDATE_CHECK=1` (or `NO_UPDATE_NOTIFIER=1`)
+to turn it off.
+
 **Alternatives:**
 
 ```bash
