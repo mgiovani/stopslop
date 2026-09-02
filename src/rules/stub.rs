@@ -5,7 +5,7 @@ use tree_sitter::Node;
 
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{Lang, CODE_LANGS};
+use crate::lang::{self, Lang, CODE_LANGS};
 use crate::registry::RuleDef;
 
 pub static RULE: RuleDef = RuleDef {
@@ -13,6 +13,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Stub-only / unimplemented body",
     tier: Tier::A,
     langs: CODE_LANGS,
+    natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: true,
     check,
@@ -281,6 +282,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
+            natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -388,6 +390,7 @@ mod tests {
             enabled: resolve_enabled(&[], &[], &[], &[], &[], false),
             deps: None,
             custom_rules: Vec::new(),
+            natlangs: crate::lang::ALL_NATLANGS.to_vec(),
         };
         assert!(s.enabled.contains("SLOP008"));
     }

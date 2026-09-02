@@ -4,7 +4,7 @@
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use stopslop::{lint_file, resolve_enabled, Lang, Settings};
+use stopslop::{lint_file, resolve_enabled, Lang, Settings, ALL_NATLANGS};
 
 const LANG_DIRS: &[&str] = &["typescript", "python", "go", "rust", "markdown"];
 
@@ -62,6 +62,7 @@ fn fixtures_match_markers() {
             enabled: resolve_enabled(&["SLOP".to_string()], &[], &[], &[], &[], false),
             deps: None,
             custom_rules: Vec::new(),
+            natlangs: ALL_NATLANGS.to_vec(),
         };
         let dir = root.join(lang_dir);
         let mut files = Vec::new();

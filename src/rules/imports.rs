@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{Lang, CODE_LANGS};
+use crate::lang::{self, Lang, CODE_LANGS};
 use crate::registry::RuleDef;
 use crate::rules::imports_data::{self, DepIndex};
 use tree_sitter::Node;
@@ -10,6 +10,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Unresolved package import",
     tier: Tier::B,
     langs: CODE_LANGS,
+    natlangs: lang::ALL_NATLANGS,
     default_on: false,
     path_gated: true,
     check,
@@ -266,6 +267,7 @@ mod tests {
             is_stub_file: false,
             deps: Some(deps),
             prose: None,
+            natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -684,6 +686,7 @@ mod tests {
             enabled: crate::engine::resolve_enabled(&[], &[], &[], &[], &[], true),
             deps: Some(deps),
             custom_rules: Vec::new(),
+            natlangs: crate::lang::ALL_NATLANGS.to_vec(),
         };
         crate::engine::lint_file(format!("{dir_lang}/{file}"), &source, lang, &settings)
     }

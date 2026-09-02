@@ -4,7 +4,7 @@ use regex::Regex;
 
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::CODE_LANGS;
+use crate::lang::{NatLang, CODE_LANGS};
 use crate::registry::RuleDef;
 
 pub static RULE: RuleDef = RuleDef {
@@ -12,6 +12,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Placeholder / sample credential value",
     tier: Tier::A,
     langs: CODE_LANGS,
+    natlangs: &[NatLang::En],
     default_on: true,
     path_gated: true,
     check,

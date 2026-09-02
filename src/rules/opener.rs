@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::PROSE_LANGS;
+use crate::lang::{NatLang, PROSE_LANGS};
 use crate::prose::first_byte_per_line;
 use crate::registry::RuleDef;
 use regex::Regex;
@@ -11,6 +11,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Formulaic opener / rhetorical setup",
     tier: Tier::B,
     langs: PROSE_LANGS,
+    natlangs: &[NatLang::En],
     default_on: true,
     path_gated: false,
     check,
@@ -49,11 +50,14 @@ static OPENER_PHRASES: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Self-answered question/answer pairs: a short question (<=10 words, ending in "?") immediately
 /// followed on the SAME line by its own short answer clause (<=8 words, ending in "."/"!"), e.g.
-/// "The answer? Yes." / "Why does this matter? Because latency drops." Group 1 is the question
-/// (the diagnostic anchor); group 2 is the answer clause.
+/// "The answer? Yes." / "O resultado? Zero." Group 1 is the question (the diagnostic anchor);
+/// group 2 is the answer clause. The word-leading class is `[^\W\d_]` (any Unicode letter, not
+/// ASCII `[A-Za-z]`) so an accented opener like "Ótima pergunta? Nenhuma." matches too -- `\w` is
+/// already Unicode-aware here (no `(?-u:...)` on this panel), so this only widens the leading
+/// character, not the rest of the word.
 static QUESTION_ANSWER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
-        r#"(?im){PREFIX}((?:[A-Za-z][\w']*[ \t]+){{0,9}}[A-Za-z][\w']*\?)[ \t]+((?:[A-Za-z][\w']*[ \t]+){{0,7}}[A-Za-z][\w']*[.!])"#
+        r#"(?im){PREFIX}((?:[^\W\d_][\w']*[ \t]+){{0,9}}[^\W\d_][\w']*\?)[ \t]+((?:[^\W\d_][\w']*[ \t]+){{0,7}}[^\W\d_][\w']*[.!])"#
     ))
     .unwrap()
 });
@@ -107,6 +111,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
+            natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -160,6 +165,28 @@ mod tests {
     #[test]
     fn flags_self_answered_question() {
         let diags = diagnostics_for("Why does this matter? Because latency drops.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP022");
+    }
+
+    #[test]
+    fn flags_self_answered_question_with_ascii_opener() {
+        let diags = diagnostics_for("O resultado? Zero.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP022");
+    }
+
+    #[test]
+    fn ignores_answer_clause_that_opens_with_a_digit() {
+        // `[^\W\d_]` keeps the old `[A-Za-z]` exclusion of digits and underscores.
+        assert!(diagnostics_for("The answer? 42.\n").is_empty());
+    }
+
+    #[test]
+    fn flags_self_answered_question_with_accented_opener() {
+        // pt-BR: an accented sentence-initial letter must match the same way the plain-ASCII
+        // Portuguese case above does.
+        let diags = diagnostics_for("\u{d3}tima pergunta? Nenhuma.\n");
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "SLOP022");
     }

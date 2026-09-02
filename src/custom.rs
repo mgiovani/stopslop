@@ -104,6 +104,9 @@ fn build_one(index: usize, c: &CustomRuleConfig) -> anyhow::Result<CustomRule> {
             name,
             tier,
             langs: &[],
+            // Custom rules are user regexes, not a lexicon -- engine's natlang gate never
+            // consults this field for them (see engine::lint_file/lint_prose's 2nd pass).
+            natlangs: crate::lang::ALL_NATLANGS,
             default_on: true,
             path_gated: false,
             check: noop_check,
@@ -217,6 +220,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(doc),
+            natlangs: crate::lang::ALL_NATLANGS,
         }
     }
 

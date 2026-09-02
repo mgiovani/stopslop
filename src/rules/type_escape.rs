@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::{self, Lang};
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::sync::LazyLock;
@@ -10,6 +10,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Type-escape (`as any`/`as unknown`/`@ts-ignore`)",
     tier: Tier::A,
     langs: &[Lang::Ts, Lang::Tsx],
+    natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: false,
     check,

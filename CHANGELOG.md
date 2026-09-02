@@ -46,6 +46,16 @@ migration notes live here.
   git-selected file list instead of walking the tree: staged index content,
   staged-plus-unstaged changes against `HEAD`, or everything since the merge
   base with `REF`. Positional paths act as git pathspecs.
+- **Natural-language axis.** `NatLang` (`En`, `PtBr`) is a new axis,
+  orthogonal to `Lang`: which phrase-panel lexicons a rule is validated on,
+  separate from which file syntax it lints. Every `RuleDef` now declares
+  `natlangs`, an optional `language` key in `stopslop.toml` (string or array,
+  default every supported language) restricts a run to specific tags, and
+  `--list-rules` gained a `NATLANG` column. A new `tests/natlang_witness.rs`
+  harness requires a `tests/fixtures/markdown/pt-br/` fixture before a rule
+  can declare `PtBr`. No rule ships a pt-BR phrase panel yet; this lands the
+  axis and the neutral fixes below. See
+  [#30](https://github.com/mgiovani/stopslop/issues/30).
 
 - `-j N` / `--threads N` picks the walk's worker count (`0`, the default,
   chooses automatically); `-j 1` makes per-rule timings add up for perf work.
@@ -72,6 +82,18 @@ migration notes live here.
   as a third element.
 
 ### Fixed
+
+- **SLOP018** treated every line-initial dash as attribution only when the
+  line above it was blank or a blockquote marker, so the second and later
+  lines of a multi-line dialogue run (each opening with its own attribution
+  dash, e.g. pt-BR travessão) were flagged as mid-prose punctuation. A
+  line-initial dash is now also exempt when the line above it opens with a
+  dash too, extending the exemption down the whole run; a dash that
+  interrupts the middle of a dialogue line still fires.
+- **SLOP022**'s self-answered question/answer check required an ASCII
+  `[A-Za-z]` sentence-initial letter, so a self-answered pair opening on an
+  accented word, common in Portuguese, never matched. The leading-letter
+  class is now `[^\W\d_]` (any Unicode letter).
 
 - **SLOP017** counted any comma series of three-or-more items, including the
   tail of a longer one, so plain enumerations tripped it (a protected-

@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::{self, Lang};
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::sync::LazyLock;
@@ -11,6 +11,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Broad / swallowing except",
     tier: Tier::A,
     langs: &[Lang::Python],
+    natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: true,
     check,
@@ -87,6 +88,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
+            natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);

@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::PROSE_LANGS;
+use crate::lang::{self, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
 use regex::Regex;
@@ -12,6 +12,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Overlong sentence",
     tier: Tier::B,
     langs: PROSE_LANGS,
+    natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: false,
     check,
@@ -145,6 +146,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
+            natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);

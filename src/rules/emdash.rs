@@ -1,14 +1,16 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::PROSE_LANGS;
+use crate::lang::{self, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
+use std::collections::HashMap;
 
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP018",
     name: "Mid-prose em/en dash",
     tier: Tier::B,
     langs: PROSE_LANGS,
+    natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: false,
     check,
@@ -37,13 +39,14 @@ const FIX: &str = "rewrite the sentence, or use a comma, colon, or parentheses";
 /// deduped per line): a line with two mid-prose dashes is two problems to fix, not one.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
+    let mut block_initial = HashMap::new();
 
     for (byte, ch) in doc.masked.char_indices() {
         let is_en_dash_numeric_range = ch == '\u{2013}' && digit_flanked(&doc.masked, byte, ch);
         if !matches!(ch, '\u{2014}' | '\u{2013}') || is_en_dash_numeric_range {
             continue;
         }
-        if doc.in_frontmatter(byte) || is_block_initial(doc, byte) {
+        if doc.in_frontmatter(byte) || is_block_initial(doc, byte, &mut block_initial) {
             continue;
         }
         let (line, col) = doc.line_col(byte);
@@ -58,7 +61,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     }
 
     for byte in spaced_ascii_dashes(&doc.masked) {
-        if doc.in_frontmatter(byte) || is_block_initial(doc, byte) {
+        if doc.in_frontmatter(byte) || is_block_initial(doc, byte, &mut block_initial) {
             continue;
         }
         let (line, col) = doc.line_col(byte);
@@ -113,31 +116,75 @@ fn spaced_ascii_dashes(masked: &str) -> Vec<usize> {
 /// wrap point or on a list-item continuation line still needs flagging. One deliberate exception:
 /// a `>`-marked line is always treated as block-initial, so a wrapped continuation *inside* a
 /// blockquote stays exempt -- `> -- Author` under a quote is indistinguishable from attribution,
-/// and attribution is the likelier reading.
-fn is_block_initial(doc: &ProseDoc, byte: usize) -> bool {
+/// and attribution is the likelier reading. A second exception covers the travessão: Portuguese-
+/// (and English-) language fiction repeats a line-opening dash on every line of a dialogue
+/// exchange, the same shape as attribution, so a run of such lines is exempt down its whole
+/// length -- see the walk-back below. `memo` caches the verdict per dash byte: `check` visits
+/// dashes in byte order, so a run of N dialogue lines costs N single-step walks instead of the
+/// N^2 a fresh walk per dash would (the quadratic shape `7d502e5` removed from this rule).
+fn is_block_initial(doc: &ProseDoc, byte: usize, memo: &mut HashMap<usize, bool>) -> bool {
+    let verdict = walk_back(doc, byte, memo);
+    memo.insert(byte, verdict);
+    verdict
+}
+
+fn walk_back(doc: &ProseDoc, byte: usize, memo: &HashMap<usize, bool>) -> bool {
     let masked = &doc.masked;
-    let line_start = doc.line_span(byte).0;
-    let prefix = &masked[line_start..byte];
-    if !prefix
-        .trim_start_matches(|c: char| c.is_whitespace() || c == '>')
-        .is_empty()
+    let mut byte = byte;
+    loop {
+        let line_start = doc.line_span(byte).0;
+        let prefix = &masked[line_start..byte];
+        if !prefix
+            .trim_start_matches(|c: char| c.is_whitespace() || c == '>')
+            .is_empty()
+        {
+            return false;
+        }
+        if prefix.contains('>') {
+            return true; // attribution inside a blockquote
+        }
+        let Some(before) = masked[..line_start].strip_suffix('\n') else {
+            return true; // first line of the document
+        };
+        let prev_start = before.rfind('\n').map_or(0, |i| i + 1);
+        if doc.in_frontmatter(prev_start) {
+            return true; // first prose line after frontmatter -- the body's real first line
+        }
+        let prev_line = &before[prev_start..];
+        let prev = prev_line.trim();
+        // Blank line above => this dash opens a block. `>` line above => this is the lazy
+        // continuation of a blockquote, where an unmarked `-- Author` line is the same
+        // attribution convention.
+        if prev.is_empty() || prev.starts_with('>') {
+            return true;
+        }
+        // A previous line that itself opens with a dash extends the exemption down the run.
+        // Walk back onto that dash and retest it in a loop, not recursion (see
+        // context::walk_tree), so a non-block-initial dash can't launder the line below it.
+        match dash_start_byte(prev_line, prev_start) {
+            Some(prev_dash_byte) => match memo.get(&prev_dash_byte) {
+                Some(&decided) => return decided,
+                None => byte = prev_dash_byte,
+            },
+            None => return false,
+        }
+    }
+}
+
+/// If `line` (the raw, untrimmed content of one line, starting at absolute offset `line_offset`
+/// in `doc.masked`) opens -- after optional whitespace and blockquote `>` markers -- with an em
+/// dash, en dash, or the two-hyphen ASCII form, returns that dash's absolute byte offset.
+fn dash_start_byte(line: &str, line_offset: usize) -> Option<usize> {
+    let stripped = line.trim_start_matches(|c: char| c.is_whitespace() || c == '>');
+    let lead = line.len() - stripped.len();
+    if stripped.starts_with('\u{2014}')
+        || stripped.starts_with('\u{2013}')
+        || stripped.starts_with("--")
     {
-        return false;
+        Some(line_offset + lead)
+    } else {
+        None
     }
-    if prefix.contains('>') {
-        return true; // attribution inside a blockquote
-    }
-    let Some(before) = masked[..line_start].strip_suffix('\n') else {
-        return true; // first line of the document
-    };
-    let prev_start = before.rfind('\n').map_or(0, |i| i + 1);
-    if doc.in_frontmatter(prev_start) {
-        return true; // first prose line after frontmatter -- the body's real first line
-    }
-    let prev = before[prev_start..].trim();
-    // Blank line above => this dash opens a block. `>` line above => this is the lazy continuation
-    // of a blockquote, where an unmarked `-- Author` line is the same attribution convention.
-    prev.is_empty() || prev.starts_with('>')
 }
 
 #[cfg(test)]
@@ -159,6 +206,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
+            natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -365,5 +413,42 @@ mod tests {
         // two-hyphen slice, so no ` -- ` substring can ever be found inside it.
         let src = "Section divider below.\n\n ---- \n\nMore body text follows here today.\n";
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn allows_dialogue_run_but_flags_its_mid_line_dash() {
+        // A pt-BR travessão dialogue exchange: every line opens with the same attribution-style
+        // dash, so only the mid-line dash (the narrator's "— respondeu ela" aside) is prose.
+        let src = "\u{2014} Voc\u{ea} viu?\n\u{2014} Vi. \u{2014} respondeu ela.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!((diags[0].line, diags[0].col), (2, 7));
+    }
+
+    #[test]
+    fn allows_dialogue_runs_of_any_length_in_any_dash_form() {
+        assert!(diagnostics_for("\u{2014} Oi.\n\u{2014} Tudo bem?\n\u{2014} Tudo.\n").is_empty());
+        // An ASCII `--` opener above extends the exemption to the em dash below it.
+        assert!(diagnostics_for("-- Oi.\n\u{2014} Tudo bem?\n").is_empty());
+        assert!(diagnostics_for("> \u{2014} Oi.\n> \u{2014} Tudo bem?\n").is_empty());
+    }
+
+    #[test]
+    fn wrapped_dash_line_does_not_launder_the_dash_line_below_it() {
+        // Line 2's dash is a wrap point (line 1 is prose), so line 3 inherits nothing from it.
+        let src = "Prose that wraps right here\n\u{2014} continued\n\u{2014} and again\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 2);
+        assert_eq!((diags[0].line, diags[1].line), (2, 3));
+    }
+
+    #[test]
+    fn flags_wrapped_dash_line_under_a_non_dash_opening_line() {
+        // A line that starts with a dash purely because prose wrapped at that point (the line
+        // above it does NOT itself open with a dash) is still ordinary mid-prose punctuation.
+        let src = "The rollout finished cleanly and every check passed without issue at all\n\u{2014} except for one flaky integration test.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!((diags[0].line, diags[0].col), (2, 1));
     }
 }

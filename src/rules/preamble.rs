@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::CODE_LANGS;
+use crate::lang::{NatLang, CODE_LANGS};
 use crate::prose_words::REASONING_CHAIN_FRAGMENT;
 use crate::registry::RuleDef;
 use regex::Regex;
@@ -11,6 +11,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Chat preamble leaked into code",
     tier: Tier::A,
     langs: CODE_LANGS,
+    natlangs: &[NatLang::En],
     default_on: true,
     path_gated: false,
     check,

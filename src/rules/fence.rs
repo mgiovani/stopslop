@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::CODE_LANGS;
+use crate::lang::{self, CODE_LANGS};
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::sync::LazyLock;
@@ -10,6 +10,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Stray markdown code fence in source",
     tier: Tier::A,
     langs: CODE_LANGS,
+    natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: false,
     check,

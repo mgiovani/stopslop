@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::{Lang, NatLang};
 
 /// Uniform check fn. Text rules iterate ctx.comments/ctx.strings; AST rules query ctx.nodes().
 pub type CheckFn = fn(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>);
@@ -10,7 +10,10 @@ pub struct RuleDef {
     pub name: &'static str,
     pub tier: Tier,
     pub langs: &'static [Lang], // rule runs only for these langs
-    pub default_on: bool,       // three-state w/ tier: A+on blocks CI, B+on warns without
+    /// Natural languages this rule's lexicon is validated on, proven by a fixture. A rule with
+    /// no natural-language lexicon (AST shape, punctuation, statistics) declares every language.
+    pub natlangs: &'static [NatLang],
+    pub default_on: bool, // three-state w/ tier: A+on blocks CI, B+on warns without
     // blocking, B+off is opt-in only (see Tier's doc comment)
     pub path_gated: bool, // honor is_test_path exemption (SLOP005/6/8/9/10)
     pub check: CheckFn,

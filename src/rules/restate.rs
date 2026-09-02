@@ -1,6 +1,6 @@
 use crate::context::{self, LintContext};
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{Lang, CODE_LANGS};
+use crate::lang::{Lang, NatLang, CODE_LANGS};
 use crate::registry::RuleDef;
 use crate::suppress::comment_body;
 use regex::Regex;
@@ -13,6 +13,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Comment that restates the code",
     tier: Tier::B,
     langs: CODE_LANGS,
+    natlangs: &[NatLang::En],
     default_on: true,
     path_gated: true,
     check,
@@ -688,6 +689,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
+            natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);

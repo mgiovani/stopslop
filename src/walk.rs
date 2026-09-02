@@ -181,6 +181,7 @@ mod tests {
             enabled: resolve_enabled(&[], &[], &[], &[], &[], false),
             deps: None,
             custom_rules: Vec::new(),
+            natlangs: crate::lang::ALL_NATLANGS.to_vec(),
         };
         let once = lint_paths(std::slice::from_ref(&dir), &[], &settings, 0)
             .unwrap()
@@ -233,6 +234,7 @@ mod tests {
             enabled: resolve_enabled(&[], &[], &[], &[], &[], false),
             deps: None,
             custom_rules: Vec::new(),
+            natlangs: crate::lang::ALL_NATLANGS.to_vec(),
         };
         let (_, stats) = lint_paths(std::slice::from_ref(&dir), &[], &settings, 0).unwrap();
 
@@ -253,6 +255,7 @@ mod tests {
             enabled: resolve_enabled(&[], &[], &[], &[], &[], false),
             deps: None,
             custom_rules: Vec::new(),
+            natlangs: crate::lang::ALL_NATLANGS.to_vec(),
         }
     }
 
