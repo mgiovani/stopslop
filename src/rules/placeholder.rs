@@ -43,9 +43,10 @@ static RE_CS: LazyLock<Regex> = LazyLock::new(|| {
 /// HTML attributes: the four placeholder-image generators, and an `alt` whose whole value is a
 /// generic word (AccessGuru and A11YN both report generic alt text as the recurring defect in
 /// generated markup). `picsum.photos` serves real photographs for demos and is not a placeholder;
-/// `alt=""` is the correct markup for a decorative image and never matches.
+/// `alt=""` is the correct markup for a decorative image and never matches. Each string is one
+/// whole `name="value"` attribute (`ProseDoc::attr_values`), so `^alt=` cannot hit `data-alt=`.
 static RE_HTML: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)via\.placeholder\.com|placehold\.co|placekitten\.com|dummyimage\.com|(?-u:\b)alt=["'](?:image|img|photo|picture|placeholder|image description|alt text|description)["']"#).unwrap()
+    Regex::new(r#"(?i)via\.placeholder\.com|placehold\.co|placekitten\.com|dummyimage\.com|^alt=["'](?:image|img|photo|picture|placeholder|image description|alt text|description)["']$"#).unwrap()
 });
 
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
@@ -110,8 +111,9 @@ mod tests {
     fn flags_placeholder_image_host_and_generic_alt() {
         assert!(RE_HTML.is_match("src=\"https://via.placeholder.com/150\"")); // ai-slop-ignore
         assert!(RE_HTML.is_match("src=\"https://placehold.co/600x400\"")); // ai-slop-ignore
-        assert!(RE_HTML.is_match("alt=\"image\"")); // ai-slop-ignore
-        assert!(RE_HTML.is_match("alt='Image description'")); // ai-slop-ignore
+        assert!(RE_HTML.is_match("alt=\"image\""));
+        assert!(RE_HTML.is_match("alt='Image description'"));
+        assert!(RE_HTML.is_match("ALT=\"IMAGE\""));
     }
 
     #[test]
@@ -119,6 +121,8 @@ mod tests {
         assert!(!RE_HTML.is_match("alt=\"\""));
         assert!(!RE_HTML.is_match("alt=\"image of the office lobby\""));
         assert!(!RE_HTML.is_match("src=\"https://picsum.photos/200\""));
+        assert!(!RE_HTML.is_match("data-alt=\"image\""));
+        assert!(!RE_HTML.is_match("title=\"image\""));
     }
 
     #[test]

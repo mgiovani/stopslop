@@ -63,9 +63,11 @@ static RE_DATE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// (4) HTML-comment fill instructions, e.g. `<!-- Add citation -->`, and the `your … here` slot
-/// generated pages leave in the body (`<!-- Your content here -->`).
+/// generated pages leave in the body (`<!-- Your content here -->`, `<!-- put your logo here -->`).
+/// The slot form is the whole comment: an optional verb, `your`, one to three words, `here`.
+/// `<!-- if your build fails here, see docs -->` is prose and must not match.
 static RE_HTML_COMMENT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)<!--\s*(?:(?:add|insert|todo|fill in|replace|describe)(?-u:\b)[^>]*|[^>]*(?-u:\b)your(?-u:\b)[^>]*(?-u:\b)here(?-u:\b)[^>]*)-->").unwrap()
+    Regex::new(r"(?i)<!--\s*(?:(?:add|insert|todo|fill in|replace|describe)(?-u:\b)[^>]*|(?:\w+\s+)?your\s+(?:\w+\s+){1,3}here[.!]?\s*)-->").unwrap()
 });
 
 /// Scope: headings in scope, frontmatter IN SCOPE (placeholder dates commonly appear as
@@ -153,6 +155,7 @@ mod tests {
         );
         assert_eq!(diags.len(), 2);
         assert!(diagnostics_for("<!-- here is where your ideas go -->\n").is_empty());
+        assert!(diagnostics_for("<!-- if your build fails here, see docs -->\n").is_empty());
     }
 
     #[test]

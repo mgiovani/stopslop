@@ -22,26 +22,37 @@ pub static RULE: RuleDef = RuleDef {
 /// than the masked stream: the tag is what identifies the span, and the masked stream blanks it.
 static RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<title(?:\s[^>]*)?>\s*(document)?\s*</title\s*>").unwrap());
+static OPEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)<title[\s>]").unwrap());
 
+/// Only the first `<title>` in the document is the page title. A later one is an SVG
+/// accessible name (`<svg><title></title></svg>`), which is a different element with its own
+/// rules, so it never counts here.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
-    for caps in RE.captures_iter(ctx.source) {
-        let m = caps.get(0).unwrap();
-        let (line, col) = doc.line_col(m.start());
-        let message = if caps.get(1).is_some() {
-            "page title is the editor boilerplate \"Document\""
-        } else {
-            "page title is empty"
-        };
-        out.push(Diagnostic::at_fix(
-            rule,
-            ctx,
-            line,
-            col,
-            message,
-            "name the page",
-        ));
+    let Some(first) = OPEN.find(ctx.source) else {
+        return;
+    };
+    let Some(caps) = RE.captures_at(ctx.source, first.start()) else {
+        return;
+    };
+    let m = caps.get(0).unwrap();
+    if m.start() != first.start() {
+        return;
     }
+    let (line, col) = doc.line_col(m.start());
+    let message = if caps.get(1).is_some() {
+        "page title is the editor boilerplate \"Document\""
+    } else {
+        "page title is empty"
+    };
+    out.push(Diagnostic::at_fix(
+        rule,
+        ctx,
+        line,
+        col,
+        message,
+        "name the page",
+    ));
 }
 
 #[cfg(test)]
@@ -89,14 +100,20 @@ mod tests {
 
     #[test]
     fn flags_empty_title() {
-        let diags = diagnostics_for("<title></title>\n<title>\n</title>\n");
-        assert_eq!(diags.len(), 2);
-        assert!(diags.iter().all(|d| d.message.contains("empty")));
+        let diags = diagnostics_for("<head>\n<title>\n</title>\n</head>\n");
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("empty"));
     }
 
     #[test]
     fn clean_named_titles() {
-        let src = "<title>Acme Notes</title>\n<title>Documentation</title>\n<title>{{ page.title }}</title>\n";
-        assert!(diagnostics_for(src).is_empty());
+        for src in [
+            "<title>Acme Notes</title>\n",
+            "<title>Documentation</title>\n",
+            "<title>{{ page.title }}</title>\n",
+            "<title>Acme</title>\n<svg><title></title></svg>\n",
+        ] {
+            assert!(diagnostics_for(src).is_empty(), "{src}");
+        }
     }
 }

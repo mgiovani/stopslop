@@ -86,6 +86,9 @@ pub struct ProseDoc<'a> {
     /// the same line counts chars from here rather than from the line start -- a 1.8 MB
     /// single-line file with 200k em dashes took 18s before this.
     col_memo: Cell<(usize, usize)>,
+    /// `line_col` counts columns here, not in `masked`: a blanked multibyte char is several
+    /// spaces in `masked` but one column on the page.
+    source: &'a str,
 }
 
 impl<'a> ProseDoc<'a> {
@@ -147,6 +150,7 @@ impl<'a> ProseDoc<'a> {
             attr_values: Vec::new(),
             line_starts,
             col_memo: Cell::new((0, 1)),
+            source,
         }
     }
 
@@ -216,6 +220,7 @@ impl<'a> ProseDoc<'a> {
             attr_values,
             line_starts,
             col_memo: Cell::new((0, 1)),
+            source,
         }
     }
 
@@ -241,7 +246,13 @@ impl<'a> ProseDoc<'a> {
             (b, c) if b >= line_start && b <= byte => (b, c),
             _ => (line_start, 1),
         };
-        let col = base + self.masked[from..byte].chars().count();
+        // Rules hand over match starts, which sit on char boundaries; `get` keeps a stray
+        // mid-char byte from panicking the parallel walk and counts the masked spaces instead.
+        let col = base
+            + self.source[..byte.max(from)].get(from..byte).map_or_else(
+                || self.masked[from..byte].chars().count(),
+                |s| s.chars().count(),
+            );
         self.col_memo.set((byte, col));
         (idx + 1, col)
     }
@@ -1130,6 +1141,17 @@ mod tests {
         assert!(doc.masked.contains("utm_source=chatgpt.com"));
         assert!(doc.in_url(at));
         assert_eq!(doc.url_spans.len(), 1);
+    }
+
+    #[test]
+    fn columns_count_source_chars_across_blanked_multibyte_spans() {
+        let md = "`café` x\n";
+        assert_eq!(ProseDoc::parse(md).line_col(md.find('x').unwrap()), (1, 8));
+        let html = "<p title=\"café\">x</p>\n";
+        assert_eq!(
+            ProseDoc::parse_html(html).line_col(html.find('x').unwrap()),
+            (1, 17)
+        );
     }
 
     #[test]
