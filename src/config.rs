@@ -290,6 +290,16 @@ mod tests {
     }
 
     #[test]
+    fn discover_reads_and_parses_the_explicit_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join(FILE_NAME);
+        std::fs::write(&file, "select = [\"SLOP001\"]\nfail-on-tier = \"B\"\n").unwrap();
+        let cfg = Config::discover(Some(&file), false).unwrap();
+        assert_eq!(cfg.select, vec!["SLOP001"]);
+        assert_eq!(cfg.fail_on_tier.as_deref(), Some("B"));
+    }
+
+    #[test]
     fn discover_explicit_missing_path_is_an_error() {
         let missing = Path::new("/definitely/not/here/stopslop.toml");
         let err = Config::discover(Some(missing), false)
