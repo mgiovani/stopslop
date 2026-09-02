@@ -20,7 +20,7 @@ pub static RULE: RuleDef = RuleDef {
 /// Anonymous-authority attribution phrases: an appeal to an unnamed "expert"/"study"/"critic"
 /// standing in for a real, checkable source.
 static WEASEL_ATTRIBUTION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(experts (?:agree|say)|studies (?:show|suggest)|research (?:shows|suggests|indicates)|industry reports suggest|many (?:argue|believe)|some (?:say|argue)|it is widely regarded as|widely considered|widely regarded as|it is believed that|critics argue|analysts predict|reports indicate|sources say|it is often said|observers have (?:cited|noted)|several sources|several publications|many have (?:argued|noted|suggested)|it has been (?:suggested|argued|noted)|commentators (?:say|note|argue)|proponents (?:argue|say)|detractors (?:argue|say))\b")
+    Regex::new(r"(?i)(?-u:\b)(experts (?:agree|say)|studies (?:show|suggest)|research (?:shows|suggests|indicates)|industry reports suggest|many (?:argue|believe)|some (?:say|argue)|it is widely regarded as|widely considered|widely regarded as|it is believed that|critics argue|analysts predict|reports indicate|sources say|it is often said|observers have (?:cited|noted)|several sources|several publications|many have (?:argued|noted|suggested)|it has been (?:suggested|argued|noted)|commentators (?:say|note|argue)|proponents (?:argue|say)|detractors (?:argue|say))(?-u:\b)")
         .unwrap()
 });
 
@@ -31,7 +31,7 @@ static WEASEL_ATTRIBUTION_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// comma splice.
 static NOTABILITY_NAME_DROP_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"\b(?:cited|covered|featured) (?:in|by) [A-Z][\w& ]+(?:, (?:and )?[A-Z][\w& ]+){2,}",
+        r"(?-u:\b)(?:cited|covered|featured) (?:in|by) [A-Z][\w& ]+(?:, (?:and )?[A-Z][\w& ]+){2,}",
     )
     .unwrap()
 });
@@ -42,7 +42,7 @@ static NOTABILITY_NAME_DROP_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// ("(Smith 2023)").
 static LINE_CITATION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"\[[^\]\n]*\]\([^)\n]*\)|https?://\S+|\[\^[^\]\n]+\]|\[[^\]\n]+\]_|\([^()\n]*\b(?:19|20)\d{2}\b[^()\n]*\)",
+        r"\[[^\]\n]*\]\([^)\n]*\)|https?://\S+|\[\^[^\]\n]+\]|\[[^\]\n]+\]_|\([^()\n]*(?-u:\b)(?:19|20)\d{2}(?-u:\b)[^()\n]*\)",
     )
     .unwrap()
 });

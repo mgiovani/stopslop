@@ -19,7 +19,7 @@ pub static RULE: RuleDef = RuleDef {
 /// Sentence/line-initial anchor, shared by both patterns below: either the true start of a line
 /// (optionally preceded by a list marker, blockquote `>`, bold/italic `*`/`_`, an ATX `#`, or an
 /// ordered-list digit/`.`/`)`), or the tail of the previous sentence (`[.!?]` + optional closing
-/// quote/paren + whitespace). Anchoring here (rather than a bare `\b`) is what keeps a phrase like
+/// quote/paren + whitespace). Anchoring here (rather than a bare word-boundary) is what keeps a phrase like
 /// "the part everyone misses" from firing when it shows up mid-clause instead of opening one.
 const PREFIX: &str = r#"(?:^[ \t>*_#0-9.)-]*|[.!?]["')\]]?[ \t]+)"#;
 

@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn prose_scan_hits_masked_stream_and_skips_fences() {
-        let rules = load(&[cfg(r"(?i)\bsynergy\b", "banned word: synergy")]).unwrap();
+        let rules = load(&[cfg(r"(?i)(?-u:\b)synergy(?-u:\b)", "banned word: synergy")]).unwrap();
         let src = "We need synergy here.\n\n```\nsynergy in code\n```\n";
         let doc = crate::prose::ProseDoc::parse(src);
         let ctx = prose_ctx(&doc, "f.md");
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn files_glob_restricts_which_paths_are_scanned() {
-        let mut c = cfg(r"(?i)\bsynergy\b", "banned word: synergy");
+        let mut c = cfg(r"(?i)(?-u:\b)synergy(?-u:\b)", "banned word: synergy");
         c.files = vec!["docs/**".to_string()];
         let rules = load(&[c]).unwrap();
         let doc = crate::prose::ProseDoc::parse("synergy\n");
@@ -259,7 +259,7 @@ mod tests {
             ("./docs/**", "docs/f.md"),
             ("./docs/**", "./docs/f.md"),
         ] {
-            let mut c = cfg(r"(?i)\bsynergy\b", "banned word: synergy");
+            let mut c = cfg(r"(?i)(?-u:\b)synergy(?-u:\b)", "banned word: synergy");
             c.files = vec![glob.to_string()];
             let rules = load(&[c]).unwrap();
             let doc = crate::prose::ProseDoc::parse("synergy\n");
@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn fix_hint_is_emitted_when_configured() {
-        let mut c = cfg(r"(?i)\bsynergy\b", "banned word: synergy");
+        let mut c = cfg(r"(?i)(?-u:\b)synergy(?-u:\b)", "banned word: synergy");
         c.fix = Some("say what the teams actually do".to_string());
         let rules = load(&[c]).unwrap();
         let doc = crate::prose::ProseDoc::parse("synergy\n");

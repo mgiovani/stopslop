@@ -21,7 +21,8 @@ static STOCK_FRAGMENT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^(?:that'?s it|that'?s the whole thing|simple as that|full stop|period|end of story)[.!]?$")
         .unwrap()
 });
-static CONJ_OPENER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(and|but|or)\b").unwrap());
+static CONJ_OPENER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(and|but|or)(?-u:\b)").unwrap());
 
 /// Sentences whose word count difference (max - min) is at most this are "robotically uniform".
 const RHYTHM_SPREAD: usize = 2;

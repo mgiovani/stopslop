@@ -27,7 +27,7 @@ pub static RULE: RuleDef = RuleDef {
 /// non-slop prose elsewhere in this repo's own fixture corpus (clean_hedging.md), with no nearby
 /// textual signal (no "before"/"previously"/"used to") to disambiguate the two readings.
 static DIFF_ANCHOR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b((?:was|were) (?:added|introduced|removed|renamed|replaced|changed|updated) (?:to|in|for|with)|this (?:replaces|supersedes|deprecates) the (?:old|previous|former|legacy)|previously,? (?:this|it|the \w+) (?:was|used|had|would)|we(?:'ve| have) (?:changed|updated|switched|migrated|moved) (?:this|it|the)|now uses \w+ instead of|used to (?:be|use|have|require)|in the old (?:version|implementation|code))\b")
+    Regex::new(r"(?i)(?-u:\b)((?:was|were) (?:added|introduced|removed|renamed|replaced|changed|updated) (?:to|in|for|with)|this (?:replaces|supersedes|deprecates) the (?:old|previous|former|legacy)|previously,? (?:this|it|the \w+) (?:was|used|had|would)|we(?:'ve| have) (?:changed|updated|switched|migrated|moved) (?:this|it|the)|now uses \w+ instead of|used to (?:be|use|have|require)|in the old (?:version|implementation|code))(?-u:\b)")
         .unwrap()
 });
 

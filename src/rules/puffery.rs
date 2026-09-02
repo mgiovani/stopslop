@@ -27,7 +27,7 @@ pub static RULE: RuleDef = RuleDef {
 /// present in this exact panel from the start (`reflects? a broader shift|reflected a broader
 /// shift`), so the catalog entry is a same-panel duplicate, not a new phrase.
 static IMPORTANCE_PUFFERY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(marks? a pivotal moment|marked a pivotal moment|marks? a turning point|marked a turning point|solidif(?:ies|ied) its position|cements? its place|cemented its place|underscores? its significance|underscored its significance|represents? a significant milestone|represented a significant milestone|highlights? the importance of|highlighted the importance of|reflects? a broader shift|reflected a broader shift|is poised to revolutionize|are poised to revolutionize|sets? a new standard for|set a new standard for|is a reminder of|is a reminder that|symboliz(?:es|ing) its (?:ongoing|enduring|lasting)|setting the stage for|a key turning point|an indelible mark|is deeply rooted in|remains deeply rooted in|represents? a shift|marks? a shift|the focal point)\b")
+    Regex::new(r"(?i)(?-u:\b)(marks? a pivotal moment|marked a pivotal moment|marks? a turning point|marked a turning point|solidif(?:ies|ied) its position|cements? its place|cemented its place|underscores? its significance|underscored its significance|represents? a significant milestone|represented a significant milestone|highlights? the importance of|highlighted the importance of|reflects? a broader shift|reflected a broader shift|is poised to revolutionize|are poised to revolutionize|sets? a new standard for|set a new standard for|is a reminder of|is a reminder that|symboliz(?:es|ing) its (?:ongoing|enduring|lasting)|setting the stage for|a key turning point|an indelible mark|is deeply rooted in|remains deeply rooted in|represents? a shift|marks? a shift|the focal point)(?-u:\b)")
         .unwrap()
 });
 
@@ -37,8 +37,10 @@ static IMPORTANCE_PUFFERY_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// never match -- those have no article after "as" at all. Up to two leading modifier words
 /// before the head noun covers "serves as a fully centralized hub"-style phrasing.
 static FAKE_STRONG_VERB_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:serves?|acts?|functions?|stands?|boasts?) as an? (?:\w+ ){0,2}\w+\b")
-        .unwrap()
+    Regex::new(
+        r"(?i)(?-u:\b)(?:serves?|acts?|functions?|stands?|boasts?) as an? (?:\w+ ){0,2}\w+(?-u:\b)",
+    )
+    .unwrap()
 });
 
 /// (c) Faux-scale range: "from the singularity of the Big Bang to the enigmatic dance of dark
@@ -49,7 +51,7 @@ static FAKE_STRONG_VERB_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// filler words before its head noun, matching real examples like "the Big Bang" or "the
 /// enigmatic dance" rather than only single-word nouns.
 static FAUX_SCALE_RANGE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\bfrom (?:the )?(?:\w+ ){0,3}\w+ of (?:the )?(?:\w+ ){0,3}\w+ to (?:the )?(?:\w+ ){0,3}\w+ of (?:the )?(?:\w+ ){0,3}\w+\b")
+    Regex::new(r"(?i)(?-u:\b)from (?:the )?(?:\w+ ){0,3}\w+ of (?:the )?(?:\w+ ){0,3}\w+ to (?:the )?(?:\w+ ){0,3}\w+ of (?:the )?(?:\w+ ){0,3}\w+(?-u:\b)")
         .unwrap()
 });
 

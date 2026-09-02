@@ -19,7 +19,7 @@ pub static RULE: RuleDef = RuleDef {
 // `[code]` (e.g. `@ts-ignore[2322]`, a scoped/intentional suppression) is excluded below by
 // checking the text right after the match instead of a negative lookahead.
 static TS_DIRECTIVE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s*//\s*@ts-(ignore|nocheck)\b").unwrap());
+    LazyLock::new(|| Regex::new(r"^\s*//\s*@ts-(ignore|nocheck)(?-u:\b)").unwrap());
 
 fn is_blanket_directive(text: &str) -> bool {
     let Some(m) = TS_DIRECTIVE_RE.find(text) else {

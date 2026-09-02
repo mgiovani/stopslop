@@ -34,8 +34,8 @@ static SETS: LazyLock<Vec<Vec<Member>>> = LazyLock::new(|| {
                 name,
                 // `pat` may itself be a top-level alternation (e.g. "run(?:s|ning)?|ran"), so
                 // the boundary anchors must wrap the whole thing in a non-capturing group --
-                // `\b{pat}\b` would only bind `\b` to the first alternative.
-                re: Regex::new(&format!(r"(?i)\b(?:{pat})\b")).unwrap(),
+                // `(?-u:\b){pat}(?-u:\b)` would only bind `(?-u:\b)` to the first alternative.
+                re: Regex::new(&format!(r"(?i)(?-u:\b)(?:{pat})(?-u:\b)")).unwrap(),
             })
             .collect()
     }

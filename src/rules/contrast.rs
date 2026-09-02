@@ -25,7 +25,7 @@ pub static RULE: RuleDef = RuleDef {
 /// can trip SLOP017's patterns.
 static BINARY_CONTRAST: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r#"(?i)\bit'?s not\b[^.!?\n]{0,60}[.!]\s+it'?s\b|\b(?:this|it|the question) isn'?t\b[^.!?\n]{0,60},\s*it'?s\b|\bit'?s not about\b[^.!?\n]{0,60},\s*it'?s about\b|\bthe problem isn'?t\b[^.!?\n]{0,60}[.!]\s+the problem is\b"#,
+        r#"(?i)(?-u:\b)it'?s not(?-u:\b)[^.!?\n]{0,60}[.!]\s+it'?s(?-u:\b)|(?-u:\b)(?:this|it|the question) isn'?t(?-u:\b)[^.!?\n]{0,60},\s*it'?s(?-u:\b)|(?-u:\b)it'?s not about(?-u:\b)[^.!?\n]{0,60},\s*it'?s about(?-u:\b)|(?-u:\b)the problem isn'?t(?-u:\b)[^.!?\n]{0,60}[.!]\s+the problem is(?-u:\b)"#,
     )
     .unwrap()
 });

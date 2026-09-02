@@ -28,14 +28,14 @@ const KICKER_WORD_CAP: usize = 12;
 /// (a) anchored to the very start of the final block (case-insensitive).
 static RECAP_OPENER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)^(in conclusion|ultimately|overall|in summary|to sum up|to summarize|all in all|the bottom line is|at the end of the day|in closing)\b",
+        r"(?i)^(in conclusion|ultimately|overall|in summary|to sum up|to summarize|all in all|the bottom line is|at the end of the day|in closing)(?-u:\b)",
     )
     .unwrap()
 });
 
 /// (b) opens with a conjunction/deictic mic-drop word.
 static KICKER_OPENER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^(and|because|that'?s)\b").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i)^(and|because|that'?s)(?-u:\b)").unwrap());
 /// (b) one of the stock mic-drop phrases, anywhere in the block.
 static KICKER_PHRASE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -47,7 +47,7 @@ static KICKER_PHRASE: LazyLock<Regex> = LazyLock::new(|| {
 /// e.g. "The future isn't coming. It's already here."
 static BINARY_CONTRAST: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\b(?:isn'?t|is not|doesn'?t|does not|won'?t|will not|wasn'?t|weren'?t|can'?t|cannot|never)\b[^.!?\n]*[.!?]\s+(?:it'?s|it is|this is|that'?s|that is|they'?re|they are)\b[^.!?\n]*[.!?]$",
+        r"(?i)(?-u:\b)(?:isn'?t|is not|doesn'?t|does not|won'?t|will not|wasn'?t|weren'?t|can'?t|cannot|never)(?-u:\b)[^.!?\n]*[.!?]\s+(?:it'?s|it is|this is|that'?s|that is|they'?re|they are)(?-u:\b)[^.!?\n]*[.!?]$",
     )
     .unwrap()
 });
