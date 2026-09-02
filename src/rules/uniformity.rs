@@ -29,7 +29,7 @@
 
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{self, PROSE_LANGS};
+use crate::lang::{self, PARAGRAPH_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
 use crate::rules::fragmentation;
@@ -39,7 +39,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP041",
     name: "Mechanical uniformity (templated prose)",
     tier: Tier::B,
-    langs: PROSE_LANGS,
+    langs: PARAGRAPH_LANGS,
     natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: false,

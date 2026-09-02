@@ -1,14 +1,17 @@
-//! Prose-lang (.md/.mdx/.txt/.rst) support: parses source into a byte-offset-preserving
+//! Prose-lang (.md/.mdx/.txt/.rst/.html) support: parses source into a byte-offset-preserving
 //! "masked prose stream" (fenced code + inline code blanked to spaces) plus lightweight
 //! structural metadata (headings, list blocks, URL spans, frontmatter). SLOP011-021 are thin
 //! readers on top of `ProseDoc` — this is the one real per-file cost, computed once in
-//! `engine::lint_prose`.
+//! `engine::lint_prose`. HTML takes the inverse route in `parse_html`: everything is blanked and
+//! only visible text, comments, and link targets are restored from a tree-sitter-html parse.
 
 use crate::context::TextNode;
+use crate::lang::Lang;
 use regex::Regex;
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
+use tree_sitter::Node;
 
 pub struct Heading {
     pub level: usize,      // 1..=6 (count of leading '#')
@@ -68,6 +71,11 @@ pub struct ProseDoc<'a> {
     /// '\n'. Computed once here so rules that need to walk the document line by line (e.g.
     /// SLOP029/030/033) don't each rebuild their own copy with a private newline scan.
     pub line_spans: Vec<(usize, usize)>,
+    /// Start byte of every block-level HTML element, ascending. A hard sentence boundary for
+    /// SLOP033 and the anchor for `block_initial`: a `<select>` of 60 `<option>`s carries no
+    /// terminal punctuation and would otherwise read as one 60-word sentence. Empty for the
+    /// Markdown family, whose paragraphs are blank-line delimited.
+    pub block_starts: Vec<usize>,
     line_starts: Vec<usize>, // byte offset of each line start; for line_col
     /// (byte, col) of the last `line_col` answer. Rules ask in byte order, so the next answer on
     /// the same line counts chars from here rather than from the line start -- a 1.8 MB
@@ -130,9 +138,75 @@ impl<'a> ProseDoc<'a> {
             words,
             ignore_comments,
             line_spans,
+            block_starts: Vec::new(),
             line_starts,
             col_memo: Cell::new((0, 1)),
         }
+    }
+
+    /// HTML sibling of `parse`. The masked stream starts as every byte blanked to a space except
+    /// '\n'; a tree-sitter-html parse then restores the bytes of `text` nodes, comments, and
+    /// `href`/`src` attribute values, so the prose rules see what a reader sees. Tags, entities,
+    /// `<script>`/`<style>` bodies, and the subtrees of `SKIP_TAGS` never reach the stream.
+    /// `<h1>`..`<h6>` map onto `headings` by the element's line span so `in_heading` keeps
+    /// working; `frontmatter`, `list_blocks`, and `code_spans` stay empty (issue #29 names the
+    /// upgrade path for each). Named entities are left blank rather than decoded: decoding would
+    /// change byte offsets, and a blank `&mdash;` costs a miss, never a false positive.
+    pub fn parse_html(source: &'a str) -> ProseDoc<'a> {
+        let line_starts = compute_line_starts(source);
+        let line_spans = compute_line_spans(source, &line_starts);
+
+        let prepared = blank_template_syntax(source);
+        let mut masked_bytes: Vec<u8> = source
+            .bytes()
+            .map(|b| if b == b'\n' { b } else { b' ' })
+            .collect();
+        let mut scan = HtmlScan::default();
+        let mut parser = tree_sitter::Parser::new();
+        let tree = match parser.set_language(&crate::lang::ts_language(Lang::Html)) {
+            Ok(()) => parser.parse(&prepared, None),
+            Err(_) => None,
+        };
+        if let Some(tree) = &tree {
+            restore_html(tree.root_node(), &prepared, &mut masked_bytes, &mut scan);
+        }
+        let masked = String::from_utf8(masked_bytes)
+            .expect("restored spans are whole nodes, hence char-aligned");
+
+        let headings = html_headings(&scan.headings, &masked, source, &line_starts, &line_spans);
+        let mut url_spans = scan.url_spans;
+        url_spans.extend(scan_url_spans(&masked));
+        url_spans.sort_unstable_by_key(|&(s, _)| s);
+        let url_spans = merge_overlapping(url_spans);
+        let words = masked.split_whitespace().count();
+        let ignore_comments = scan_ignore_comments(source, &masked, &line_starts);
+
+        ProseDoc {
+            masked,
+            frontmatter: None,
+            headings,
+            list_blocks: Vec::new(),
+            url_spans,
+            code_spans: Vec::new(),
+            words,
+            ignore_comments,
+            line_spans,
+            block_starts: scan.block_starts,
+            line_starts,
+            col_memo: Cell::new((0, 1)),
+        }
+    }
+
+    /// True when only whitespace separates `byte` from the start of its enclosing HTML block
+    /// element: the byte opens what a reader sees as a paragraph, list item, cell, or heading.
+    /// The Markdown family has no `block_starts` and always answers false; its block structure
+    /// lives in blank lines and markers, which the rules read directly.
+    pub fn block_initial(&self, byte: usize) -> bool {
+        let idx = self.block_starts.partition_point(|&b| b <= byte);
+        idx > 0
+            && self.masked[self.block_starts[idx - 1]..byte]
+                .trim()
+                .is_empty()
     }
 
     /// 1-based (line, col) for a byte offset into source/masked. Binary-search `line_starts`;
@@ -666,6 +740,176 @@ fn merge_overlapping(spans: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
     out
 }
 
+/// Elements whose subtree never reaches the prose stream: code and preformatted text (the
+/// fenced-block analogue), form input echoes, inert templates, and vector or math markup.
+const SKIP_TAGS: &[&str] = &[
+    "pre", "code", "textarea", "template", "svg", "math", "noscript", "script", "style",
+];
+
+/// Phrasing-content tags. Every other element starts a block (see `ProseDoc::block_starts`).
+/// The allowlist runs this way round so an unknown or custom element becomes a boundary (at
+/// worst a missed long sentence) rather than glue (a false one).
+const INLINE_TAGS: &[&str] = &[
+    "a", "abbr", "b", "bdi", "bdo", "br", "cite", "code", "data", "del", "dfn", "em", "i", "img",
+    "ins", "kbd", "mark", "picture", "q", "rp", "rt", "ruby", "s", "samp", "small", "source",
+    "span", "strong", "sub", "sup", "time", "u", "var", "wbr",
+];
+
+static TEMPLATE_RE: LazyLock<regex::bytes::Regex> = LazyLock::new(|| {
+    regex::bytes::Regex::new(r"\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}|\{#[\s\S]*?#\}").unwrap()
+});
+
+/// Blanks Django/Jinja `{{ … }}`, `{% … %}`, and `{# … #}` to spaces, '\n' preserved, BEFORE the
+/// parse: `{% if a < b %}` otherwise makes the scanner read `<b` as a start tag and swallow
+/// everything up to the next `>`. Non-greedy, so an unbalanced opener matches nothing and the
+/// rest of the document stays visible. Templates ship as `.html` in every Python web repo.
+fn blank_template_syntax(source: &str) -> String {
+    let mut bytes = source.as_bytes().to_vec();
+    for m in TEMPLATE_RE.find_iter(source.as_bytes()) {
+        blank_keeping_newlines(&mut bytes[m.range()]);
+    }
+    String::from_utf8(bytes).expect("matches start and end on ASCII delimiters")
+}
+
+fn blank_keeping_newlines(bytes: &mut [u8]) {
+    for b in bytes {
+        if *b != b'\n' {
+            *b = b' ';
+        }
+    }
+}
+
+#[derive(Default)]
+struct HtmlScan {
+    headings: Vec<(usize, usize, usize)>, // (level, element start, element end)
+    url_spans: Vec<(usize, usize)>,
+    block_starts: Vec<usize>,
+}
+
+/// One pre-order pass restoring the visible bytes of `prepared` into `masked` and collecting
+/// heading, link-target, and block spans. Keys on node kind only: `comment` is a grammar extra
+/// and may sit inside a start tag. A `text` node under an ERROR parent is error recovery
+/// re-lexing markup (an unterminated `<!--`, a stray quote) and stays blank.
+fn restore_html(root: Node, prepared: &str, masked: &mut [u8], scan: &mut HtmlScan) {
+    let src = prepared.as_bytes();
+    let mut cursor = root.walk();
+    crate::context::walk_tree(&mut cursor, &mut |node| match node.kind() {
+        "element" | "script_element" | "style_element" => {
+            let tag = tag_name(node, prepared);
+            if let Some(level) = heading_level(&tag) {
+                scan.headings
+                    .push((level, node.start_byte(), node.end_byte()));
+            }
+            if !INLINE_TAGS.contains(&tag.as_str()) {
+                scan.block_starts.push(node.start_byte());
+            }
+            !SKIP_TAGS.contains(&tag.as_str())
+        }
+        "text" => {
+            if !node.parent().is_some_and(|p| p.is_error()) {
+                let r = node.byte_range();
+                masked[r.clone()].copy_from_slice(&src[r]);
+            }
+            true
+        }
+        "comment" => {
+            let r = node.byte_range();
+            masked[r.clone()].copy_from_slice(&src[r]);
+            true
+        }
+        "attribute" => {
+            if let Some((s, e)) = url_attribute_value(node, prepared) {
+                masked[s..e].copy_from_slice(&src[s..e]);
+                scan.url_spans.push((s, e));
+            }
+            true
+        }
+        _ => true,
+    });
+}
+
+fn tag_name(element: Node, src: &str) -> String {
+    let mut cursor = element.walk();
+    let tag = element
+        .children(&mut cursor)
+        .find(|c| matches!(c.kind(), "start_tag" | "self_closing_tag"));
+    tag.and_then(|tag| tag.named_child(0))
+        .filter(|n| n.kind() == "tag_name")
+        .map(|n| src[n.byte_range()].to_ascii_lowercase())
+        .unwrap_or_default()
+}
+
+fn heading_level(tag: &str) -> Option<usize> {
+    match tag.as_bytes() {
+        [b'h', d @ b'1'..=b'6'] => Some(usize::from(d - b'0')),
+        _ => None,
+    }
+}
+
+/// Byte range of the value when `attr` is `href` or `src`. The value is either bare or the
+/// aliased `attribute_value` inside `quoted_attribute_value`; `href=""` has neither.
+fn url_attribute_value(attr: Node, src: &str) -> Option<(usize, usize)> {
+    let mut cursor = attr.walk();
+    let mut is_url = false;
+    let mut value = None;
+    for child in attr.named_children(&mut cursor) {
+        match child.kind() {
+            "attribute_name" => {
+                is_url = src[child.byte_range()].eq_ignore_ascii_case("href")
+                    || src[child.byte_range()].eq_ignore_ascii_case("src");
+            }
+            "attribute_value" => value = Some(child.byte_range()),
+            "quoted_attribute_value" => {
+                value = child
+                    .named_child(0)
+                    .filter(|v| v.kind() == "attribute_value")
+                    .map(|v| v.byte_range());
+            }
+            _ => {}
+        }
+    }
+    let r = value.filter(|_| is_url)?;
+    Some((r.start, r.end))
+}
+
+/// `Heading`s from `<h1>`..`<h6>` spans, keyed to the element's whole line span so the
+/// Markdown-shaped `in_heading` still answers per line. `text` is the element's visible text with
+/// tags collapsed, so an entity or a restored `href` inside the heading alters it (`Challenges
+/// &amp; Opportunities` reads `Challenges Opportunities`): an accepted miss for the exact-match
+/// title lists in SLOP035/036. A heading whose line overlaps the previous one is dropped to keep
+/// the sorted-disjoint invariant `in_heading` binary-searches on.
+fn html_headings(
+    raw: &[(usize, usize, usize)],
+    masked: &str,
+    source: &str,
+    line_starts: &[usize],
+    line_spans: &[(usize, usize)],
+) -> Vec<Heading> {
+    let mut out: Vec<Heading> = Vec::new();
+    for &(level, start, end) in raw {
+        let byte_start = line_spans[line_index(line_starts, start)].0;
+        let last = end.saturating_sub(1).max(start);
+        let byte_end = line_spans[line_index(line_starts, last)].1;
+        if out.last().is_some_and(|h| byte_start <= h.byte_end) {
+            continue;
+        }
+        let (line, col) = compute_line_col(line_starts, source, start);
+        let text = masked[start..end]
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        out.push(Heading {
+            level,
+            line,
+            col,
+            text,
+            byte_start,
+            byte_end,
+        });
+    }
+    out
+}
+
 static IGNORE_COMMENT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<!--([\s\S]*?)-->").unwrap());
 
@@ -700,6 +944,147 @@ fn scan_ignore_comments<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tokens<'d>(doc: &'d ProseDoc) -> Vec<&'d str> {
+        doc.masked.split_whitespace().collect()
+    }
+
+    #[test]
+    fn html_masks_tags_and_restores_text() {
+        let src = "<!doctype html>\n<p class=\"lead\">Hello <em>world</em>.</p>\n";
+        let doc = ProseDoc::parse_html(src);
+        assert_eq!(doc.masked.len(), src.len());
+        assert_eq!(tokens(&doc), ["Hello", "world", "."]);
+        for (i, b) in src.bytes().enumerate() {
+            assert_eq!(
+                b == b'\n',
+                doc.masked.as_bytes()[i] == b'\n',
+                "newline moved at {i}"
+            );
+        }
+        assert_eq!(doc.words, 3);
+        assert!(doc.frontmatter.is_none() && doc.list_blocks.is_empty());
+    }
+
+    #[test]
+    fn html_skips_code_form_and_vector_subtrees() {
+        let src = "<script>var alertText = 1;</script><style>.a{color:red}</style>\
+                   <pre>preformatted</pre><p>keep <code>inline</code> this</p>\
+                   <textarea>typed</textarea><svg><text>vector</text></svg><noscript>fallback</noscript>";
+        let doc = ProseDoc::parse_html(src);
+        assert_eq!(tokens(&doc), ["keep", "this"]);
+    }
+
+    #[test]
+    fn html_attribute_gt_and_src_value() {
+        let src = "<img alt=\"a > b\" src=\"hero.png\">\n<p>after</p>\n";
+        let doc = ProseDoc::parse_html(src);
+        assert_eq!(tokens(&doc), ["hero.png", "after"]);
+        let at = src.find("hero.png").unwrap();
+        assert!(doc.in_url(at) && doc.in_url(at + 7) && !doc.in_url(at + 8));
+    }
+
+    #[test]
+    fn html_unterminated_comment_leaks_no_markup() {
+        let src = "<p>before</p>\n<!-- never closed\n<p>after</p>\n<div class=\"x\">tail</div>\n";
+        let doc = ProseDoc::parse_html(src);
+        let toks = tokens(&doc);
+        assert!(toks.contains(&"before"), "{toks:?}");
+        assert!(
+            !toks.iter().any(|t| t.contains('<') || t.contains("class")),
+            "{toks:?}"
+        );
+    }
+
+    #[test]
+    fn html_comment_restored_and_ignore_directive_found_outside_script() {
+        let src =
+            "<p>x</p> <!-- ai-slop-ignore -->\n<script>// <!-- ai-slop-ignore-file --></script>\n";
+        let doc = ProseDoc::parse_html(src);
+        assert!(doc.masked.contains("<!-- ai-slop-ignore -->"));
+        assert_eq!(doc.ignore_comments.len(), 1);
+        assert_eq!(doc.ignore_comments[0].text, "<!-- ai-slop-ignore -->");
+        assert_eq!(doc.ignore_comments[0].line, 1);
+    }
+
+    #[test]
+    fn html_entities_stay_blank() {
+        let doc = ProseDoc::parse_html("<p>Tom &amp; Jerry &mdash; friends &#x2014; end</p>\n");
+        assert_eq!(tokens(&doc), ["Tom", "Jerry", "friends", "end"]);
+    }
+
+    #[test]
+    fn html_template_syntax_blanked_before_the_parse() {
+        let src = "<p>{{ user.name }} has {% if a < b %}few{% else %}many{% endif %} items {# note #}</p>\n\
+                   <p>next</p>\n";
+        let doc = ProseDoc::parse_html(src);
+        assert_eq!(doc.masked.len(), src.len());
+        assert_eq!(tokens(&doc), ["has", "few", "many", "items", "next"]);
+    }
+
+    #[test]
+    fn html_unbalanced_template_opener_fails_closed() {
+        let doc = ProseDoc::parse_html("<p>{% broken</p>\n<p>visible text</p>\n");
+        assert!(tokens(&doc).contains(&"visible"));
+    }
+
+    #[test]
+    fn html_headings_map_to_line_spans() {
+        let src = "<h1>Title</h1>\n<h2 id=\"a\">Sub <em>heading</em></h2>\n<p>body</p>\n";
+        let doc = ProseDoc::parse_html(src);
+        assert_eq!(doc.headings.len(), 2);
+        let (h1, h2) = (&doc.headings[0], &doc.headings[1]);
+        assert_eq!(
+            (h1.level, h1.line, h1.col, h1.text.as_str()),
+            (1, 1, 1, "Title")
+        );
+        assert_eq!((h2.level, h2.line, h2.text.as_str()), (2, 2, "Sub heading"));
+        let line2 = src.find("<h2").unwrap();
+        let line3 = src.find("<p>").unwrap();
+        assert!(doc.in_heading(line2) && doc.in_heading(line2 + 5));
+        assert!(!doc.in_heading(line3));
+    }
+
+    #[test]
+    fn html_same_line_headings_keep_disjoint_spans() {
+        let doc = ProseDoc::parse_html("<h1>One</h1><h2>Two</h2>\n<h3>Three</h3>\n");
+        assert_eq!(doc.headings.len(), 2);
+        assert!(doc
+            .headings
+            .windows(2)
+            .all(|w| w[0].byte_end < w[1].byte_start));
+    }
+
+    #[test]
+    fn html_block_starts_and_block_initial() {
+        let src = "<div>\n<p>— Author</p>\n<p>text — more</p>\n<ul><li>one</li></ul>\n<a href=\"#\">link</a> <em>x</em>\n";
+        let doc = ProseDoc::parse_html(src);
+        let starts: Vec<usize> = ["<div", "<p>—", "<p>text", "<ul", "<li"]
+            .iter()
+            .map(|t| src.find(t).unwrap())
+            .collect();
+        assert_eq!(doc.block_starts, starts);
+        assert!(doc.block_initial(src.find("— Author").unwrap()));
+        assert!(!doc.block_initial(src.find("— more").unwrap()));
+        assert!(!doc.block_initial(src.find("link").unwrap()));
+    }
+
+    #[test]
+    fn html_href_is_a_url_span() {
+        let src = "<a href=\"https://acme.test/?utm_source=chatgpt.com\">x</a>\n";
+        let doc = ProseDoc::parse_html(src);
+        let at = src.find("utm_source").unwrap();
+        assert!(doc.masked.contains("utm_source=chatgpt.com"));
+        assert!(doc.in_url(at));
+        assert_eq!(doc.url_spans.len(), 1);
+    }
+
+    #[test]
+    fn markdown_has_no_block_starts() {
+        let doc = ProseDoc::parse("para\n\n- item\n");
+        assert!(doc.block_starts.is_empty());
+        assert!(!doc.block_initial(0));
+    }
 
     #[test]
     fn fenced_block_fully_blanked_and_length_preserved() {

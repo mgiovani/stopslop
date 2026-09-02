@@ -107,7 +107,7 @@ pub fn extract<'t, 'a>(
             &["string_literal", "raw_string_literal"],
         ),
         // Never reached: prose langs bypass this extraction path entirely (engine::lint_prose).
-        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => (&[], &[]),
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html => (&[], &[]),
     };
 
     let mut index = NodeIndex {
@@ -132,7 +132,7 @@ pub fn extract<'t, 'a>(
     // lifetimes don't need to unify.
     walk_tree(&mut c, &mut |node| {
         if !node.is_named() {
-            return;
+            return true;
         }
         let id = node.kind_id();
         index.by_kind.entry(id).or_default().push(index.all.len());
@@ -146,19 +146,20 @@ pub fn extract<'t, 'a>(
         } else if string_ids.contains(&id) {
             strings.push(make_text_node(node, source, is_doc_string(lang, node)));
         }
+        true
     });
     (comments, strings, index)
 }
 
-/// Pre-order DFS over a `TreeCursor`, visiting every node exactly once.
+/// Pre-order DFS over a `TreeCursor`, visiting every node exactly once. `f` returns whether to
+/// descend into the node's children; `prose::parse_html` uses `false` to skip `<pre>` subtrees.
 ///
 /// Iterative on purpose: the recursive version cost one stack frame per nesting level and blew
 /// the stack (SIGABRT, not a clean exit code) on ~5k-deep bracket nesting -- 10 KB of generated
 /// or minified source. The cursor starts at the root, so climbing past it ends the walk.
-fn walk_tree<'t>(c: &mut TreeCursor<'t>, f: &mut impl FnMut(Node<'t>)) {
+pub(crate) fn walk_tree<'t>(c: &mut TreeCursor<'t>, f: &mut impl FnMut(Node<'t>) -> bool) {
     loop {
-        f(c.node());
-        if c.goto_first_child() {
+        if f(c.node()) && c.goto_first_child() {
             continue;
         }
         while !c.goto_next_sibling() {
@@ -194,7 +195,7 @@ pub(crate) fn is_doc_comment(lang: Lang, text: &str) -> bool {
                 || text.starts_with("/*!")
         }
         // Never reached: prose langs never call extract().
-        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => false,
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html => false,
     }
 }
 
@@ -254,6 +255,7 @@ mod tests {
                 if n.is_named() {
                     preorder.push(n);
                 }
+                true
             });
             let kinds: Vec<&str> = preorder
                 .iter()
@@ -300,7 +302,10 @@ mod tests {
         let tree = p.parse(&src, None).unwrap();
         let mut visited = 0usize;
         let mut c = tree.walk();
-        walk_tree(&mut c, &mut |_| visited += 1);
+        walk_tree(&mut c, &mut |_| {
+            visited += 1;
+            true
+        });
         assert!(visited > 20_000, "visited {visited} nodes");
     }
 }

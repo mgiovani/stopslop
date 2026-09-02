@@ -12,10 +12,18 @@ pub enum Lang {
     Mdx,
     Txt,
     Rst,
+    Html,
 }
 
 pub const CODE_LANGS: &[Lang] = &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust];
-pub const PROSE_LANGS: &[Lang] = &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst];
+pub const PROSE_LANGS: &[Lang] = &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst, Lang::Html];
+/// The prose langs whose paragraphs are blank-line delimited. Rules that reason about a
+/// paragraph block (`fragmentation::paragraph_blocks` builds blocks from runs of non-blank
+/// lines and recognizes `#` headings) declare this set: in a masked HTML stream tags are runs of
+/// spaces, so an `<h2>` glues onto the section under it and `<p>Fast.</p><p>Simple.</p>` reads
+/// as stacked fragments. Fold `Html` back into these rules once `ProseDoc` carries a paragraph
+/// model for HTML (issue #29, PR3).
+pub const PARAGRAPH_LANGS: &[Lang] = &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst];
 
 impl Lang {
     pub fn from_path(p: &Path) -> Option<Lang> {
@@ -29,13 +37,19 @@ impl Lang {
             "mdx" => Some(Lang::Mdx),
             "txt" | "text" => Some(Lang::Txt),
             "rst" => Some(Lang::Rst),
+            "html" | "htm" => Some(Lang::Html),
             _ => None,
         }
     }
 
-    /// Prose langs bypass tree-sitter entirely (see engine::lint_file).
+    /// Prose langs take the `ProseDoc` path in `engine::lint_file` instead of `context::extract`.
+    /// The Markdown family never touches tree-sitter; HTML parses with tree-sitter-html inside
+    /// `ProseDoc::parse_html` to find its visible text.
     pub fn is_prose(self) -> bool {
-        matches!(self, Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst)
+        matches!(
+            self,
+            Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html
+        )
     }
 }
 
@@ -49,8 +63,9 @@ pub fn ts_language(lang: Lang) -> Language {
         Lang::Python => tree_sitter_python::LANGUAGE.into(),
         Lang::Go => tree_sitter_go::LANGUAGE.into(),
         Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
+        Lang::Html => tree_sitter_html::LANGUAGE.into(),
         Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => {
-            unreachable!("prose langs bypass tree-sitter")
+            unreachable!("markdown-family prose langs bypass tree-sitter")
         }
     }
 }

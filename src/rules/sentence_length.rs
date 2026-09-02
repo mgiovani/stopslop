@@ -49,7 +49,9 @@ fn marker_bytes(doc: &ProseDoc) -> HashSet<usize> {
 }
 
 /// Splits the masked prose stream into sentences on `[.!?]` followed by whitespace/EOF, and
-/// also at blank lines, heading lines, table rows, frontmatter, and list-item boundaries.
+/// also at blank lines, heading lines, table rows, frontmatter, list-item boundaries, and HTML
+/// block-element starts (`doc.block_starts`, so a `<select>` of sixty `<option>`s is sixty
+/// one-word sentences, not one).
 /// Flags any sentence over `OVERLONG_WORDS` words, one diagnostic anchored at the sentence's
 /// first byte. Words are counted by whitespace splitting; a run of tokens that all fall inside
 /// the same URL span collapses to a single word.
@@ -67,6 +69,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let mut sentence_start: Option<usize> = None;
     let mut word_count = 0usize;
     let mut last_url_span: Option<(usize, usize)> = None;
+    let mut next_block = 0usize;
 
     macro_rules! close_sentence {
         () => {
@@ -93,6 +96,11 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         let byte = m.start();
         let line = doc.line_col(byte).0;
 
+        let crossed = doc.block_starts[next_block..].partition_point(|&b| b <= byte);
+        if crossed > 0 {
+            close_sentence!();
+            next_block += crossed;
+        }
         if skip.contains(&line) {
             close_sentence!();
             prev_line = None;
@@ -134,12 +142,19 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        let doc = ProseDoc::parse(src);
+        lint(ProseDoc::parse(src), src, Lang::Md)
+    }
+
+    fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
+        lint(ProseDoc::parse_html(src), src, Lang::Html)
+    }
+
+    fn lint<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
             index: None,
-            lang: Lang::Md,
+            lang,
             comments: &doc.ignore_comments,
             strings: &[],
             is_test_path: false,
@@ -151,6 +166,17 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    #[test]
+    fn html_block_boundaries_split_sentences() {
+        let options: String = (0..60)
+            .map(|i| format!("<option>item{i}</option>"))
+            .collect();
+        assert!(diagnostics_for_html(&format!("<select>{options}</select>\n")).is_empty());
+        let long: Vec<String> = (0..60).map(|i| format!("w{i}")).collect();
+        let src = format!("<p>{}</p>\n", long.join(" "));
+        assert_eq!(diagnostics_for_html(&src).len(), 1);
     }
 
     fn words(n: usize, tail: &str) -> String {

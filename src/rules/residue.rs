@@ -45,7 +45,8 @@ static RE_REASONING_CHAIN: LazyLock<Regex> =
 ///
 /// A markdown structure marker is *required* (`+`, not `*`): the exemption is for `Step N:` that
 /// heads a section or list item, so a bare line-initial `Step 1: parse the config` -- which heads
-/// nothing -- stays residue. `(?m)` makes `^` a line anchor.
+/// nothing -- stays residue. `(?m)` makes `^` a line anchor. In HTML the tag that made it a
+/// heading or list item is blanked, so `ProseDoc::block_initial` is the equivalent test there.
 static RE_NUMBERED_STEP: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?im)^[ \t]{0,3}(?:#{1,6}[ \t]+|[-*+][ \t]+|\d+\.[ \t]+|\*\*)+step \d+:").unwrap()
 });
@@ -102,7 +103,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         .collect();
     let step_bytes: Vec<usize> = RE_MIDLINE_STEP
         .find_iter(&doc.masked)
-        .filter(|m| !structural_ends.contains(&m.end()))
+        .filter(|m| !structural_ends.contains(&m.end()) && !doc.block_initial(m.start()))
         .map(|m| m.start())
         .collect();
     let ack_bytes: Vec<usize> = fragmentation::paragraph_blocks(doc)
@@ -110,7 +111,25 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         .filter(|b| RE_ACK_LOOP.is_match(&b.text))
         .map(|b| b.first_byte)
         .collect();
-    let by_line = first_byte_per_line(doc, re_bytes.chain(ack_bytes).chain(step_bytes));
+    // HTML has no blank-line paragraphs; there "paragraph-initial" means opening a block element.
+    let html_ack_bytes: Vec<usize> = doc
+        .block_starts
+        .iter()
+        .filter_map(|&bs| {
+            let rest = &doc.masked[bs..];
+            let trimmed = rest.trim_start();
+            RE_ACK_LOOP
+                .is_match(trimmed)
+                .then(|| bs + (rest.len() - trimmed.len()))
+        })
+        .collect();
+    let by_line = first_byte_per_line(
+        doc,
+        re_bytes
+            .chain(ack_bytes)
+            .chain(html_ack_bytes)
+            .chain(step_bytes),
+    );
     for &byte in by_line.values() {
         let (line, col) = doc.line_col(byte);
         out.push(Diagnostic::at_fix(
@@ -131,12 +150,19 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        let doc = ProseDoc::parse(src);
+        lint(ProseDoc::parse(src), src, Lang::Md)
+    }
+
+    fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
+        lint(ProseDoc::parse_html(src), src, Lang::Html)
+    }
+
+    fn lint<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
             index: None,
-            lang: Lang::Md,
+            lang,
             comments: &doc.ignore_comments,
             strings: &[],
             is_test_path: false,
@@ -148,6 +174,23 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    #[test]
+    fn html_step_heading_and_list_item_are_structure() {
+        let src = "<h3>Step 1: Install</h3>\n<ul><li>Step 2: run it</li></ul>\n<p>so, step 3: we parse.</p>\n";
+        let diags = diagnostics_for_html(src);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        assert_eq!(diags[0].line, 3);
+    }
+
+    #[test]
+    fn html_ack_loop_only_when_it_opens_a_block() {
+        assert_eq!(
+            diagnostics_for_html("<p>You're asking about caching.</p>\n").len(),
+            1
+        );
+        assert!(diagnostics_for_html("<p>Text. You're asking about caching.</p>\n").is_empty());
     }
 
     /// Every `Step N:` hit across a 130-document corpus was one of these -- numbered procedural

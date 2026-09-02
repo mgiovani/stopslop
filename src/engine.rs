@@ -191,16 +191,19 @@ pub fn lint_file(
     out
 }
 
-/// Prose langs (.md/.mdx/.txt/.rst) skip tree-sitter entirely: there is no grammar for them, and
-/// prose rules scan `ProseDoc::masked` (a byte-preserving fenced/inline-code-blanked stream) instead
-/// of an AST. `ctx.index` stays `None`; `ctx.prose` is the only thing prose rules read.
+/// Prose langs never build a `NodeIndex`: prose rules scan `ProseDoc::masked` (a byte-preserving
+/// stream with code blanked, or for HTML with everything but visible text blanked) instead of an
+/// AST. `ctx.index` stays `None`; `ctx.prose` is the only thing prose rules read.
 fn lint_prose(
     display_path: String,
     source: &str,
     lang: Lang,
     settings: &Settings,
 ) -> Vec<Diagnostic> {
-    let doc = crate::prose::ProseDoc::parse(source);
+    let doc = match lang {
+        Lang::Html => crate::prose::ProseDoc::parse_html(source),
+        _ => crate::prose::ProseDoc::parse(source),
+    };
     let is_test = paths::is_test_path(&display_path);
     let ctx = LintContext {
         display_path,
