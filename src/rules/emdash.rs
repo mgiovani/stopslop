@@ -41,9 +41,22 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
     let mut block_initial = HashMap::new();
 
-    for (byte, ch) in doc.masked.char_indices() {
-        let is_en_dash_numeric_range = ch == '\u{2013}' && digit_flanked(&doc.masked, byte, ch);
-        if !matches!(ch, '\u{2014}' | '\u{2013}') || is_en_dash_numeric_range {
+    // HTML spells a dash as `&mdash;` as often as it types one; the parse decodes those into
+    // `doc.entities`, merged here in byte order because the block-initial memo assumes it.
+    let mut dashes: Vec<(usize, char)> = doc
+        .masked
+        .char_indices()
+        .filter(|&(_, ch)| matches!(ch, '\u{2014}' | '\u{2013}'))
+        .chain(
+            doc.entities
+                .iter()
+                .copied()
+                .filter(|&(_, ch)| ch == '\u{2014}'),
+        )
+        .collect();
+    dashes.sort_unstable_by_key(|&(byte, _)| byte);
+    for (byte, ch) in dashes {
+        if ch == '\u{2013}' && digit_flanked(&doc.masked, byte, ch) {
             continue;
         }
         if doc.in_frontmatter(byte) || is_block_initial(doc, byte, &mut block_initial) {
@@ -219,6 +232,14 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    #[test]
+    fn html_entity_em_dash_counts_and_keeps_the_attribution_exemption() {
+        let diags = diagnostics_for_html("<p>a &mdash; b &#8212; c</p>\n<p>&mdash; Author</p>\n");
+        assert_eq!(diags.len(), 2);
+        assert!(diags.iter().all(|d| d.line == 1));
+        assert!(diagnostics_for_html("<p>pages 1&ndash;5</p>\n").is_empty());
     }
 
     #[test]

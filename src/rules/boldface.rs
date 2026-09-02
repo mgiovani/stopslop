@@ -9,7 +9,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP019",
     name: "Boldface & bold-lead-in list overuse",
     tier: Tier::B,
-    langs: &[Lang::Md, Lang::Mdx],
+    langs: &[Lang::Md, Lang::Mdx, Lang::Html],
     natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: false,
@@ -36,8 +36,10 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 
     let mut bold_count = 0usize;
     let mut first_bold_byte = None;
-    for m in BOLD_SPAN_RE.find_iter(&doc.masked) {
-        let byte = m.start();
+    // Markdown bold is `**` in the masked stream; HTML `<strong>`/`<b>` tags are blanked there,
+    // so the parse records their start bytes instead. A document has one or the other.
+    let markdown_bold = BOLD_SPAN_RE.find_iter(&doc.masked).map(|m| m.start());
+    for byte in markdown_bold.chain(doc.bold_spans.iter().copied()) {
         if doc.in_heading(byte) || doc.in_frontmatter(byte) {
             continue;
         }
@@ -102,12 +104,19 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        let doc = ProseDoc::parse(src);
+        diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
+    }
+
+    fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
+        diagnostics_in(ProseDoc::parse_html(src), src, Lang::Html)
+    }
+
+    fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
             index: None,
-            lang: Lang::Md,
+            lang,
             comments: &doc.ignore_comments,
             strings: &[],
             is_test_path: false,
@@ -119,6 +128,16 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    #[test]
+    fn html_strong_and_b_count_toward_density_outside_headings() {
+        let dense = "<h2><strong>Not counted</strong></h2>\n<p>Body with <strong>one</strong> <b>two</b> <strong>three</strong> <strong>four</strong> bold spans.</p>\n";
+        let diags = diagnostics_for_html(dense);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 2);
+        let sparse = "<p>One <strong>bold</strong> word in a paragraph that otherwise runs on plainly with enough ordinary words around it to keep the density low.</p>\n";
+        assert!(diagnostics_for_html(sparse).is_empty());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{NatLang, PARAGRAPH_LANGS};
+use crate::lang::{NatLang, PROSE_LANGS};
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -10,7 +10,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP034",
     name: "Synonym rotation across a closed concept set",
     tier: Tier::B,
-    langs: PARAGRAPH_LANGS,
+    langs: PROSE_LANGS,
     natlangs: &[NatLang::En],
     default_on: true,
     path_gated: false,

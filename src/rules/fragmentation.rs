@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{self, PARAGRAPH_LANGS};
+use crate::lang::{self, PROSE_LANGS};
 use crate::prose::{CodeSpan, ProseDoc};
 use crate::registry::RuleDef;
 use regex::Regex;
@@ -11,7 +11,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP030",
     name: "Dramatic fragmentation / robotic rhythm",
     tier: Tier::B,
-    langs: PARAGRAPH_LANGS,
+    langs: PROSE_LANGS,
     natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: false,
@@ -71,6 +71,9 @@ pub(crate) struct Block {
 /// treated as sentences (spec requirement), and a block that mixes prose with one of these is
 /// rare enough that skipping it whole is the conservative, low-risk choice.
 pub(crate) fn paragraph_blocks(doc: &ProseDoc) -> Vec<Block> {
+    if let Some(ranges) = &doc.paragraphs {
+        return html_blocks(doc, ranges);
+    }
     let masked = &doc.masked;
     let spans = &doc.line_spans;
     let mut blocks = Vec::new();
@@ -121,6 +124,31 @@ pub(crate) fn paragraph_blocks(doc: &ProseDoc) -> Vec<Block> {
         });
     }
     blocks
+}
+
+/// HTML paragraphs come pre-cut from the parse (`ProseDoc::paragraphs`, one leaf block element
+/// each), so the blank-line walk above never runs on a masked HTML stream, where tags are blank
+/// runs and every `<p>` in a section would glue into one block. A paragraph with no visible text
+/// (`<p><img></p>`) is dropped.
+fn html_blocks(doc: &ProseDoc, ranges: &[(usize, usize)]) -> Vec<Block> {
+    ranges
+        .iter()
+        .filter_map(|&(s, e)| {
+            let raw = with_code_placeholders(&doc.masked, s, e, &doc.code_spans);
+            let text = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+            if text.is_empty() {
+                return None;
+            }
+            let first_byte = doc.masked[s..e]
+                .find(|c: char| !c.is_whitespace())
+                .map_or(s, |i| s + i);
+            Some(Block {
+                text,
+                first_byte,
+                end_byte: e,
+            })
+        })
+        .collect()
 }
 
 /// The placeholder standing in for each token of a blanked inline `code` span. An ordinary word,
@@ -295,12 +323,19 @@ mod tests {
     use crate::lang::Lang;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        let doc = ProseDoc::parse(src);
+        diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
+    }
+
+    fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
+        diagnostics_in(ProseDoc::parse_html(src), src, Lang::Html)
+    }
+
+    fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
             index: None,
-            lang: Lang::Md,
+            lang,
             comments: &doc.ignore_comments,
             strings: &[],
             is_test_path: false,
@@ -312,6 +347,26 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    #[test]
+    fn html_paragraphs_are_one_element_each() {
+        assert!(diagnostics_for_html("<p>Fast.</p>\n<p>Simple.</p>\n<p>Free.</p>\n").is_empty());
+        let diags = diagnostics_for_html("<h2>Why</h2>\n<p>Fast. Simple. Free.</p>\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 2);
+    }
+
+    #[test]
+    fn html_inline_code_counts_as_words_in_its_sentence() {
+        let blocks = paragraph_blocks(&ProseDoc::parse_html(
+            "<p>Run <code>stopslop --fix .</code> now. Then <b>read</b> the output.</p>\n",
+        ));
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(
+            blocks[0].text,
+            "Run code code code now. Then read the output."
+        );
     }
 
     #[test]

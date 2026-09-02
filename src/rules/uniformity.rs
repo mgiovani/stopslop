@@ -29,7 +29,7 @@
 
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{self, PARAGRAPH_LANGS};
+use crate::lang::{self, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
 use crate::rules::fragmentation;
@@ -39,7 +39,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP041",
     name: "Mechanical uniformity (templated prose)",
     tier: Tier::B,
-    langs: PARAGRAPH_LANGS,
+    langs: PROSE_LANGS,
     natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: false,
@@ -94,11 +94,23 @@ fn burstiness(counts: &[usize]) -> Option<f64> {
 
 /// Lowercased word forms from `doc.masked`, frontmatter excluded — same source `doc.words`
 /// itself uses, so fenced/inline code is already blanked out. Punctuation is trimmed off each
-/// token's edges (not the middle, so "team's"/"low-latency" stay one token).
+/// token's edges (not the middle, so "team's"/"low-latency" stay one token). HTML reads its
+/// paragraphs instead: the masked stream also carries nav links, buttons, comments, and `href`
+/// values, and a footer that repeats the nav is trigram repetition by construction, not a tell.
 fn masked_words(doc: &ProseDoc) -> Vec<String> {
     let fm_end = doc.frontmatter.map(|(_, e)| e).unwrap_or(0);
-    doc.masked[fm_end..]
-        .split_whitespace()
+    let prose: String;
+    let text = if doc.paragraphs.is_some() {
+        prose = fragmentation::paragraph_blocks(doc)
+            .iter()
+            .map(|b| b.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        prose.as_str()
+    } else {
+        &doc.masked[fm_end..]
+    };
+    text.split_whitespace()
         .filter_map(|tok| {
             let trimmed = tok.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'' && c != '-');
             (!trimmed.is_empty()).then(|| trimmed.to_lowercase())

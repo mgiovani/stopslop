@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{NatLang, PARAGRAPH_LANGS};
+use crate::lang::{NatLang, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
 use regex::Regex;
@@ -10,7 +10,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP029",
     name: "Summary-recap ending / fake-profound kicker",
     tier: Tier::B,
-    langs: PARAGRAPH_LANGS,
+    langs: PROSE_LANGS,
     natlangs: &[NatLang::En],
     default_on: true,
     path_gated: false,
@@ -98,6 +98,14 @@ static HEADING_LINE: LazyLock<Regex> =
 /// above a paragraph, with no blank line between them) are dropped from the returned text rather
 /// than causing the whole block to be skipped.
 fn final_prose_block(doc: &ProseDoc) -> Option<Block> {
+    if doc.paragraphs.is_some() {
+        return crate::rules::fragmentation::paragraph_blocks(doc)
+            .pop()
+            .map(|b| Block {
+                text: b.text,
+                first_byte: b.first_byte,
+            });
+    }
     let masked = &doc.masked;
     let spans = &doc.line_spans;
     let mut idx = spans.len();
@@ -226,12 +234,19 @@ mod tests {
     use crate::lang::Lang;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        let doc = ProseDoc::parse(src);
+        diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
+    }
+
+    fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
+        diagnostics_in(ProseDoc::parse_html(src), src, Lang::Html)
+    }
+
+    fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
             index: None,
-            lang: Lang::Md,
+            lang,
             comments: &doc.ignore_comments,
             strings: &[],
             is_test_path: false,
@@ -243,6 +258,15 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    #[test]
+    fn html_last_paragraph_is_the_ending() {
+        let recap = "Ultimately, this update saves the team real time every day.";
+        let diags = diagnostics_for_html(&format!("<p>Intro text.</p>\n<p>{recap}</p>\n</body>\n"));
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 2);
+        assert!(diagnostics_for_html(&format!("<p>{recap}</p>\n<p>Later text.</p>\n")).is_empty());
     }
 
     #[test]

@@ -22,12 +22,14 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
     let mut count = 0usize;
     let mut first_byte = None;
-    for (byte, ch) in doc.masked.char_indices() {
+    // `&ldquo;`-style entities are the same quotes; the parse decodes them into `doc.entities`.
+    let typed = doc.masked.char_indices();
+    for (byte, ch) in typed.chain(doc.entities.iter().copied()) {
         if !matches!(ch, '\u{2018}' | '\u{2019}' | '\u{201C}' | '\u{201D}') {
             continue;
         }
         count += 1;
-        first_byte.get_or_insert(byte);
+        first_byte = Some(first_byte.map_or(byte, |f: usize| f.min(byte)));
     }
     if count >= 2 {
         let (line, col) = doc.line_col(first_byte.unwrap());
@@ -48,12 +50,19 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        let doc = ProseDoc::parse(src);
+        diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
+    }
+
+    fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
+        diagnostics_in(ProseDoc::parse_html(src), src, Lang::Html)
+    }
+
+    fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
             index: None,
-            lang: Lang::Md,
+            lang,
             comments: &doc.ignore_comments,
             strings: &[],
             is_test_path: false,
@@ -65,6 +74,15 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    #[test]
+    fn html_quote_entities_count_as_smart_quotes() {
+        let src = "<p>They said &ldquo;done&rdquo; and left.</p>\n";
+        let diags = diagnostics_for_html(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].col, src.find("&ldquo;").unwrap() + 1);
+        assert!(diagnostics_for_html("<p>one &rdquo; only</p>\n").is_empty());
     }
 
     #[test]
