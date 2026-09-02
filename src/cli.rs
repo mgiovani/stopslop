@@ -59,6 +59,12 @@ pub struct Cli {
     /// finding. Overrides the config's `fail-on-tier`.
     #[arg(long)]
     pub fail_on_tier: Option<String>,
+    /// Report files/lines scanned, wall time and throughput. Text and markdown modes print the
+    /// summary to stderr (stdout is unchanged); json and sarif carry it inside the payload as a
+    /// `stats` object. "skipped" counts files the walk reached but could not lint (unsupported
+    /// extension or unreadable); paths dropped by .gitignore or `exclude` are never walked.
+    #[arg(long)]
+    pub stats: bool,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -70,6 +76,7 @@ pub enum Format {
 }
 
 pub fn run(cli: Cli) -> anyhow::Result<i32> {
+    let started = std::time::Instant::now();
     // Config is discovered before the --list-rules early-return: custom rules need to appear in
     // that listing, and they only exist once the config is loaded.
     let config = Config::discover(cli.config.as_deref(), cli.no_config)?;
@@ -138,7 +145,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         custom_rules,
     };
 
-    let diags = walk::lint_paths(&paths, &config.exclude, &settings)?;
+    let (diags, stats) = walk::lint_paths(&paths, &config.exclude, &settings)?;
     // Applied right after the walk, before either baseline step: a path-scoped ignore composes
     // with a baseline (both subtract findings) instead of the two fighting over which one "owns"
     // a finding, and a fresh `--write-baseline` shouldn't fossilize findings the config already
@@ -160,9 +167,19 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         None => diags,
     };
 
+    let stats = cli.stats.then(|| stats.with_wall(started.elapsed()));
     let stdout = std::io::stdout();
     let mut w = stdout.lock();
-    output::emit(cli.format, &diags, &settings.enabled, &mut w)?;
+    output::emit(
+        cli.format,
+        &diags,
+        &settings.enabled,
+        stats.as_ref(),
+        &mut w,
+    )?;
+    if let (Some(s), Format::Text | Format::Markdown) = (stats, cli.format) {
+        eprint!("{}", output::render_stats(&s));
+    }
 
     Ok(exit_code(&diags, fail_on))
 }

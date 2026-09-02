@@ -1,13 +1,35 @@
 use crate::{diagnostic::Diagnostic, engine, engine::Settings, lang::Lang};
 use ignore::{overrides::OverrideBuilder, WalkBuilder, WalkState};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+
+#[derive(Debug, Default, Clone, Copy, serde::Serialize)]
+pub struct Stats {
+    pub files: u64,
+    pub skipped: u64,
+    pub lines: u64,
+    pub wall_secs: f64,
+    pub lines_per_sec: u64,
+}
+
+impl Stats {
+    pub fn with_wall(mut self, wall: std::time::Duration) -> Self {
+        self.wall_secs = wall.as_secs_f64();
+        self.lines_per_sec = if self.wall_secs > 0.0 {
+            (self.lines as f64 / self.wall_secs) as u64
+        } else {
+            0
+        };
+        self
+    }
+}
 
 pub fn lint_paths(
     roots: &[PathBuf],
     exclude: &[String],
     settings: &Settings,
-) -> anyhow::Result<Vec<Diagnostic>> {
+) -> anyhow::Result<(Vec<Diagnostic>, Stats)> {
     let cwd = std::env::current_dir()?;
     for root in roots {
         if !root.exists() {
@@ -34,6 +56,11 @@ pub fn lint_paths(
     }
 
     let diags: Mutex<Vec<Diagnostic>> = Mutex::new(Vec::new());
+    // Atomics, not the diags Mutex: the walk is parallel and one relaxed add per file is cheaper
+    // than taking the diag lock that already runs per file.
+    let files = AtomicU64::new(0);
+    let skipped = AtomicU64::new(0);
+    let lines = AtomicU64::new(0);
     builder.build_parallel().run(|| {
         Box::new(|entry| {
             let entry = match entry {
@@ -46,15 +73,21 @@ pub fn lint_paths(
             let path = entry.path();
             let lang = match Lang::from_path(path) {
                 Some(l) => l,
-                None => return WalkState::Continue,
+                None => {
+                    skipped.fetch_add(1, Ordering::Relaxed);
+                    return WalkState::Continue;
+                }
             };
             let source = match std::fs::read_to_string(path) {
                 Ok(s) => s,
                 Err(e) => {
                     eprintln!("stopslop: skipping {}: {e}", path.display());
+                    skipped.fetch_add(1, Ordering::Relaxed);
                     return WalkState::Continue;
                 }
             };
+            files.fetch_add(1, Ordering::Relaxed);
+            lines.fetch_add(source.lines().count() as u64, Ordering::Relaxed);
             let display_path = display_path(path, &cwd);
             let mut found = engine::lint_file(display_path, &source, lang, settings);
             let mut guard = diags.lock().unwrap();
@@ -65,7 +98,13 @@ pub fn lint_paths(
 
     let mut diags = diags.into_inner().unwrap();
     diags.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
-    Ok(diags)
+    let stats = Stats {
+        files: files.into_inner(),
+        skipped: skipped.into_inner(),
+        lines: lines.into_inner(),
+        ..Default::default()
+    };
+    Ok((diags, stats))
 }
 
 fn display_path(path: &std::path::Path, cwd: &std::path::Path) -> String {
@@ -87,13 +126,67 @@ mod tests {
             deps: None,
             custom_rules: Vec::new(),
         };
-        let once = lint_paths(std::slice::from_ref(&dir), &[], &settings).unwrap();
-        let twice = lint_paths(&[dir.clone(), dir], &[], &settings).unwrap();
+        let once = lint_paths(std::slice::from_ref(&dir), &[], &settings)
+            .unwrap()
+            .0;
+        let twice = lint_paths(&[dir.clone(), dir], &[], &settings).unwrap().0;
         assert!(!once.is_empty(), "fixture dir should produce findings");
         assert_eq!(
             once.len(),
             twice.len(),
             "duplicate root must not duplicate findings"
         );
+    }
+
+    /// Recursively collects `.go` files under `dir`, mirroring what the `ignore` walk should see
+    /// (the fixture dir isn't gitignored) so the test has an independent expected count.
+    fn go_files(dir: &std::path::Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                out.extend(go_files(&path));
+            } else if path.extension().is_some_and(|e| e == "go") {
+                out.push(path);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn with_wall_computes_rate_and_reports_zero_for_zero_duration() {
+        let stats = Stats {
+            lines: 100,
+            ..Default::default()
+        };
+        assert_eq!(
+            stats
+                .with_wall(std::time::Duration::from_millis(500))
+                .lines_per_sec,
+            200
+        );
+        assert_eq!(stats.with_wall(std::time::Duration::ZERO).lines_per_sec, 0);
+    }
+
+    #[test]
+    fn stats_count_linted_and_skipped_files() {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/go");
+        let settings = Settings {
+            enabled: resolve_enabled(&[], &[], &[], &[], &[], false),
+            deps: None,
+            custom_rules: Vec::new(),
+        };
+        let (_, stats) = lint_paths(std::slice::from_ref(&dir), &[], &settings).unwrap();
+
+        let expected = go_files(&dir);
+        let expected_lines: u64 = expected
+            .iter()
+            .map(|p| std::fs::read_to_string(p).unwrap().lines().count() as u64)
+            .sum();
+
+        assert_eq!(stats.files, expected.len() as u64);
+        assert!(stats.skipped >= 1, "the fixture dir's .gitkeep has no Lang");
+        assert_eq!(stats.lines, expected_lines);
+        assert!(stats.lines > 0);
     }
 }

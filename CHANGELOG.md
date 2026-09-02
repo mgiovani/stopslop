@@ -5,6 +5,17 @@ migration notes live here.
 
 ## Unreleased
 
+### Added
+
+- `--stats` reports files scanned, files skipped, lines scanned, wall time and
+  lines/s. Text and markdown modes print it to stderr, leaving stdout
+  untouched; `--format json` wraps the array as `{findings, stats}` only when
+  the flag is given, and `--format sarif` puts it in
+  `runs[0].properties.stats`. Library: `lint_paths` now returns
+  `(Vec<Diagnostic>, Stats)`.
+- `fail-on-tier` (config key and `--fail-on-tier` flag) sets the lowest tier
+  that exits 1. Previously nothing could put a Tier B rule on the exit-1 path.
+
 ### Fixed
 
 - **SLOP017** counted any comma series of three-or-more items, including the
@@ -26,11 +37,6 @@ migration notes live here.
 - **Baselines** embedded the path exactly as passed, so one written from
   `git ls-files` re-reported every finding under `stopslop .`. Paths are now
   normalized on both write and load, so existing baselines keep matching.
-
-### Added
-
-- `fail-on-tier` (config key and `--fail-on-tier` flag) sets the lowest tier
-  that exits 1. Previously nothing could put a Tier B rule on the exit-1 path.
 
 ## 0.5.0
 
