@@ -77,13 +77,17 @@ migration notes live here.
   text plus HTML comments and `href`/`src` attribute values; `<script>`,
   `<style>`, `<pre>`, `<code>`, `<textarea>`, `<template>`, `<svg>`,
   `<math>`, and `<noscript>` subtrees are skipped, and Django/Jinja
-  `{{ … }}`/`{% … %}`/`{# … #}` are blanked before the parse. Named/numeric
-  entities stay blank rather than decoded, a miss on an entity-encoded dash
-  rather than a false positive. `<h1>`-`<h6>` map to headings, and the
-  suppression comments work unchanged. 21 rules (SLOP011-018, 020, 022-028,
-  031-033, 035, 036) run on HTML unchanged; SLOP029, SLOP030, SLOP034, and
-  SLOP041 stay off HTML behind the new `lang::PARAGRAPH_LANGS` until it has a
-  paragraph model. New dependency: `tree-sitter-html`, because neither std
+  `{{ … }}`/`{% … %}`/`{# … #}` are blanked before the parse. `<h1>`-`<h6>`
+  map to headings, and the suppression comments work unchanged. Each leaf
+  block element (`<p>`, `<div>`, `<blockquote>`, `<td>`) is one paragraph, so
+  SLOP029, SLOP030, SLOP034, and SLOP041 run on HTML as they do on Markdown;
+  list items, table cells, headings, and form controls are never paragraphs.
+  `<strong>`/`<b>` count toward SLOP019, inline `<code>` counts as words the
+  way a backtick span does, SLOP021 checks heading case, and `&mdash;`,
+  `&#8212;`, and the curly-quote entities feed SLOP018 and SLOP020 as if
+  typed. `&ndash;` stays undecoded: a numeric range is its common use, and
+  the range exemption needs the raw neighbours. Every prose rule now runs on
+  HTML. New dependency: `tree-sitter-html`, because neither std
   nor regex can express "blank everything that is not a text node" (a `>`
   inside an attribute value or a `</script>` inside a JS string defeats a
   regex strip). See
