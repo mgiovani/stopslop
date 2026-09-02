@@ -26,7 +26,7 @@ cargo install --path .      # rebuild the binary before dogfooding a new rule
 2. Declare the module in `src/rules/mod.rs` and the static in `registry::RULES`.
 3. Put the code in exactly one `groups.rs` entry. `groups_partition_every_rule` fails otherwise.
 4. Open at Tier B. Tier A is for findings with no judgment call in them, because Tier A fails CI.
-5. Set `langs` to `lang::CODE_LANGS` or `lang::PROSE_LANGS` unless the rule is narrower, and add fixtures under `tests/fixtures/<lang>/` for every language listed: one file carrying `expect:` markers and one clean file carrying none. `every_declared_lang_has_a_fixture_witness` fails when the marked file is missing.
+5. Set `langs` to `lang::CODE_LANGS` or `lang::PROSE_LANGS` unless the rule is narrower, and add fixtures under `tests/fixtures/<lang>/` for every language listed: one file carrying `expect:` markers and one clean file carrying none. `every_declared_lang_has_a_fixture_witness` fails when the marked file is missing. Also declare `natlangs`: `lang::ALL_NATLANGS` when the rule has no natural-language lexicon (AST shape, punctuation, statistics), `&[NatLang::En]` otherwise. Add a `tests/fixtures/markdown/pt-br/` witness before declaring `NatLang::PtBr`; `natlang_witness` fails otherwise.
 6. Grep `src/` for each phrase before adding it to a panel. If another rule owns the span, drop the phrase.
 7. Keep the panel in the rule file. `prose_words.rs` holds the panels the prose density rules share and takes no new entries.
 8. Write the message lowercase and specific, and use `Diagnostic::at_fix` whenever a concrete replacement exists.
@@ -72,6 +72,7 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 ## Invariants
 
 - Panel disjointness: no span may be flagged by two rules. Grep first, then drop the phrase whose owner already exists.
+- Cross-language disjointness: a token spelled the same in two languages lives in exactly one panel, the English one when it's slop in both. A pt-BR entry whose head word is also an English word must be a multi-word phrase.
 - `groups.rs` partitions `RULES` exactly. `ALL` is special-cased inside `groups::expand` and never joins the table.
 - Tier and `default_on` are separate axes: A plus on blocks CI, B plus on warns, B plus off is opt-in.
 - Custom codes (`SLOP900` and up) come from user config, so they never appear in `RULES` or `GROUPS`.

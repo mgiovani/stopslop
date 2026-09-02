@@ -97,6 +97,8 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
     // that listing, and they only exist once the config is loaded.
     let config = Config::discover(cli.config.as_deref(), cli.no_config)?;
     let custom_rules = custom::load(&config.custom_rule)?;
+    // Resolved before any field of `config` is partially moved out below.
+    let natlangs = config.natlangs()?;
 
     if cli.list_rules {
         list_rules(&custom_rules);
@@ -159,6 +161,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         enabled,
         deps,
         custom_rules,
+        natlangs,
     };
 
     let scope = if cli.staged {
@@ -288,16 +291,16 @@ fn apply_per_file_ignores(
         .collect())
 }
 
-/// `code  group  tier  on-by-default  name`, grouped-name column included so `--select <group>`
-/// is discoverable without reading the README.
+/// `code  group  tier  on-by-default  natlang  name`, grouped-name column included so
+/// `--select <group>` is discoverable without reading the README.
 fn list_rules(custom_rules: &[custom::CustomRule]) {
     println!(
-        "{:<8} {:<10} {:<5} {:<8} NAME",
-        "CODE", "GROUP", "TIER", "DEFAULT"
+        "{:<8} {:<10} {:<5} {:<8} {:<10} NAME",
+        "CODE", "GROUP", "TIER", "DEFAULT", "NATLANG"
     );
     for r in RULES {
         println!(
-            "{:<8} {:<10} {:<5} {:<8} {}",
+            "{:<8} {:<10} {:<5} {:<8} {:<10} {}",
             r.code,
             groups::group_of(r.code),
             match r.tier {
@@ -305,12 +308,17 @@ fn list_rules(custom_rules: &[custom::CustomRule]) {
                 Tier::B => "B",
             },
             if r.default_on { "on" } else { "off" },
+            r.natlangs
+                .iter()
+                .map(|n| n.label())
+                .collect::<Vec<_>>()
+                .join(", "),
             r.name,
         );
     }
     for cr in custom_rules {
         println!(
-            "{:<8} {:<10} {:<5} {:<8} {}",
+            "{:<8} {:<10} {:<5} {:<8} {:<10} {}",
             cr.code(),
             "custom",
             match cr.tier() {
@@ -318,6 +326,7 @@ fn list_rules(custom_rules: &[custom::CustomRule]) {
                 Tier::B => "B",
             },
             "on", // custom rules are always on by default -- the user explicitly wrote them
+            "en", // custom rules are user regexes, not a validated lexicon in any one language
             cr.name(),
         );
     }

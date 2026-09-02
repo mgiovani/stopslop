@@ -1,5 +1,5 @@
 use crate::imports_data::DepIndex; // re-exported via rules::imports_data
-use crate::lang::Lang;
+use crate::lang::{Lang, NatLang};
 use crate::prose::ProseDoc;
 use std::collections::HashMap;
 use tree_sitter::{LanguageRef, Node, Tree, TreeCursor};
@@ -25,6 +25,10 @@ pub struct LintContext<'a> {
     pub is_stub_file: bool,              // .pyi
     pub deps: Option<&'a DepIndex>,      // Some only under --check-imports
     pub prose: Option<&'a ProseDoc<'a>>, // Some only for prose langs (see lang::Lang::is_prose)
+    /// Natural languages the document is assumed to contain, resolved once from config (default:
+    /// every supported language). A rule is gated out when its `natlangs` shares nothing with
+    /// this set (engine::lint_file, engine::lint_prose); a no-op under the default.
+    pub natlangs: &'a [NatLang],
 }
 
 impl<'a> LintContext<'a> {
@@ -243,6 +247,7 @@ mod tests {
                 is_stub_file: false,
                 deps: None,
                 prose: None,
+                natlangs: crate::lang::ALL_NATLANGS,
             };
             let mut preorder = Vec::new();
             walk_tree(&mut tree.walk(), &mut |n| {
@@ -279,6 +284,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
+            natlangs: crate::lang::ALL_NATLANGS,
         };
         assert!(ctx.nodes(&["paragraph"]).is_empty());
     }

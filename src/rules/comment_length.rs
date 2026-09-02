@@ -1,6 +1,6 @@
 use crate::context::{LintContext, TextNode};
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::{self, Lang};
 use crate::registry::RuleDef;
 use crate::suppress::comment_body;
 
@@ -9,6 +9,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Comment that runs long",
     tier: Tier::B,
     langs: &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust],
+    natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: true,
     check,
@@ -182,6 +183,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
+            natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);

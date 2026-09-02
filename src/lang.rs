@@ -54,3 +54,67 @@ pub fn ts_language(lang: Lang) -> Language {
         }
     }
 }
+
+/// Natural-language axis, orthogonal to `Lang` (file syntax): a `.md` file's `Lang` is always
+/// `Md` whether its prose is English or Portuguese. `natlangs` on a `RuleDef` means "this rule's
+/// lexicon is validated by a fixture in that language" -- a rule with no natural-language
+/// lexicon (AST shape, punctuation, statistics) declares every language instead of narrowing.
+/// v1 ships one Portuguese lexicon, tuned on Brazilian text; `pt-PT` resolves to the same
+/// `PtBr` variant as a best-effort alias rather than a separate lexicon.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NatLang {
+    En,
+    PtBr,
+}
+
+pub const ALL_NATLANGS: &[NatLang] = &[NatLang::En, NatLang::PtBr];
+
+impl NatLang {
+    /// Matches a BCP-47-ish tag by its primary subtag alone, case-insensitively, accepting `-`
+    /// or `_` as the subtag separator (`en-US`, `en_GB`, `pt-BR`, `pt-PT`, `pt_br` all resolve).
+    /// Anything outside `en`/`pt` is `None` rather than a guess, so config validation can turn
+    /// it into a startup error naming the supported tags instead of silently picking one.
+    pub fn from_tag(tag: &str) -> Option<NatLang> {
+        let primary = tag.split(['-', '_']).next()?;
+        match primary.to_ascii_lowercase().as_str() {
+            "en" => Some(NatLang::En),
+            "pt" => Some(NatLang::PtBr),
+            _ => None,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            NatLang::En => "en",
+            NatLang::PtBr => "pt-BR",
+        }
+    }
+}
+
+#[cfg(test)]
+mod natlang_tests {
+    use super::*;
+
+    #[test]
+    fn from_tag_matches_primary_subtag_case_insensitively() {
+        for tag in ["en", "EN", "en-US", "en_GB", "En-us"] {
+            assert_eq!(NatLang::from_tag(tag), Some(NatLang::En), "{tag}");
+        }
+        for tag in ["pt", "PT", "pt-BR", "pt-PT", "pt_br"] {
+            assert_eq!(NatLang::from_tag(tag), Some(NatLang::PtBr), "{tag}");
+        }
+    }
+
+    #[test]
+    fn from_tag_rejects_unknown_or_empty_tags() {
+        assert_eq!(NatLang::from_tag("fr"), None);
+        assert_eq!(NatLang::from_tag("es-MX"), None);
+        assert_eq!(NatLang::from_tag(""), None);
+    }
+
+    #[test]
+    fn label_matches_display_form() {
+        assert_eq!(NatLang::En.label(), "en");
+        assert_eq!(NatLang::PtBr.label(), "pt-BR");
+    }
+}

@@ -14,6 +14,7 @@ pub struct Settings {
     pub enabled: HashSet<&'static str>, // rule codes to run
     pub deps: Option<DepIndex>,         // Some under --check-imports
     pub custom_rules: Vec<crate::custom::CustomRule>, // [[custom-rule]] entries, run as a 2nd pass
+    pub natlangs: Vec<lang::NatLang>,   // resolved from config; default is every supported language
 }
 
 /// select resets base; extend-select unions on top of it (config AND CLI, never replacing);
@@ -113,11 +114,13 @@ fn unmatched_patterns<'a>(pats: &'a [String], custom_codes: &[&'static str]) -> 
 pub fn prewarm<'scope>(scope: &'scope std::thread::Scope<'scope, '_>, settings: &Settings) {
     for &rule in RULES {
         if settings.enabled.contains(rule.code) && rule.langs.contains(&Lang::Md) {
+            let natlangs = settings.natlangs.clone();
             scope.spawn(move || {
                 let one = Settings {
                     enabled: HashSet::from([rule.code]),
                     deps: None,
                     custom_rules: Vec::new(),
+                    natlangs,
                 };
                 lint_file(String::new(), "Warm-up line.\n", Lang::Md, &one);
             });
@@ -160,6 +163,7 @@ pub fn lint_file(
         is_stub_file: is_stub,
         deps: settings.deps.as_ref(),
         prose: None,
+        natlangs: &settings.natlangs,
     };
     let mut out = Vec::new();
     for &rule in RULES {
@@ -167,6 +171,10 @@ pub fn lint_file(
             continue;
         }
         if !rule.langs.contains(&lang) {
+            continue;
+        }
+        // No-op under the default (every language); bites only when config sets `language`.
+        if !rule.natlangs.iter().any(|n| ctx.natlangs.contains(n)) {
             continue;
         }
         if rule.path_gated && ctx.is_test_path {
@@ -205,6 +213,7 @@ fn lint_prose(
         is_stub_file: false,
         deps: None,
         prose: Some(&doc),
+        natlangs: &settings.natlangs,
     };
     let mut out = Vec::new();
     for &rule in RULES {
@@ -212,6 +221,10 @@ fn lint_prose(
             continue;
         }
         if !rule.langs.contains(&lang) {
+            continue;
+        }
+        // No-op under the default (every language); bites only when config sets `language`.
+        if !rule.natlangs.iter().any(|n| ctx.natlangs.contains(n)) {
             continue;
         }
         if rule.path_gated && ctx.is_test_path {
@@ -238,6 +251,7 @@ mod tests {
             enabled: RULES.iter().map(|r| r.code).collect(),
             deps: None,
             custom_rules: Vec::new(),
+            natlangs: lang::ALL_NATLANGS.to_vec(),
         };
         std::thread::scope(|scope| prewarm(scope, &settings));
     }
@@ -293,6 +307,40 @@ mod tests {
         assert!(one_ignored.contains("SLOP901"));
     }
 
+    /// `language = "pt-BR"` gates out an English-lexicon rule while a lexicon-free rule keeps
+    /// firing on the same document; the default runs both.
+    #[test]
+    fn natlangs_setting_gates_english_only_rules() {
+        let enabled = resolve_enabled(
+            &["SLOP018".to_string(), "SLOP023".to_string()],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
+        let settings = |natlangs: Vec<lang::NatLang>| Settings {
+            enabled: enabled.clone(),
+            deps: None,
+            custom_rules: Vec::new(),
+            natlangs,
+        };
+        let src = "It's not about speed, it's about accuracy \u{2014} both matter.\n";
+        let codes = |s: &Settings| {
+            let mut v: Vec<&str> = lint_file("f.md".to_string(), src, Lang::Md, s)
+                .into_iter()
+                .map(|d| d.code)
+                .collect();
+            v.sort_unstable();
+            v
+        };
+        assert_eq!(
+            codes(&settings(lang::ALL_NATLANGS.to_vec())),
+            vec!["SLOP018", "SLOP023"]
+        );
+        assert_eq!(codes(&settings(vec![lang::NatLang::PtBr])), vec!["SLOP018"]);
+    }
+
     /// End-to-end: a custom rule runs through `lint_file`'s second pass and its finding is still
     /// suppressible with a rule-scoped `ai-slop-ignore: SLOP900` comment, same as any built-in
     /// rule -- `suppress::apply` runs after both passes and only ever looks at `Diagnostic.code`.
@@ -315,6 +363,7 @@ mod tests {
             enabled,
             deps: None,
             custom_rules,
+            natlangs: lang::ALL_NATLANGS.to_vec(),
         };
 
         let unsuppressed = "We need synergy here.\n";

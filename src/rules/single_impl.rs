@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::{self, Lang};
 use crate::registry::RuleDef;
 use tree_sitter::Node;
 
@@ -9,6 +9,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Single-implementation interface / abstract",
     tier: Tier::B,
     langs: &[Lang::Ts, Lang::Tsx, Lang::Python],
+    natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: true,
     check,
@@ -207,6 +208,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
+            natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);

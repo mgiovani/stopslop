@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::{Lang, NatLang};
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::sync::LazyLock;
@@ -10,6 +10,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Heading & marker formatting affectations",
     tier: Tier::B,
     langs: &[Lang::Md, Lang::Mdx],
+    natlangs: &[NatLang::En],
     default_on: true,
     path_gated: false,
     check,
@@ -268,6 +269,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
+            natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);

@@ -1,7 +1,7 @@
 // ai-slop-ignore-file: SLOP037 -- this rule's own tests must contain the patterns it detects
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{Lang, CODE_LANGS};
+use crate::lang::{self, Lang, CODE_LANGS};
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::sync::LazyLock;
@@ -12,6 +12,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Reinvented stdlib / native platform feature",
     tier: Tier::B,
     langs: CODE_LANGS,
+    natlangs: lang::ALL_NATLANGS,
     default_on: true,
     path_gated: true,
     check,
@@ -503,6 +504,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
+            natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
