@@ -75,6 +75,7 @@ stopslop                          # lint the current directory
 stopslop src/ lib/                 # lint specific paths
 stopslop --format json .           # machine-readable output
 stopslop --stats .                 # files/lines scanned, wall time, throughput (stderr)
+stopslop -j 1 .                    # single worker thread (perf work; 0 = automatic)
 stopslop --select SLOP001          # run only the elision rule
 stopslop --select rhetoric         # run one rule group (see "Rule groups" below)
 stopslop --select ALL              # every rule (SLOP010 still needs --check-imports)
