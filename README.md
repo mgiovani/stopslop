@@ -94,7 +94,11 @@ pasting into a PR comment or a report. `--stats` prints a
 files/lines/wall-time/throughput summary to stderr in text and markdown
 modes; with `--format json` the output becomes
 `{"findings": [...], "stats": {...}}`, and with `--format sarif` the same
-object lands in `runs[0].properties.stats`.
+object lands in `runs[0].properties.stats`. Wall time runs from startup
+through the walk, so it lines up with an external `time`. "skipped" counts
+files the walk reached but could not lint (unsupported extension or
+unreadable); paths dropped by `.gitignore` or `exclude` are never walked and
+are not counted.
 
 ![stopslop --format json output](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/formats.png)
 

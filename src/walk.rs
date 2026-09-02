@@ -16,7 +16,11 @@ pub struct Stats {
 impl Stats {
     pub fn with_wall(mut self, wall: std::time::Duration) -> Self {
         self.wall_secs = wall.as_secs_f64();
-        self.lines_per_sec = (self.lines as f64 / self.wall_secs.max(f64::EPSILON)) as u64;
+        self.lines_per_sec = if self.wall_secs > 0.0 {
+            (self.lines as f64 / self.wall_secs) as u64
+        } else {
+            0
+        };
         self
     }
 }
@@ -147,6 +151,21 @@ mod tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn with_wall_computes_rate_and_reports_zero_for_zero_duration() {
+        let stats = Stats {
+            lines: 100,
+            ..Default::default()
+        };
+        assert_eq!(
+            stats
+                .with_wall(std::time::Duration::from_millis(500))
+                .lines_per_sec,
+            200
+        );
+        assert_eq!(stats.with_wall(std::time::Duration::ZERO).lines_per_sec, 0);
     }
 
     #[test]

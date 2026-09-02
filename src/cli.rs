@@ -61,7 +61,8 @@ pub struct Cli {
     pub fail_on_tier: Option<String>,
     /// Report files/lines scanned, wall time and throughput. Text and markdown modes print the
     /// summary to stderr (stdout is unchanged); json and sarif carry it inside the payload as a
-    /// `stats` object.
+    /// `stats` object. "skipped" counts files the walk reached but could not lint (unsupported
+    /// extension or unreadable); paths dropped by .gitignore or `exclude` are never walked.
     #[arg(long)]
     pub stats: bool,
 }
