@@ -33,18 +33,18 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 
 /// Byte offset -> 1-based (line, col) for the raw-source regex scans below (this rule's AST
 /// walks use `ctx.pos` instead; this is only for `Regex::find_iter(ctx.source)` matches).
-fn byte_pos(source: &str, byte: usize) -> (usize, usize) {
-    let mut line = 1usize;
-    let mut col = 1usize;
-    for ch in source[..byte].chars() {
-        if ch == '\n' {
-            line += 1;
-            col = 1;
-        } else {
-            col += 1;
-        }
-    }
+/// `line_starts` is built lazily by the caller: most files have no match, and a file with many
+/// matches must not rescan from byte 0 per match (issue #21, the shape #3 and #20 fixed).
+fn byte_pos(source: &str, line_starts: &[usize], byte: usize) -> (usize, usize) {
+    let line = line_starts.partition_point(|&start| start <= byte);
+    let col = source[line_starts[line - 1]..byte].chars().count() + 1;
     (line, col)
+}
+
+fn line_starts(source: &str) -> Vec<usize> {
+    std::iter::once(0)
+        .chain(source.match_indices('\n').map(|(i, _)| i + 1))
+        .collect()
 }
 
 // --- TypeScript / TSX ---
@@ -63,11 +63,19 @@ static LEFT_PAD_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"while\s*\(\s*(\w+)\.length\s*<[^)]*\)\s*\{([^{}]*)\}").unwrap());
 
 fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
+    let starts = std::cell::OnceCell::new();
+    let pos = |byte: usize| {
+        byte_pos(
+            ctx.source,
+            starts.get_or_init(|| line_starts(ctx.source)),
+            byte,
+        )
+    };
     for m in JSON_CLONE_RE.find_iter(ctx.source) {
         if ctx.in_comment_or_string(m.start()) {
             continue;
         }
-        let (line, col) = byte_pos(ctx.source, m.start());
+        let (line, col) = pos(m.start());
         out.push(Diagnostic::at_fix(
             rule,
             ctx,
@@ -82,7 +90,7 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
         if ctx.in_comment_or_string(m.start()) {
             continue;
         }
-        let (line, col) = byte_pos(ctx.source, m.start());
+        let (line, col) = pos(m.start());
         out.push(Diagnostic::at_fix(
             rule,
             ctx,
@@ -99,7 +107,7 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
         }
         let window_end = (m.end() + 400).min(ctx.source.len());
         if SPLIT_EQ_RE.is_match(&ctx.source[m.end()..window_end]) {
-            let (line, col) = byte_pos(ctx.source, m.start());
+            let (line, col) = pos(m.start());
             out.push(Diagnostic::at_fix(
                 rule,
                 ctx,
@@ -119,7 +127,7 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
         let ident = &caps[1];
         let body = &caps[2];
         if body.contains("+=") || concat_reassigns(ident, body) {
-            let (line, col) = byte_pos(ctx.source, whole.start());
+            let (line, col) = pos(whole.start());
             out.push(Diagnostic::at_fix(
                 rule,
                 ctx,
@@ -507,6 +515,14 @@ mod tests {
     fn ts_json_clone_flagged() {
         let src = "const b = JSON.parse(JSON.stringify(a));\n";
         assert_eq!(lint(Lang::Ts, src).len(), 1);
+    }
+
+    #[test]
+    fn ts_positions_count_chars_after_multibyte_text_and_on_the_last_line() {
+        let src = "// café — notes\nconst b = JSON.parse(JSON.stringify(a));\nconst id = Math.random().toString(36);";
+        let found = lint(Lang::Ts, src);
+        let positions: Vec<(usize, usize)> = found.iter().map(|d| (d.line, d.col)).collect();
+        assert_eq!(positions, vec![(2, 11), (3, 12)]);
     }
 
     #[test]
