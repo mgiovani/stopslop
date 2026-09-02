@@ -17,7 +17,7 @@ pub static RULE: RuleDef = RuleDef {
 
 static RE_A: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?im)^\s*(?://|#|\*+)\s*\.\.\.?\s*(rest|existing|other|remaining|unchanged|keep)\b",
+        r"(?im)^\s*(?://|#|\*+)\s*\.\.\.?\s*(rest|existing|other|remaining|unchanged|keep)(?-u:\b)",
     )
     .unwrap()
 });

@@ -55,7 +55,7 @@ static SYMBOL_MARKER_RE: LazyLock<Regex> = LazyLock::new(|| marker_re(SYMBOL));
 /// lines — evidence the document actually uses sentence case, so an all-caps/style doc (which
 /// has nothing to contrast against) never fires.
 static SENTENCE_CASE_GUARD_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b[a-z]{2,}\s+[a-z]{2,}\b").unwrap());
+    LazyLock::new(|| Regex::new(r"(?-u:\b)[a-z]{2,}\s+[a-z]{2,}(?-u:\b)").unwrap());
 
 /// Markdown table separator row (e.g. `| --- | --- |`, `:-:|:-:`): evidence a body is a table,
 /// not thin prose, for sub-check (c) below.

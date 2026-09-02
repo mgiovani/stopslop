@@ -23,7 +23,7 @@ pub static RULE: RuleDef = RuleDef {
 /// keeps `[click here](url)` / `[link to docs](url)` from firing even though "link to" is itself
 /// a listed keyword.
 static RE_BRACKET_OPEN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\[(insert|describe|add|replace|your name|company name|entertainer'?s name|link to|paste|tbd|todo|placeholder|xxx)\b")
+    Regex::new(r"(?i)\[(insert|describe|add|replace|your name|company name|entertainer'?s name|link to|paste|tbd|todo|placeholder|xxx)(?-u:\b)")
         .unwrap()
 });
 
@@ -50,20 +50,20 @@ fn find_bracket_close(s: &str, start: usize) -> Option<usize> {
 /// (2) ALL-CAPS fill-in tokens. Case-sensitive: requires a fill-in verb/possessive prefix or a
 /// `_HERE` suffix, so ordinary constants like `DATABASE_URL`/`MAX_RETRIES` never match.
 static RE_ALLCAPS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\b(INSERT|PASTE|ADD|REPLACE|YOUR|SOURCE|EXAMPLE)_[A-Z0-9_]+\b|\b[A-Z0-9]+_HERE\b")
+    Regex::new(r"(?-u:\b)(INSERT|PASTE|ADD|REPLACE|YOUR|SOURCE|EXAMPLE)_[A-Z0-9_]+(?-u:\b)|(?-u:\b)[A-Z0-9]+_HERE(?-u:\b)")
         .unwrap()
 });
 
 /// (3) Placeholder dates: literal XX stubs, or an `access-date=`/`date=` key still holding a
 /// TBD/TODO/XXXX/stub value.
 static RE_DATE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b20\d{2}-[Xx]{2}-[Xx]{2}\b|\b20\d{2}-\d{2}-[Xx]{2}\b|\b(access-?date|date)\s*=\s*(tbd|todo|xxxx|20\d{2}-[Xx]{2}-[Xx]{2})\b")
+    Regex::new(r"(?i)(?-u:\b)20\d{2}-[Xx]{2}-[Xx]{2}(?-u:\b)|(?-u:\b)20\d{2}-\d{2}-[Xx]{2}(?-u:\b)|(?-u:\b)(access-?date|date)\s*=\s*(tbd|todo|xxxx|20\d{2}-[Xx]{2}-[Xx]{2})(?-u:\b)")
         .unwrap()
 });
 
 /// (4) HTML-comment fill instructions, e.g. `<!-- Add citation -->`.
 static RE_HTML_COMMENT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)<!--\s*(add|insert|todo|fill in|replace|describe)\b[^>]*-->").unwrap()
+    Regex::new(r"(?i)<!--\s*(add|insert|todo|fill in|replace|describe)(?-u:\b)[^>]*-->").unwrap()
 });
 
 /// Scope: headings in scope, frontmatter IN SCOPE (placeholder dates commonly appear as

@@ -47,8 +47,23 @@ migration notes live here.
   staged-plus-unstaged changes against `HEAD`, or everything since the merge
   base with `REF`. Positional paths act as git pathspecs.
 
+- `-j N` / `--threads N` picks the walk's worker count (`0`, the default,
+  chooses automatically); `-j 1` makes per-rule timings add up for perf work.
+- `bench/gen_inputs.py` and `bench/run.sh` generate the stress inputs from
+  issue #21 and print a base-vs-new hyperfine table; `tests/stress.rs` bounds
+  the wall clock on them and runs in CI as `cargo test --release -- --ignored`.
+
 ### Changed
 
+- Regex word boundaries are ASCII-scoped (`(?-u:\b)`), which keeps the regex
+  crate on its lazy DFA for documents with em dashes, curly quotes or accents:
+  an 8 MB prose file went from 11.3 s to 0.83 s, the cargo-registry corpus
+  from 3.0 s to 1.35 s. A unit test fails on the next unscoped boundary.
+- `ProseDoc` answers heading, URL and fence lookups by binary search and
+  keeps one line index for every rule, so SLOP033 is linear in headings: a
+  20 MB file with 78k headings went from 35 s to 3.3 s.
+- Enabled prose rules compile their regexes in parallel with the file walk;
+  a run over a three-line file went from 28 ms to 13 ms.
 - **AST rules no longer re-walk the tree.** Every source file used to get one
   full tree traversal per rule call site (up to 11 for a TypeScript file with
   all rules on); `extract` now indexes every named node by kind in its single

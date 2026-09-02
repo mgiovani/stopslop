@@ -78,6 +78,9 @@ pub struct Cli {
     /// extension or unreadable); paths dropped by .gitignore or `exclude` are never walked.
     #[arg(long)]
     pub stats: bool,
+    /// Worker threads for the walk; 0 picks automatically.
+    #[arg(short = 'j', long = "threads", default_value_t = 0)]
+    pub threads: usize,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -165,20 +168,23 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
     } else {
         cli.since.map(git::Scope::Since)
     };
-    let (diags, stats) = match scope {
-        Some(scope) => {
-            let files = git::changed_files(Path::new("."), &scope, &paths)?;
-            let staged = matches!(scope, git::Scope::Staged);
-            walk::lint_files(&files, &config.exclude, &settings, move |p| {
-                if staged {
-                    git::staged_source(Path::new("."), p)
-                } else {
-                    std::fs::read_to_string(p)
-                }
-            })?
+    let (diags, stats) = std::thread::scope(|warm| {
+        engine::prewarm(warm, &settings);
+        match scope {
+            Some(scope) => {
+                let files = git::changed_files(Path::new("."), &scope, &paths)?;
+                let staged = matches!(scope, git::Scope::Staged);
+                walk::lint_files(&files, &config.exclude, &settings, move |p| {
+                    if staged {
+                        git::staged_source(Path::new("."), p)
+                    } else {
+                        std::fs::read_to_string(p)
+                    }
+                })
+            }
+            None => walk::lint_paths(&paths, &config.exclude, &settings, cli.threads),
         }
-        None => walk::lint_paths(&paths, &config.exclude, &settings)?,
-    };
+    })?;
     // Applied before baseline so a path-scoped ignore composes with it instead of the two
     // fighting over ownership, and `--write-baseline` doesn't fossilize findings the config
     // already excluded.

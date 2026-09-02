@@ -20,7 +20,7 @@ pub static RULE: RuleDef = RuleDef {
 // already match them, so including them here would double-flag. Only the untaken
 // "game-changing" inflection stays.
 static PROMO_PHRASES: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(nestled (?:in|among|between)|in the heart of|renowned for|world-renowned|breathtaking|must-visit|must-have|stunning|state-of-the-art|best-in-class|industry-leading|award-winning|unparalleled|unrivaled|second to none|a commitment to excellence|natural beauty|a hidden gem|one-stop shop|game-changing|next-generation|turnkey|rich (?:history|heritage|tradition))\b")
+    Regex::new(r"(?i)(?-u:\b)(nestled (?:in|among|between)|in the heart of|renowned for|world-renowned|breathtaking|must-visit|must-have|stunning|state-of-the-art|best-in-class|industry-leading|award-winning|unparalleled|unrivaled|second to none|a commitment to excellence|natural beauty|a hidden gem|one-stop shop|game-changing|next-generation|turnkey|rich (?:history|heritage|tradition))(?-u:\b)")
         .unwrap()
 });
 

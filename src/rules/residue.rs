@@ -24,7 +24,7 @@ pub static RULE: RuleDef = RuleDef {
 /// speculative-gap-filling family below (`maintains a low profile`, `not publicly available`, ...)
 /// is the shape a model falls back on when it has no real biographical fact to report.
 static RE_ANYWHERE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\bas an? (ai|large) language model\b|\bas an ai (assistant|model)\b|\bas of my (last|latest|most recent) (knowledge|training) (update|cutoff|data)\b|\b(up to|as of) my last training update\b|\bmy (knowledge|training) cutoff\b|\bI (do not|don'?t) have (access to|the ability to browse) (real-?time|the internet|current)\b|\bI (cannot|can'?t) browse the internet\b|\bwhile specific details (are|remain) (limited|scarce|unavailable)\b|\bin the (provided|available) (search results|sources)\b|\bbased on (the )?available information\b|\bI'?m (sorry|unable)[, ].{0,40}\b(cannot|can'?t|unable to) (assist|help|provide|generate)\b|\bI cannot generate content that\b|\bI'?m unable to assist with that request\b|\breviewer note\b|\bi hope this message finds you well\b|\bthank you for your review\b|\bplease find (our|the) revised\b|\bwe remain committed to creating content that aligns with\b|\bmaintains? a low profile\b|\bkeeps? (his|her|their) personal (life|details) private\b|\bprefers? to stay out of the spotlight\b|\blikely (grew up|studied|began|started)\b|\bnot publicly available\b").unwrap()
+    Regex::new(r"(?i)(?-u:\b)as an? (ai|large) language model(?-u:\b)|(?-u:\b)as an ai (assistant|model)(?-u:\b)|(?-u:\b)as of my (last|latest|most recent) (knowledge|training) (update|cutoff|data)(?-u:\b)|(?-u:\b)(up to|as of) my last training update(?-u:\b)|(?-u:\b)my (knowledge|training) cutoff(?-u:\b)|(?-u:\b)I (do not|don'?t) have (access to|the ability to browse) (real-?time|the internet|current)(?-u:\b)|(?-u:\b)I (cannot|can'?t) browse the internet(?-u:\b)|(?-u:\b)while specific details (are|remain) (limited|scarce|unavailable)(?-u:\b)|(?-u:\b)in the (provided|available) (search results|sources)(?-u:\b)|(?-u:\b)based on (the )?available information(?-u:\b)|(?-u:\b)I'?m (sorry|unable)[, ].{0,40}(?-u:\b)(cannot|can'?t|unable to) (assist|help|provide|generate)(?-u:\b)|(?-u:\b)I cannot generate content that(?-u:\b)|(?-u:\b)I'?m unable to assist with that request(?-u:\b)|(?-u:\b)reviewer note(?-u:\b)|(?-u:\b)i hope this message finds you well(?-u:\b)|(?-u:\b)thank you for your review(?-u:\b)|(?-u:\b)please find (our|the) revised(?-u:\b)|(?-u:\b)we remain committed to creating content that aligns with(?-u:\b)|(?-u:\b)maintains? a low profile(?-u:\b)|(?-u:\b)keeps? (his|her|their) personal (life|details) private(?-u:\b)|(?-u:\b)prefers? to stay out of the spotlight(?-u:\b)|(?-u:\b)likely (grew up|studied|began|started)(?-u:\b)|(?-u:\b)not publicly available(?-u:\b)").unwrap()
 });
 
 /// Reasoning-chain leakage: chain-of-thought scaffolding left behind in a deliverable ("let's
@@ -34,7 +34,7 @@ static RE_ANYWHERE: LazyLock<Regex> = LazyLock::new(|| {
 /// phrase list can't drift between the two consumers. `step 1:` is the one member that isn't
 /// shared -- it has a legitimate reading, so it needs position context (see `RE_NUMBERED_STEP`).
 static RE_REASONING_CHAIN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r"(?i)\b(?:{REASONING_CHAIN_FRAGMENT})")).unwrap());
+    LazyLock::new(|| Regex::new(&format!(r"(?i)(?-u:\b)(?:{REASONING_CHAIN_FRAGMENT})")).unwrap());
 
 /// `Step N:` -- NOT line-initial. Numbered procedural headings and bold lead-ins (`## Step 1:
 /// Detect the framework`, `**Step 1: Mine the conversation.**`, `- Step 1: open the file`) are
@@ -50,7 +50,8 @@ static RE_NUMBERED_STEP: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// The residue form: `Step N:` with real text before it on the same line.
-static RE_MIDLINE_STEP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bstep \d+:").unwrap());
+static RE_MIDLINE_STEP: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(?-u:\b)step \d+:").unwrap());
 
 /// Acknowledgment loops ("you're asking about X", "to answer your question, ..."). PARAGRAPH-
 /// INITIAL only, checked separately below via `fragmentation::paragraph_blocks`: a wrapped
@@ -58,7 +59,7 @@ static RE_MIDLINE_STEP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bst
 /// but the very first line of a paragraph is where a chat-turn acknowledgment actually lands.
 static RE_ACK_LOOP: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)^(?:you(?:'|\u{2019})re asking (?:about|for)|to (?:answer|address) your question)\b",
+        r"(?i)^(?:you(?:'|\u{2019})re asking (?:about|for)|to (?:answer|address) your question)(?-u:\b)",
     )
     .unwrap()
 });
@@ -67,14 +68,14 @@ static RE_ACK_LOOP: LazyLock<Regex> = LazyLock::new(|| {
 /// opens with "Sure, ..." mid-document is ordinary English; residue only when it's literally
 /// the first thing on the line (chat-turn register bleeding through).
 static RE_OPENER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?im)^[ \t]*(certainly|sure|absolutely|of course|great question|excellent question)[!,.]|^[ \t]*(you'?re absolutely right|that'?s an excellent (?:point|question)|happy to help)\b").unwrap()
+    Regex::new(r"(?im)^[ \t]*(certainly|sure|absolutely|of course|great question|excellent question)[!,.]|^[ \t]*(you'?re absolutely right|that'?s an excellent (?:point|question)|happy to help)(?-u:\b)").unwrap()
 });
 
 /// Group D (closers). END-OF-LINE/end-of-paragraph anchor: "feel free to reach out to a
 /// maintainer" mid-sentence is normal CONTRIBUTING-doc prose; only the chat-closer form --
 /// the phrase trailing off the end of the line -- is residue.
 static RE_CLOSER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?im)\b(i hope this helps|hope this helps|let me know if you (need|have|'?d like)|feel free to (reach out|ask)|don'?t hesitate to ask|would you like me to|is there anything else)\b(?:[!.]|\s*$)").unwrap()
+    Regex::new(r"(?im)(?-u:\b)(i hope this helps|hope this helps|let me know if you (need|have|'?d like)|feel free to (reach out|ask)|don'?t hesitate to ask|would you like me to|is there anything else)(?-u:\b)(?:[!.]|\s*$)").unwrap()
 });
 
 /// Scope: headings in scope, frontmatter in scope, URLs/link text in scope -- only code (already

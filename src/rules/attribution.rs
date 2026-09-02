@@ -17,7 +17,7 @@ pub static RULE: RuleDef = RuleDef {
 
 static RE_TOOL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)(generated|written|created|authored|suggested)\s+(by|with|using)\s+(chat\s?gpt|gpt-?[345o]?|copilot|claude(\s+code)?|gemini|codex|cursor|bard|llm)\b",
+        r"(?i)(generated|written|created|authored|suggested)\s+(by|with|using)\s+(chat\s?gpt|gpt-?[345o]?|copilot|claude(\s+code)?|gemini|codex|cursor|bard|llm)(?-u:\b)",
     )
     .unwrap()
 });

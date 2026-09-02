@@ -36,7 +36,7 @@ const FILLER_HEADINGS: &[&str] = &[
 /// (b) Body phrase: a vague "faces/remains several/numerous/many challenges" hand-wave, plus
 /// the bare "despite these challenges".
 static FILLER_BODY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(despite these challenges|despite (?:its|these|the) [^.\n]{0,40}?(?:faces?|remains?) (?:several|numerous|many|a number of) (?:challenges|obstacles|hurdles|limitations))\b")
+    Regex::new(r"(?i)(?-u:\b)(despite these challenges|despite (?:its|these|the) [^.\n]{0,40}?(?:faces?|remains?) (?:several|numerous|many|a number of) (?:challenges|obstacles|hurdles|limitations))(?-u:\b)")
         .unwrap()
 });
 

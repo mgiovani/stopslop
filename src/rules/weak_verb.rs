@@ -22,7 +22,7 @@ pub static RULE: RuleDef = RuleDef {
 /// a sentence with a hollow verb phrase is a smell regardless of whether a number shows up
 /// nearby.
 static WEAK_VERB_PHRASE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:made|make) a decision\b|\bhas the ability to\b|\bhave the ability to\b|\bhas the capability to\b|\bis able to\b|\bare able to\b|\bprovides support for\b|\bconducted an analysis\b|\bperformed an evaluation\b|\bgives consideration to\b|\bgive consideration to\b|\btake into consideration\b|\bmake an assessment\b|\bin a timely manner\b|\bon a regular basis\b|\bat this point in time\b|\bdue to the fact that\b|\bfor the purpose of\b")
+    Regex::new(r"(?i)(?-u:\b)(?:made|make) a decision(?-u:\b)|(?-u:\b)has the ability to(?-u:\b)|(?-u:\b)have the ability to(?-u:\b)|(?-u:\b)has the capability to(?-u:\b)|(?-u:\b)is able to(?-u:\b)|(?-u:\b)are able to(?-u:\b)|(?-u:\b)provides support for(?-u:\b)|(?-u:\b)conducted an analysis(?-u:\b)|(?-u:\b)performed an evaluation(?-u:\b)|(?-u:\b)gives consideration to(?-u:\b)|(?-u:\b)give consideration to(?-u:\b)|(?-u:\b)take into consideration(?-u:\b)|(?-u:\b)make an assessment(?-u:\b)|(?-u:\b)in a timely manner(?-u:\b)|(?-u:\b)on a regular basis(?-u:\b)|(?-u:\b)at this point in time(?-u:\b)|(?-u:\b)due to the fact that(?-u:\b)|(?-u:\b)for the purpose of(?-u:\b)")
         .unwrap()
 });
 
@@ -32,7 +32,7 @@ static WEAK_VERB_PHRASE_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// Digit-gated per LINE at the call site: a concrete number on the same line means the writer
 /// actually measured the thing.
 static VAGUE_QUANTIFIER_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:significantly|substantially|dramatically|vastly|greatly|considerably|markedly) (?:improves?|improved|increases?|reduces?|faster|better|more|higher|lower)\b|\b(?:improves?|improved|increases?|reduces?|faster|better|more|higher|lower) (?:significantly|substantially|dramatically|vastly|greatly|considerably|markedly)\b|\ba wide range of\b|\ba variety of\b|\bnumerous\b|\bcountless\b")
+    Regex::new(r"(?i)(?-u:\b)(?:significantly|substantially|dramatically|vastly|greatly|considerably|markedly) (?:improves?|improved|increases?|reduces?|faster|better|more|higher|lower)(?-u:\b)|(?-u:\b)(?:improves?|improved|increases?|reduces?|faster|better|more|higher|lower) (?:significantly|substantially|dramatically|vastly|greatly|considerably|markedly)(?-u:\b)|(?-u:\b)a wide range of(?-u:\b)|(?-u:\b)a variety of(?-u:\b)|(?-u:\b)numerous(?-u:\b)|(?-u:\b)countless(?-u:\b)")
         .unwrap()
 });
 

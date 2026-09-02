@@ -24,20 +24,6 @@ static WORD_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\S+").unwrap());
 // catching genuine run-ons.
 const OVERLONG_WORDS: usize = 50;
 
-/// (start, end) byte span per line of `masked`, end exclusive of the line's own trailing '\n'.
-fn line_spans(masked: &str) -> Vec<(usize, usize)> {
-    let mut spans = Vec::new();
-    let mut start = 0usize;
-    for (i, b) in masked.bytes().enumerate() {
-        if b == b'\n' {
-            spans.push((start, i));
-            start = i + 1;
-        }
-    }
-    spans.push((start, masked.len()));
-    spans
-}
-
 /// Lines that contribute no words at all and act as hard sentence boundaries: frontmatter,
 /// heading lines, and table rows (trimmed line starts with `|`).
 fn skip_lines(doc: &ProseDoc, spans: &[(usize, usize)]) -> HashSet<usize> {
@@ -72,8 +58,8 @@ fn marker_bytes(doc: &ProseDoc) -> HashSet<usize> {
 #[allow(unused_assignments)]
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
-    let spans = line_spans(&doc.masked);
-    let skip = skip_lines(doc, &spans);
+    let spans = &doc.line_spans;
+    let skip = skip_lines(doc, spans);
     let markers = marker_bytes(doc);
 
     let mut prev_line: Option<usize> = None;
@@ -125,19 +111,12 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 
         sentence_start.get_or_insert(byte);
 
-        let in_url = doc.in_url(byte);
-        let already_counted = in_url && last_url_span.is_some_and(|(s, e)| byte >= s && byte < e);
+        let url_span = doc.url_span_at(byte);
+        let already_counted = url_span.is_some() && url_span == last_url_span;
         if !already_counted {
             word_count += 1;
         }
-        last_url_span = if in_url {
-            doc.url_spans
-                .iter()
-                .find(|&&(s, e)| byte >= s && byte < e)
-                .copied()
-        } else {
-            None
-        };
+        last_url_span = url_span;
         prev_line = Some(line);
 
         if m.as_str().ends_with(['.', '!', '?']) {

@@ -20,7 +20,7 @@ pub static RULE: RuleDef = RuleDef {
 // art" and "best-in-class" are deliberately EXCLUDED: they belong to promo.rs (SLOP031)
 // instead, which already claims that exact span.
 static HYPHEN_COMPOUNDS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(third-party|cross-functional|client-facing|data-driven|decision-making|well-known|high-quality|real-time|long-term|short-term|end-to-end|future-proof|battle-tested|out-of-the-box|user-friendly|feature-rich|purpose-built|first-class|top-tier|full-fledged|next-level|world-class|mission-critical|enterprise-grade)\b")
+    Regex::new(r"(?i)(?-u:\b)(third-party|cross-functional|client-facing|data-driven|decision-making|well-known|high-quality|real-time|long-term|short-term|end-to-end|future-proof|battle-tested|out-of-the-box|user-friendly|feature-rich|purpose-built|first-class|top-tier|full-fledged|next-level|world-class|mission-critical|enterprise-grade)(?-u:\b)")
         .unwrap()
 });
 

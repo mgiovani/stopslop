@@ -21,7 +21,7 @@ pub static RULE: RuleDef = RuleDef {
 // comments look similar and each consumer resolves the position differently.
 static RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
-        r"(?im)^\s*(?://|#|\*+)\s*(certainly[!,]|sure[!,]|here'?s the (updated|revised|complete|new|fixed)|below is the (updated|complete|full)|as an ai\b|i hope this helps|step 1:|{REASONING_CHAIN_FRAGMENT})",
+        r"(?im)^\s*(?://|#|\*+)\s*(certainly[!,]|sure[!,]|here'?s the (updated|revised|complete|new|fixed)|below is the (updated|complete|full)|as an ai(?-u:\b)|i hope this helps|step 1:|{REASONING_CHAIN_FRAGMENT})",
     ))
     .unwrap()
 });

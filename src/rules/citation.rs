@@ -20,7 +20,7 @@ pub static RULE: RuleDef = RuleDef {
 /// Mechanical proof of an unedited paste -- case-sensitive where the catalog is distinctive
 /// about casing (no global `(?i)`: these tokens only ever appear in this exact shape).
 static RE_TOKENS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"turn\d+(search|view|news|forecast|image|product)\d+|:?contentReference\[oaicite:\s*\d+\]|\boai_citation\b|\[attached_file:\d+\]|\bgrok_card\b|\bgrok_render_citation_card_json\b|【\d+†[Ll]\d+(?:-L?\d+)?】|\[cite:\s*\d+(?:\s*,\s*\d+)*\]|utm_source=chatgpt\.com|:::writing|\battributableIndex\b").unwrap()
+    Regex::new(r"turn\d+(search|view|news|forecast|image|product)\d+|:?contentReference\[oaicite:\s*\d+\]|(?-u:\b)oai_citation(?-u:\b)|\[attached_file:\d+\]|(?-u:\b)grok_card(?-u:\b)|(?-u:\b)grok_render_citation_card_json(?-u:\b)|【\d+†[Ll]\d+(?:-L?\d+)?】|\[cite:\s*\d+(?:\s*,\s*\d+)*\]|utm_source=chatgpt\.com|:::writing|(?-u:\b)attributableIndex(?-u:\b)").unwrap()
 });
 
 /// Citation-count "+N" artifact (lower confidence, so require the repeated form or an
@@ -28,7 +28,7 @@ static RE_TOKENS: LazyLock<Regex> = LazyLock::new(|| {
 /// more capitalized-base "+digits" units chained back to back, or one such unit as the very
 /// last thing on the line.
 static RE_CITATION_COUNT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)\b[A-Z][A-Za-z.]{2,}\+\d+(?:[A-Z][A-Za-z.]{2,}\+\d+)+\b|\b[A-Z][A-Za-z.]{2,}\+\d+\s*$")
+    Regex::new(r"(?m)(?-u:\b)[A-Z][A-Za-z.]{2,}\+\d+(?:[A-Z][A-Za-z.]{2,}\+\d+)+(?-u:\b)|(?-u:\b)[A-Z][A-Za-z.]{2,}\+\d+\s*$")
         .unwrap()
 });
 

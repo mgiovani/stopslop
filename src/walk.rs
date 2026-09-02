@@ -96,6 +96,7 @@ pub fn lint_paths(
     roots: &[PathBuf],
     exclude: &[String],
     settings: &Settings,
+    threads: usize,
 ) -> anyhow::Result<(Vec<Diagnostic>, Stats)> {
     let cwd = std::env::current_dir()?;
     for root in roots {
@@ -114,6 +115,7 @@ pub fn lint_paths(
         builder.add(root);
     }
     builder.hidden(false).git_ignore(true).parents(true);
+    builder.threads(threads);
     if let Some(ov) = exclude_override(&cwd, exclude)? {
         builder.overrides(ov);
     }
@@ -180,10 +182,12 @@ mod tests {
             deps: None,
             custom_rules: Vec::new(),
         };
-        let once = lint_paths(std::slice::from_ref(&dir), &[], &settings)
+        let once = lint_paths(std::slice::from_ref(&dir), &[], &settings, 0)
             .unwrap()
             .0;
-        let twice = lint_paths(&[dir.clone(), dir], &[], &settings).unwrap().0;
+        let twice = lint_paths(&[dir.clone(), dir], &[], &settings, 0)
+            .unwrap()
+            .0;
         assert!(!once.is_empty(), "fixture dir should produce findings");
         assert_eq!(
             once.len(),
@@ -230,7 +234,7 @@ mod tests {
             deps: None,
             custom_rules: Vec::new(),
         };
-        let (_, stats) = lint_paths(std::slice::from_ref(&dir), &[], &settings).unwrap();
+        let (_, stats) = lint_paths(std::slice::from_ref(&dir), &[], &settings, 0).unwrap();
 
         let expected = go_files(&dir);
         let expected_lines: u64 = expected
@@ -260,7 +264,7 @@ mod tests {
 
         let (from_files, _) =
             lint_files(&files, &[], &settings, |p| std::fs::read_to_string(p)).unwrap();
-        let (from_paths, _) = lint_paths(std::slice::from_ref(&dir), &[], &settings).unwrap();
+        let (from_paths, _) = lint_paths(std::slice::from_ref(&dir), &[], &settings, 0).unwrap();
 
         assert!(
             !from_paths.is_empty(),
