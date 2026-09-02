@@ -111,7 +111,7 @@ mod tests {
         let ctx = LintContext {
             display_path: display_path.to_string(),
             source: src,
-            tree: None,
+            index: None,
             lang: Lang::Md,
             comments: &doc.ignore_comments,
             strings: &[],

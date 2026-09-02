@@ -38,12 +38,9 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 }
 
 fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if node.kind() != "catch_clause" {
-            return;
-        }
+    for node in ctx.nodes(&["catch_clause"]) {
         let Some(body) = node.child_by_field_name("body") else {
-            return;
+            continue;
         };
         let mut cursor = body.walk();
         let children: Vec<Node> = body.named_children(&mut cursor).collect();
@@ -61,7 +58,7 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
             let (line, col) = ctx.pos(&node);
             out.push(Diagnostic::at(rule, ctx, line, col, MSG));
         }
-    });
+    }
 }
 
 fn is_console_call_statement(ctx: &LintContext, stmt: &Node) -> bool {
@@ -81,12 +78,9 @@ fn is_console_call_statement(ctx: &LintContext, stmt: &Node) -> bool {
 }
 
 fn check_go(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if node.kind() != "if_statement" {
-            return;
-        }
+    for node in ctx.nodes(&["if_statement"]) {
         let Some(consequence) = node.child_by_field_name("consequence") else {
-            return;
+            continue;
         };
         // Header = "if [init;] cond" text, so a `recover()` in an initializer (the common
         // `if err := recover(); err != nil` shape) is seen even though it's outside `condition`.
@@ -94,7 +88,7 @@ fn check_go(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
         let is_err_check =
             header.contains("recover(") || (header.contains("err") && header.contains("!= nil"));
         if !is_err_check {
-            return;
+            continue;
         }
         // ponytail: err-name heuristic on raw header text; refine if it FPs.
         let mut cursor = consequence.walk();
@@ -105,25 +99,22 @@ fn check_go(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
             let (line, col) = ctx.pos(&node);
             out.push(Diagnostic::at(rule, ctx, line, col, MSG));
         }
-    });
+    }
 }
 
 fn check_rust(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if node.kind() != "match_arm" {
-            return;
-        }
+    for node in ctx.nodes(&["match_arm"]) {
         let Some(pattern) = node.child_by_field_name("pattern") else {
-            return;
+            continue;
         };
         if !ctx.node_text(&pattern).trim_start().starts_with("Err") {
-            return;
+            continue;
         }
         let Some(value) = node.child_by_field_name("value") else {
-            return;
+            continue;
         };
         if value.kind() != "block" {
-            return;
+            continue;
         }
         let mut cursor = value.walk();
         let children: Vec<Node> = value.named_children(&mut cursor).collect();
@@ -131,7 +122,7 @@ fn check_rust(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnosti
             .iter()
             .all(|c| c.kind() == "line_comment" || c.kind() == "block_comment");
         if !all_comments {
-            return; // has a real statement: recovery/logging with side effect beyond comments
+            continue; // has a real statement: recovery/logging with side effect beyond comments
         }
         let flagged = if children.is_empty() {
             true
@@ -142,7 +133,7 @@ fn check_rust(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnosti
             let (line, col) = ctx.pos(&node);
             out.push(Diagnostic::at(rule, ctx, line, col, MSG));
         }
-    });
+    }
 }
 
 #[cfg(test)]
@@ -156,11 +147,11 @@ mod tests {
         let mut parser = Parser::new();
         parser.set_language(&ts_language(lang)).unwrap();
         let tree = parser.parse(src, None).unwrap();
-        let (comments, strings) = context::extract(&tree, src, lang);
+        let (comments, strings, index) = context::extract(&tree, src, lang);
         let ctx = LintContext {
             display_path: "test".into(),
             source: src,
-            tree: Some(&tree),
+            index: Some(&index),
             lang,
             comments: &comments,
             strings: &strings,

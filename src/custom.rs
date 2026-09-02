@@ -211,7 +211,7 @@ mod tests {
         LintContext {
             display_path: path.to_string(),
             source: "",
-            tree: None,
+            index: None,
             lang: Lang::Md,
             comments: &doc.ignore_comments,
             strings: &[],

@@ -130,13 +130,13 @@ pub fn lint_file(
         }
     };
     // NOTE: a tree WITH error nodes is normal and expected (stray fences etc.) — DO NOT skip it.
-    let (comments, strings) = context::extract(&tree, source, lang);
+    let (comments, strings, index) = context::extract(&tree, source, lang);
     let is_test = paths::is_test_path(&display_path);
     let is_stub = display_path.ends_with(".pyi");
     let ctx = LintContext {
         display_path,
         source,
-        tree: Some(&tree),
+        index: Some(&index),
         lang,
         comments: &comments,
         strings: &strings,
@@ -169,7 +169,7 @@ pub fn lint_file(
 
 /// Prose langs (.md/.mdx/.txt/.rst) skip tree-sitter entirely: there is no grammar for them, and
 /// prose rules scan `ProseDoc::masked` (a byte-preserving fenced/inline-code-blanked stream) instead
-/// of an AST. `ctx.tree` stays `None`; `ctx.prose` is the only thing prose rules read.
+/// of an AST. `ctx.index` stays `None`; `ctx.prose` is the only thing prose rules read.
 fn lint_prose(
     display_path: String,
     source: &str,
@@ -181,7 +181,7 @@ fn lint_prose(
     let ctx = LintContext {
         display_path,
         source,
-        tree: None,
+        index: None,
         lang,
         comments: &doc.ignore_comments, // only used by suppress::apply; prose rules read ctx.prose
         strings: &[],
