@@ -211,7 +211,7 @@ fn lint_prose(
         index: None,
         lang,
         comments: &doc.ignore_comments, // only used by suppress::apply; prose rules read ctx.prose
-        strings: &[],
+        strings: &doc.attr_values,      // HTML attributes; empty for the Markdown family
         is_test_path: is_test,
         is_stub_file: false,
         deps: None,

@@ -76,6 +76,11 @@ pub struct ProseDoc<'a> {
     /// terminal punctuation and would otherwise read as one 60-word sentence. Empty for the
     /// Markdown family, whose paragraphs are blank-line delimited.
     pub block_starts: Vec<usize>,
+    /// Every HTML attribute that carries a value, as one `name="value"` TextNode each, so the
+    /// string-scanning rules see them the way they see a code lang's string literals through
+    /// `ctx.strings` (SLOP009 reads `alt="image"` and a placeholder-image host here). Empty for the
+    /// Markdown family.
+    pub attr_values: Vec<TextNode<'a>>,
     line_starts: Vec<usize>, // byte offset of each line start; for line_col
     /// (byte, col) of the last `line_col` answer. Rules ask in byte order, so the next answer on
     /// the same line counts chars from here rather than from the line start -- a 1.8 MB
@@ -139,6 +144,7 @@ impl<'a> ProseDoc<'a> {
             ignore_comments,
             line_spans,
             block_starts: Vec::new(),
+            attr_values: Vec::new(),
             line_starts,
             col_memo: Cell::new((0, 1)),
         }
@@ -180,6 +186,21 @@ impl<'a> ProseDoc<'a> {
         let url_spans = merge_overlapping(url_spans);
         let words = masked.split_whitespace().count();
         let ignore_comments = scan_ignore_comments(source, &masked, &line_starts);
+        let attr_values = scan
+            .attrs
+            .iter()
+            .map(|&(s, e)| {
+                let (line, col) = compute_line_col(&line_starts, source, s);
+                TextNode {
+                    text: &source[s..e],
+                    start_byte: s,
+                    end_byte: e,
+                    line,
+                    col,
+                    is_doc: false,
+                }
+            })
+            .collect();
 
         ProseDoc {
             masked,
@@ -192,6 +213,7 @@ impl<'a> ProseDoc<'a> {
             ignore_comments,
             line_spans,
             block_starts: scan.block_starts,
+            attr_values,
             line_starts,
             col_memo: Cell::new((0, 1)),
         }
@@ -780,6 +802,7 @@ struct HtmlScan {
     headings: Vec<(usize, usize, usize)>, // (level, element start, element end)
     url_spans: Vec<(usize, usize)>,
     block_starts: Vec<usize>,
+    attrs: Vec<(usize, usize)>, // whole `name="value"` spans
 }
 
 /// One pre-order pass restoring the visible bytes of `prepared` into `masked` and collecting
@@ -814,9 +837,12 @@ fn restore_html(root: Node, prepared: &str, masked: &mut [u8], scan: &mut HtmlSc
             true
         }
         "attribute" => {
-            if let Some((s, e)) = url_attribute_value(node, prepared) {
-                masked[s..e].copy_from_slice(&src[s..e]);
-                scan.url_spans.push((s, e));
+            if let Some((name, (s, e))) = attribute_parts(node, prepared) {
+                if name.eq_ignore_ascii_case("href") || name.eq_ignore_ascii_case("src") {
+                    masked[s..e].copy_from_slice(&src[s..e]);
+                    scan.url_spans.push((s, e));
+                }
+                scan.attrs.push((node.start_byte(), node.end_byte()));
             }
             true
         }
@@ -846,18 +872,16 @@ fn heading_level(tag: &str) -> Option<usize> {
     }
 }
 
-/// Byte range of the value when `attr` is `href` or `src`. The value is either bare or the
-/// aliased `attribute_value` inside `quoted_attribute_value`; `href=""` has neither.
-fn url_attribute_value(attr: Node, src: &str) -> Option<(usize, usize)> {
+/// The attribute's name and the byte range of its value, or None for a valueless attribute. The
+/// value is either bare or the aliased `attribute_value` inside `quoted_attribute_value`;
+/// `href=""` has neither.
+fn attribute_parts<'s>(attr: Node, src: &'s str) -> Option<(&'s str, (usize, usize))> {
     let mut cursor = attr.walk();
-    let mut is_url = false;
+    let mut name = "";
     let mut value = None;
     for child in attr.named_children(&mut cursor) {
         match child.kind() {
-            "attribute_name" => {
-                is_url = src[child.byte_range()].eq_ignore_ascii_case("href")
-                    || src[child.byte_range()].eq_ignore_ascii_case("src");
-            }
+            "attribute_name" => name = &src[child.byte_range()],
             "attribute_value" => value = Some(child.byte_range()),
             "quoted_attribute_value" => {
                 value = child
@@ -868,8 +892,7 @@ fn url_attribute_value(attr: Node, src: &str) -> Option<(usize, usize)> {
             _ => {}
         }
     }
-    let r = value.filter(|_| is_url)?;
-    Some((r.start, r.end))
+    value.map(|r| (name, (r.start, r.end)))
 }
 
 /// `Heading`s from `<h1>`..`<h6>` spans, keyed to the element's whole line span so the
@@ -1062,6 +1085,17 @@ mod tests {
         let doc = ProseDoc::parse_html("<a href=\"\">x</a> <a href>y</a> <a href=z>w</a>\n");
         assert_eq!(doc.url_spans.len(), 1);
         assert!(doc.masked.contains('z'));
+    }
+
+    #[test]
+    fn html_attribute_values_become_strings() {
+        let src = "<p>\n<img src=\"a.png\" alt='cover' hidden data-x=bare>\n</p>\n";
+        let doc = ProseDoc::parse_html(src);
+        let texts: Vec<&str> = doc.attr_values.iter().map(|a| a.text).collect();
+        assert_eq!(texts, ["src=\"a.png\"", "alt='cover'", "data-x=bare"]);
+        assert_eq!((doc.attr_values[1].line, doc.attr_values[1].col), (2, 18));
+        assert!(doc.attr_values.iter().all(|a| !a.is_doc));
+        assert!(ProseDoc::parse("[x](a.png)\n").attr_values.is_empty());
     }
 
     #[test]
