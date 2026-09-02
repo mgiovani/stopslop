@@ -20,17 +20,14 @@ static LOG_CALL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(print|log)$|^logging\.").unwrap());
 
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if node.kind() != "except_clause" {
-            return;
-        }
+    for node in ctx.nodes(&["except_clause"]) {
         let bare = node.child_by_field_name("value").is_none();
         let mut cursor = node.walk();
         let Some(body) = node
             .named_children(&mut cursor)
             .find(|c| c.kind() == "block")
         else {
-            return;
+            continue;
         };
         let mut body_cursor = body.walk();
         let statements: Vec<Node> = body
@@ -48,7 +45,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             let (line, col) = ctx.pos(&node);
             out.push(Diagnostic::at(rule, ctx, line, col, msg));
         }
-    });
+    }
 }
 
 fn is_swallow_statement(ctx: &LintContext, stmt: &Node) -> bool {
@@ -78,11 +75,11 @@ mod tests {
         let mut parser = Parser::new();
         parser.set_language(&ts_language(Lang::Python)).unwrap();
         let tree = parser.parse(src, None).unwrap();
-        let (comments, strings) = context::extract(&tree, src, Lang::Python);
+        let (comments, strings, index) = context::extract(&tree, src, Lang::Python);
         let ctx = LintContext {
             display_path: "test".into(),
             source: src,
-            tree: Some(&tree),
+            index: Some(&index),
             lang: Lang::Python,
             comments: &comments,
             strings: &strings,
@@ -123,5 +120,15 @@ mod tests {
             run("try:\n    f()\nexcept Exception:\n    raise\n").len(),
             0
         );
+    }
+
+    /// A first except with a real statement (not flagged), then a swallowing except: a
+    /// `continue` mistakenly turned into `return` would drop the second except too.
+    #[test]
+    fn first_except_not_flagged_second_except_still_flagged() {
+        let src = "try:\n    f()\nexcept ValueError:\n    handle(e)\nexcept Exception:\n    pass\n";
+        let diags = run(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 5);
     }
 }

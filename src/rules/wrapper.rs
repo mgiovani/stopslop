@@ -91,11 +91,12 @@ fn try_flag(
 // --- TypeScript / TSX ---
 
 fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| match node.kind() {
-        "function_declaration" => check_ts_function_declaration(rule, ctx, node, out),
-        "arrow_function" => check_ts_arrow(rule, ctx, node, out),
-        _ => {}
-    });
+    for node in ctx.nodes(&["function_declaration"]) {
+        check_ts_function_declaration(rule, ctx, node, out);
+    }
+    for node in ctx.nodes(&["arrow_function"]) {
+        check_ts_arrow(rule, ctx, node, out);
+    }
 }
 
 fn check_ts_function_declaration(
@@ -206,34 +207,31 @@ fn ts_sole_return_call(body: Node) -> Option<Node> {
 // --- Python ---
 
 fn check_python(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if node.kind() != "function_definition" {
-            return;
-        }
+    for node in ctx.nodes(&["function_definition"]) {
         if node
             .parent()
             .is_some_and(|p| p.kind() == "decorated_definition")
         {
-            return; // decorated forwarder is doing something
+            continue; // decorated forwarder is doing something
         }
         let Some(name_node) = node.child_by_field_name("name") else {
-            return;
+            continue;
         };
         let Some(params_node) = node.child_by_field_name("parameters") else {
-            return;
+            continue;
         };
         let Some(body_node) = node.child_by_field_name("body") else {
-            return;
+            continue;
         };
         let wrapper_name = ctx.node_text(&name_node);
         let Some(params) = python_params(ctx, params_node) else {
-            return;
+            continue;
         };
         let Some(call) = python_sole_return_call(body_node) else {
-            return;
+            continue;
         };
         try_flag(rule, ctx, node, wrapper_name, &params, call, out);
-    });
+    }
 }
 
 fn python_params<'a>(ctx: &LintContext<'a>, params_node: Node<'a>) -> Option<Vec<&'a str>> {
@@ -268,28 +266,25 @@ fn python_sole_return_call(body: Node) -> Option<Node> {
 // --- Go ---
 
 fn check_go(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if node.kind() != "function_declaration" {
-            return;
-        }
+    for node in ctx.nodes(&["function_declaration"]) {
         let Some(name_node) = node.child_by_field_name("name") else {
-            return;
+            continue;
         };
         let Some(params_node) = node.child_by_field_name("parameters") else {
-            return;
+            continue;
         };
         let Some(body_node) = node.child_by_field_name("body") else {
-            return;
+            continue;
         };
         let wrapper_name = ctx.node_text(&name_node);
         let Some(params) = go_params(ctx, params_node) else {
-            return;
+            continue;
         };
         let Some(call) = go_sole_return_call(body_node) else {
-            return;
+            continue;
         };
         try_flag(rule, ctx, node, wrapper_name, &params, call, out);
-    });
+    }
 }
 
 fn go_params<'a>(ctx: &LintContext<'a>, params_node: Node<'a>) -> Option<Vec<&'a str>> {
@@ -333,31 +328,28 @@ fn go_sole_return_call(body: Node) -> Option<Node> {
 // --- Rust ---
 
 fn check_rust(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    ctx.walk(|node| {
-        if node.kind() != "function_item" {
-            return;
-        }
+    for node in ctx.nodes(&["function_item"]) {
         if has_attribute(node) {
-            return; // attribute macro other than visibility: doing something
+            continue; // attribute macro other than visibility: doing something
         }
         let Some(name_node) = node.child_by_field_name("name") else {
-            return;
+            continue;
         };
         let Some(params_node) = node.child_by_field_name("parameters") else {
-            return;
+            continue;
         };
         let Some(body_node) = node.child_by_field_name("body") else {
-            return;
+            continue;
         };
         let wrapper_name = ctx.node_text(&name_node);
         let Some(params) = rust_params(ctx, params_node) else {
-            return;
+            continue;
         };
         let Some(call) = rust_sole_return_call(body_node) else {
-            return;
+            continue;
         };
         try_flag(rule, ctx, node, wrapper_name, &params, call, out);
-    });
+    }
 }
 
 /// A preceding `attribute_item` sibling (`#[...]`) directly on this function -- `pub`/
@@ -417,11 +409,11 @@ mod tests {
         let mut p = Parser::new();
         p.set_language(&crate::lang::ts_language(lang)).unwrap();
         let tree = p.parse(src, None).unwrap();
-        let (comments, strings) = context::extract(&tree, src, lang);
+        let (comments, strings, index) = context::extract(&tree, src, lang);
         let ctx = LintContext {
             display_path: "t".into(),
             source: src,
-            tree: Some(&tree),
+            index: Some(&index),
             lang,
             comments: &comments,
             strings: &strings,
@@ -514,6 +506,17 @@ mod tests {
     fn python_star_args_clean() {
         let src = "def f(*args, **kwargs):\n    return g(*args, **kwargs)\n";
         assert_eq!(lint(Lang::Python, src).len(), 0);
+    }
+
+    /// A first def that fails the sole-return-call guard, then a real forwarder: a `continue`
+    /// mistakenly turned into `return` would drop the second def too.
+    #[test]
+    fn python_first_def_fails_guard_second_still_flagged() {
+        let src =
+            "def helper(a):\n    x = a + 1\n    return x\n\ndef wrap(a, b):\n    return g(a, b)\n";
+        let diags = lint(Lang::Python, src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 5);
     }
 
     // --- Go ---

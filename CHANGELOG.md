@@ -25,6 +25,15 @@ migration notes live here.
   staged-plus-unstaged changes against `HEAD`, or everything since the merge
   base with `REF`. Positional paths act as git pathspecs.
 
+### Changed
+
+- **AST rules no longer re-walk the tree.** Every source file used to get one
+  full tree traversal per rule call site (up to 11 for a TypeScript file with
+  all rules on); `extract` now indexes every named node by kind in its single
+  pass and rules query that index. Diagnostics are unchanged. Library:
+  `LintContext.tree` is now `index` and `context::extract` returns the index
+  as a third element.
+
 ### Fixed
 
 - **SLOP017** counted any comma series of three-or-more items, including the
