@@ -75,6 +75,9 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         .chain(
             QUESTION_ANSWER
                 .captures_iter(&doc.masked)
+                // A minified page is one line, so a FAQ `<button>Q?</button><p>Sim.</p>` would
+                // read as self-answered; the answer has to sit in the question's own block.
+                .filter(|c| !doc.block_initial(c.get(2).unwrap().start()))
                 .map(|c| c.get(1).unwrap().start()),
         )
         .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte));
@@ -99,12 +102,29 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        let doc = ProseDoc::parse(src);
+        diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
+    }
+
+    fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
+        diagnostics_in(ProseDoc::parse_html(src), src, Lang::Html)
+    }
+
+    #[test]
+    fn html_faq_answer_in_the_next_block_is_not_self_answered() {
+        let faq = "<div><button><span>Does it work offline?</span></button><div><p>Yes. Every note syncs when you are back online.</p></div></div>\n";
+        assert!(diagnostics_for_html(faq).is_empty());
+        assert_eq!(
+            diagnostics_for_html("<p>Does it work offline? Yes.</p>\n").len(),
+            1
+        );
+    }
+
+    fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
             index: None,
-            lang: Lang::Md,
+            lang,
             comments: &doc.ignore_comments,
             strings: &[],
             is_test_path: false,

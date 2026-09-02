@@ -131,6 +131,13 @@ migration notes live here.
 
 ### Fixed
 
+- **SLOP009** matched `YOUR_` case-insensitively anywhere in a string, so a
+  real image path such as `Leave_Your_Dog_at_Home.png` in an HTML `src` was a
+  Tier A finding. The placeholder shape now has to start a token.
+- **SLOP022** read a FAQ accordion on a minified one-line page
+  (`<button>Question?</button><div><p>Yes.</p>`) as a self-answered question.
+  The answer now has to sit in the question's own block. Found on a corpus of
+  generated landing pages, where it was 236 of 246 findings.
 - **SLOP018** treated every line-initial dash as attribution only when the
   line above it was blank or a blockquote marker, so the second and later
   lines of a multi-line dialogue run (each opening with its own attribution
