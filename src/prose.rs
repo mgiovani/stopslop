@@ -766,17 +766,13 @@ static TEMPLATE_RE: LazyLock<regex::bytes::Regex> = LazyLock::new(|| {
 fn blank_template_syntax(source: &str) -> String {
     let mut bytes = source.as_bytes().to_vec();
     for m in TEMPLATE_RE.find_iter(source.as_bytes()) {
-        blank_keeping_newlines(&mut bytes[m.range()]);
-    }
-    String::from_utf8(bytes).expect("matches start and end on ASCII delimiters")
-}
-
-fn blank_keeping_newlines(bytes: &mut [u8]) {
-    for b in bytes {
-        if *b != b'\n' {
-            *b = b' ';
+        for b in &mut bytes[m.range()] {
+            if *b != b'\n' {
+                *b = b' ';
+            }
         }
     }
+    String::from_utf8(bytes).expect("matches start and end on ASCII delimiters")
 }
 
 #[derive(Default)]
@@ -796,14 +792,14 @@ fn restore_html(root: Node, prepared: &str, masked: &mut [u8], scan: &mut HtmlSc
     crate::context::walk_tree(&mut cursor, &mut |node| match node.kind() {
         "element" | "script_element" | "style_element" => {
             let tag = tag_name(node, prepared);
-            if let Some(level) = heading_level(&tag) {
+            if let Some(level) = heading_level(tag) {
                 scan.headings
                     .push((level, node.start_byte(), node.end_byte()));
             }
-            if !INLINE_TAGS.contains(&tag.as_str()) {
+            if !has_tag(INLINE_TAGS, tag) {
                 scan.block_starts.push(node.start_byte());
             }
-            !SKIP_TAGS.contains(&tag.as_str())
+            !has_tag(SKIP_TAGS, tag)
         }
         "text" => {
             if !node.parent().is_some_and(|p| p.is_error()) {
@@ -828,20 +824,24 @@ fn restore_html(root: Node, prepared: &str, masked: &mut [u8], scan: &mut HtmlSc
     });
 }
 
-fn tag_name(element: Node, src: &str) -> String {
+fn tag_name<'s>(element: Node, src: &'s str) -> &'s str {
     let mut cursor = element.walk();
     let tag = element
         .children(&mut cursor)
         .find(|c| matches!(c.kind(), "start_tag" | "self_closing_tag"));
     tag.and_then(|tag| tag.named_child(0))
         .filter(|n| n.kind() == "tag_name")
-        .map(|n| src[n.byte_range()].to_ascii_lowercase())
+        .map(|n| &src[n.byte_range()])
         .unwrap_or_default()
+}
+
+fn has_tag(set: &[&str], tag: &str) -> bool {
+    set.iter().any(|t| t.eq_ignore_ascii_case(tag))
 }
 
 fn heading_level(tag: &str) -> Option<usize> {
     match tag.as_bytes() {
-        [b'h', d @ b'1'..=b'6'] => Some(usize::from(d - b'0')),
+        [b'h' | b'H', d @ b'1'..=b'6'] => Some(usize::from(d - b'0')),
         _ => None,
     }
 }
@@ -1015,7 +1015,7 @@ mod tests {
 
     #[test]
     fn html_template_syntax_blanked_before_the_parse() {
-        let src = "<p>{{ user.name }} has {% if a < b %}few{% else %}many{% endif %} items {# note #}</p>\n\
+        let src = "<p>{{ user.café }} has {% if a < b %}few{% else %}many{% endif %} items {# nöte #}</p>\n\
                    <p>next</p>\n";
         let doc = ProseDoc::parse_html(src);
         assert_eq!(doc.masked.len(), src.len());
@@ -1043,6 +1043,25 @@ mod tests {
         let line3 = src.find("<p>").unwrap();
         assert!(doc.in_heading(line2) && doc.in_heading(line2 + 5));
         assert!(!doc.in_heading(line3));
+    }
+
+    #[test]
+    fn html_only_h1_to_h6_are_headings() {
+        let doc = ProseDoc::parse_html(
+            "<html><body><hr><h7>x</h7><header>y</header><H2>Z</H2></body></html>\n",
+        );
+        assert_eq!(doc.headings.len(), 1);
+        assert_eq!(
+            (doc.headings[0].level, doc.headings[0].text.as_str()),
+            (2, "Z")
+        );
+    }
+
+    #[test]
+    fn html_empty_or_valueless_href_has_no_url_span() {
+        let doc = ProseDoc::parse_html("<a href=\"\">x</a> <a href>y</a> <a href=z>w</a>\n");
+        assert_eq!(doc.url_spans.len(), 1);
+        assert!(doc.masked.contains('z'));
     }
 
     #[test]

@@ -106,30 +106,26 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         .filter(|m| !structural_ends.contains(&m.end()) && !doc.block_initial(m.start()))
         .map(|m| m.start())
         .collect();
-    let ack_bytes: Vec<usize> = fragmentation::paragraph_blocks(doc)
-        .iter()
-        .filter(|b| RE_ACK_LOOP.is_match(&b.text))
-        .map(|b| b.first_byte)
-        .collect();
     // HTML has no blank-line paragraphs; there "paragraph-initial" means opening a block element.
-    let html_ack_bytes: Vec<usize> = doc
-        .block_starts
-        .iter()
-        .filter_map(|&bs| {
-            let rest = &doc.masked[bs..];
-            let trimmed = rest.trim_start();
-            RE_ACK_LOOP
-                .is_match(trimmed)
-                .then(|| bs + (rest.len() - trimmed.len()))
-        })
-        .collect();
-    let by_line = first_byte_per_line(
-        doc,
-        re_bytes
-            .chain(ack_bytes)
-            .chain(html_ack_bytes)
-            .chain(step_bytes),
-    );
+    let ack_bytes: Vec<usize> = if doc.block_starts.is_empty() {
+        fragmentation::paragraph_blocks(doc)
+            .iter()
+            .filter(|b| RE_ACK_LOOP.is_match(&b.text))
+            .map(|b| b.first_byte)
+            .collect()
+    } else {
+        doc.block_starts
+            .iter()
+            .filter_map(|&bs| {
+                let rest = &doc.masked[bs..];
+                let trimmed = rest.trim_start();
+                RE_ACK_LOOP
+                    .is_match(trimmed)
+                    .then(|| bs + (rest.len() - trimmed.len()))
+            })
+            .collect()
+    };
+    let by_line = first_byte_per_line(doc, re_bytes.chain(ack_bytes).chain(step_bytes));
     for &byte in by_line.values() {
         let (line, col) = doc.line_col(byte);
         out.push(Diagnostic::at_fix(
@@ -150,14 +146,14 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        lint(ProseDoc::parse(src), src, Lang::Md)
+        diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
     }
 
     fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
-        lint(ProseDoc::parse_html(src), src, Lang::Html)
+        diagnostics_in(ProseDoc::parse_html(src), src, Lang::Html)
     }
 
-    fn lint<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
+    fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,

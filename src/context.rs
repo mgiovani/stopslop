@@ -308,4 +308,26 @@ mod tests {
         });
         assert!(visited > 20_000, "visited {visited} nodes");
     }
+
+    #[test]
+    fn walk_tree_skips_children_when_told_not_to_descend() {
+        let src = "function f() { return [1, [2, [3]]]; }\n";
+        let mut p = Parser::new();
+        p.set_language(&crate::lang::ts_language(Lang::Ts)).unwrap();
+        let tree = p.parse(src, None).unwrap();
+        let mut seen_array = false;
+        let mut inside_array = 0usize;
+        walk_tree(&mut tree.walk(), &mut |n| {
+            if n.kind() == "array" {
+                seen_array = true;
+                return false;
+            }
+            if n.kind() == "number" {
+                inside_array += 1;
+            }
+            true
+        });
+        assert!(seen_array);
+        assert_eq!(inside_array, 0);
+    }
 }

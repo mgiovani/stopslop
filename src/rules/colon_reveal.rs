@@ -84,14 +84,14 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        lint(ProseDoc::parse(src), src, Lang::Md)
+        diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
     }
 
     fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
-        lint(ProseDoc::parse_html(src), src, Lang::Html)
+        diagnostics_in(ProseDoc::parse_html(src), src, Lang::Html)
     }
 
-    fn lint<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
+    fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
@@ -108,6 +108,11 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    #[test]
+    fn indented_markdown_line_still_opens_a_sentence() {
+        assert_eq!(diagnostics_for("   The best part: it learns.\n").len(), 1);
     }
 
     #[test]

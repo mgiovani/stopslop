@@ -103,9 +103,9 @@ migration notes live here.
   pass and rules query that index. Diagnostics are unchanged. Library:
   `LintContext.tree` is now `index` and `context::extract` returns the index
   as a third element.
-- **SLOP026** now also matches a colon reveal that opens a line with 1-3
-  leading spaces instead of only a line-initial one; this also catches the
-  shape in indented Markdown lines.
+- **SLOP026** now also matches a colon reveal that opens a line after leading
+  whitespace, since a blanked HTML tag always leaves some; an indented
+  Markdown continuation line that starts the shape is caught the same way.
 - HTML-specific rule behavior: **SLOP033** closes a sentence at every HTML
   block element, so a `<select>` of sixty `<option>`s doesn't read as one
   60-word sentence; **SLOP011** treats a `Step N:` that opens a heading or
