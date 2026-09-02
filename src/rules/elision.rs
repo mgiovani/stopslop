@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::CODE_LANGS;
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::sync::LazyLock;
@@ -9,7 +9,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP001",
     name: "Elision / \"rest unchanged\" comment",
     tier: Tier::A,
-    langs: &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust],
+    langs: CODE_LANGS,
     default_on: true,
     path_gated: false,
     check,

@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::PROSE_LANGS;
 use crate::prose::{first_byte_per_line, ProseDoc};
 use crate::registry::RuleDef;
 use regex::Regex;
@@ -11,7 +11,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP036",
     name: "Diff-anchored documentation",
     tier: Tier::B,
-    langs: &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst],
+    langs: PROSE_LANGS,
     default_on: true,
     path_gated: false,
     check,
@@ -104,6 +104,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lang::Lang;
     use crate::prose::ProseDoc;
 
     fn diagnostics_for_path(src: &str, display_path: &str) -> Vec<Diagnostic> {

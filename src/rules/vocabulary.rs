@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::PROSE_LANGS;
 use crate::prose_words::{VOCAB_TIER1, VOCAB_TIER2};
 use crate::registry::RuleDef;
 use std::collections::HashMap;
@@ -9,7 +9,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP016",
     name: "Overused-vocabulary density",
     tier: Tier::B,
-    langs: &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst],
+    langs: PROSE_LANGS,
     default_on: true,
     path_gated: false,
     check,
@@ -150,6 +150,7 @@ fn replacement_fix<'a>(matched_lemmas: impl Iterator<Item = &'a String>) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lang::Lang;
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {

@@ -1,6 +1,6 @@
 use crate::context::{self, LintContext};
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::{Lang, CODE_LANGS};
 use crate::registry::RuleDef;
 use crate::suppress::comment_body;
 use regex::Regex;
@@ -12,7 +12,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP042",
     name: "Comment that restates the code",
     tier: Tier::B,
-    langs: &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust],
+    langs: CODE_LANGS,
     default_on: true,
     path_gated: true,
     check,

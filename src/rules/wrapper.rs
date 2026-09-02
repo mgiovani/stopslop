@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::{Lang, CODE_LANGS};
 use crate::registry::RuleDef;
 use tree_sitter::Node;
 
@@ -8,7 +8,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP039",
     name: "Pass-through wrapper function",
     tier: Tier::B,
-    langs: &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust],
+    langs: CODE_LANGS,
     default_on: true,
     path_gated: true,
     check,

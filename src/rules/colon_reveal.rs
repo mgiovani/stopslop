@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::PROSE_LANGS;
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::sync::LazyLock;
@@ -9,7 +9,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP026",
     name: "Dramatic colon reveal",
     tier: Tier::B,
-    langs: &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst],
+    langs: PROSE_LANGS,
     default_on: true,
     path_gated: false,
     check,
@@ -78,6 +78,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lang::Lang;
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {

@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::Lang;
+use crate::lang::PROSE_LANGS;
 use crate::prose::ProseDoc;
 use crate::prose_words::{CLAUSE_MARKER, NEGATIVE_PARALLELISM, RULE_OF_THREE, TRAILING_PARTICIPLE};
 use crate::registry::RuleDef;
@@ -10,7 +10,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP017",
     name: "Rhetorical parallelism / false-depth scaffolding density",
     tier: Tier::B,
-    langs: &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst],
+    langs: PROSE_LANGS,
     default_on: true,
     path_gated: false,
     check,
@@ -166,6 +166,7 @@ fn is_rhetorical_tricolon(masked: &str, range: std::ops::Range<usize>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lang::Lang;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
         let doc = ProseDoc::parse(src);

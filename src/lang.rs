@@ -1,7 +1,7 @@
 use std::path::Path;
 use tree_sitter::Language;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Lang {
     Ts,
     Tsx,
@@ -13,6 +13,9 @@ pub enum Lang {
     Txt,
     Rst,
 }
+
+pub const CODE_LANGS: &[Lang] = &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust];
+pub const PROSE_LANGS: &[Lang] = &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst];
 
 impl Lang {
     pub fn from_path(p: &Path) -> Option<Lang> {
