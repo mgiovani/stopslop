@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+<title>{{ item.title|title }}</title>
+</head>
+<body>
+{% block content %}
+{# a template comment #}
+<h1>{{ item.title|title }}</h1>
+<img src="{% static 'img/logo.png' %}" alt="Cover">
+<p><a href="{% url 'detail' item.pk %}">Read more</a></p>
+{% if a < b %}
+<p>Showing the smaller value first.</p>
+{% endif %}
+<ul>
+{% for item in items %}
+<li>{{ item.title|title }}</li>
+{% endfor %}
+</ul>
+{% endblock %}
+</body>
+</html>
