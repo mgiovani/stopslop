@@ -83,7 +83,7 @@ impl<'a> ProseDoc<'a> {
 
         let is_fenced_line: Vec<bool> = line_spans
             .iter()
-            .map(|&(ls, _)| fence_ranges.iter().any(|&(s, e)| ls >= s && ls < e))
+            .map(|&(ls, _)| span_contains(&fence_ranges, ls))
             .collect();
         let is_fm_line: Vec<bool> = line_spans
             .iter()
@@ -165,16 +165,34 @@ impl<'a> ProseDoc<'a> {
     }
 
     /// True if `byte` falls on any heading line (byte in [h.byte_start, h.byte_end]).
+    /// `headings` is built in line order, one per line, so it is sorted and disjoint; SLOP033
+    /// asks once per line, and a linear scan here made it O(lines x headings) (issue #21).
     pub fn in_heading(&self, byte: usize) -> bool {
-        self.headings
-            .iter()
-            .any(|h| byte >= h.byte_start && byte <= h.byte_end)
+        let idx = self.headings.partition_point(|h| h.byte_start <= byte);
+        idx > 0 && byte <= self.headings[idx - 1].byte_end
     }
 
     /// True if `byte` falls inside any URL / link-target span.
     pub fn in_url(&self, byte: usize) -> bool {
-        self.url_spans.iter().any(|&(s, e)| byte >= s && byte < e)
+        self.url_span_at(byte).is_some()
     }
+
+    /// The URL/link-target span containing `byte`, if any. Binary search: `url_spans` is sorted
+    /// by start and merged disjoint at construction time (`scan_url_spans`), so at most one span
+    /// can contain a given byte -- same `partition_point` idiom as `in_heading`.
+    pub fn url_span_at(&self, byte: usize) -> Option<(usize, usize)> {
+        let idx = self.url_spans.partition_point(|&(s, _)| s <= byte);
+        (idx > 0)
+            .then(|| self.url_spans[idx - 1])
+            .filter(|&(_, e)| byte < e)
+    }
+}
+
+/// True if `byte` falls in `[s, e)` for some span in `spans`, which must be sorted by start and
+/// non-overlapping (so at most one candidate exists: the last span whose start is <= byte).
+fn span_contains(spans: &[(usize, usize)], byte: usize) -> bool {
+    let idx = spans.partition_point(|&(s, _)| s <= byte);
+    idx > 0 && byte < spans[idx - 1].1
 }
 
 /// Dedupes an iterator of byte offsets down to the first (leftmost) byte per line — the "one
@@ -613,8 +631,9 @@ static REF_DEF_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\s*\[[^\]]+\]:\s*(\S+)").unwrap());
 static BARE_URL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://[^\s)>\]]+").unwrap());
 
-/// Byte spans of autolinks, inline-link targets, reference-definition targets, and bare URLs.
-/// Overlap is fine; `in_url` just checks membership.
+/// Byte spans of autolinks, inline-link targets, reference-definition targets, and bare URLs,
+/// sorted and merged so `url_span_at` can binary-search: the four regexes overlap on a link
+/// target that is itself a bare URL.
 fn scan_url_spans(masked: &str) -> Vec<(usize, usize)> {
     let mut spans = Vec::new();
     for re in [&AUTOLINK_RE, &LINK_TARGET_RE, &REF_DEF_RE] {
@@ -626,7 +645,20 @@ fn scan_url_spans(masked: &str) -> Vec<(usize, usize)> {
     for m in BARE_URL_RE.find_iter(masked) {
         spans.push((m.start(), m.end()));
     }
-    spans
+    spans.sort_unstable_by_key(|&(s, _)| s);
+    merge_overlapping(spans)
+}
+
+/// Merges a start-sorted list of possibly-overlapping spans into a disjoint, start-sorted list.
+fn merge_overlapping(spans: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    let mut out: Vec<(usize, usize)> = Vec::with_capacity(spans.len());
+    for (s, e) in spans {
+        match out.last_mut() {
+            Some((_, last_e)) if s <= *last_e => *last_e = (*last_e).max(e),
+            _ => out.push((s, e)),
+        }
+    }
+    out
 }
 
 static IGNORE_COMMENT_RE: LazyLock<Regex> =
@@ -804,5 +836,83 @@ mod tests {
     fn real_ignore_comment_outside_code_is_still_recognized() {
         let doc = ProseDoc::parse("Body text. <!-- ai-slop-ignore -->\nMore text.\n");
         assert_eq!(doc.ignore_comments.len(), 1);
+    }
+
+    #[test]
+    fn merged_spans_are_disjoint_and_span_contains_uses_half_open_ranges() {
+        let merged = merge_overlapping(vec![(0, 5), (0, 3), (5, 10), (12, 20), (14, 16), (30, 31)]);
+        assert_eq!(merged, vec![(0, 10), (12, 20), (30, 31)]);
+        assert!(merge_overlapping(Vec::new()).is_empty());
+        for byte in 0..40 {
+            let brute = [(0, 10), (12, 20), (30, 31)]
+                .iter()
+                .any(|&(s, e)| byte >= s && byte < e);
+            assert_eq!(span_contains(&merged, byte), brute, "byte {byte}");
+        }
+        assert!(!span_contains(&[], 0));
+    }
+
+    #[test]
+    fn in_heading_in_url_url_span_at_and_line_span_match_brute_force_scans() {
+        // The link target and the bare-URL regex both match "https://a.test/docs", so the two
+        // spans must merge; ".test" is the RFC 2606 testing TLD, which SLOP009 leaves alone.
+        let src = "# Heading One\n\n\
+Intro prose before any code, see [docs](https://a.test/docs) for details.\n\n\
+```rust\nfn code() {}\n```\n\n\
+## Heading Two\n\n\
+More prose after the fence with a bare https://a.test/bare url and more text.\n\n\
+### Last heading without a newline";
+        let doc = ProseDoc::parse(src);
+
+        fn brute_in_heading(doc: &ProseDoc, byte: usize) -> bool {
+            doc.headings
+                .iter()
+                .any(|h| byte >= h.byte_start && byte <= h.byte_end)
+        }
+        fn brute_url_span_at(doc: &ProseDoc, byte: usize) -> Option<(usize, usize)> {
+            doc.url_spans
+                .iter()
+                .find(|&&(s, e)| byte >= s && byte < e)
+                .copied()
+        }
+        fn brute_line_span(src: &str, byte: usize) -> (usize, usize) {
+            let byte = byte.min(src.len());
+            let start = src[..byte].rfind('\n').map_or(0, |i| i + 1);
+            let end = src[byte..].find('\n').map_or(src.len(), |i| byte + i);
+            (start, end)
+        }
+
+        assert!(!doc.headings.is_empty(), "fixture should contain headings");
+        assert!(
+            !doc.url_spans.is_empty(),
+            "fixture should contain URL spans"
+        );
+        // The link-target match and the bare-URL match on the same text must merge to one span,
+        // not sit in the list twice -- otherwise `partition_point`'s single-candidate assumption
+        // (at most one span contains a given byte) breaks.
+        assert_eq!(
+            doc.url_spans.len(),
+            2,
+            "duplicate/overlapping matches on the same URL should merge to one disjoint span"
+        );
+
+        for byte in 0..=src.len() {
+            assert_eq!(
+                doc.in_heading(byte),
+                brute_in_heading(&doc, byte),
+                "in_heading mismatch at byte {byte}"
+            );
+            assert_eq!(
+                doc.url_span_at(byte),
+                brute_url_span_at(&doc, byte),
+                "url_span_at mismatch at byte {byte}"
+            );
+            assert_eq!(doc.in_url(byte), doc.url_span_at(byte).is_some());
+            assert_eq!(
+                doc.line_span(byte),
+                brute_line_span(src, byte),
+                "line_span mismatch at byte {byte}"
+            );
+        }
     }
 }

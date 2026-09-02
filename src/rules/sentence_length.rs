@@ -125,19 +125,12 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 
         sentence_start.get_or_insert(byte);
 
-        let in_url = doc.in_url(byte);
-        let already_counted = in_url && last_url_span.is_some_and(|(s, e)| byte >= s && byte < e);
+        let url_span = doc.url_span_at(byte);
+        let already_counted = url_span.is_some() && url_span == last_url_span;
         if !already_counted {
             word_count += 1;
         }
-        last_url_span = if in_url {
-            doc.url_spans
-                .iter()
-                .find(|&&(s, e)| byte >= s && byte < e)
-                .copied()
-        } else {
-            None
-        };
+        last_url_span = url_span;
         prev_line = Some(line);
 
         if m.as_str().ends_with(['.', '!', '?']) {
