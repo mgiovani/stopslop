@@ -107,6 +107,24 @@ fn unmatched_patterns<'a>(pats: &'a [String], custom_codes: &[&'static str]) -> 
         .collect()
 }
 
+/// Compiles every enabled prose rule's regex statics on its own thread while the caller walks
+/// the tree: that one-time compile tax (~24 ms serially) is most of a run over a few files.
+/// AST rules are skipped; their compile cost is in the noise next to the walk (issue #21).
+pub fn prewarm<'scope>(scope: &'scope std::thread::Scope<'scope, '_>, settings: &Settings) {
+    for &rule in RULES {
+        if settings.enabled.contains(rule.code) && rule.langs.contains(&Lang::Md) {
+            scope.spawn(move || {
+                let one = Settings {
+                    enabled: HashSet::from([rule.code]),
+                    deps: None,
+                    custom_rules: Vec::new(),
+                };
+                lint_file(String::new(), "Warm-up line.\n", Lang::Md, &one);
+            });
+        }
+    }
+}
+
 pub fn lint_file(
     display_path: String,
     source: &str,
@@ -213,6 +231,16 @@ fn lint_prose(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prewarm_runs_every_rule_on_the_warm_up_document() {
+        let settings = Settings {
+            enabled: RULES.iter().map(|r| r.code).collect(),
+            deps: None,
+            custom_rules: Vec::new(),
+        };
+        std::thread::scope(|scope| prewarm(scope, &settings));
+    }
 
     #[test]
     fn unmatched_patterns_flags_typo() {
