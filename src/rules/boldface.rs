@@ -73,7 +73,9 @@ fn first_bold_lead_in_run(doc: &crate::prose::ProseDoc<'_>) -> Option<(usize, us
         let mut run_start = 0usize;
         let mut run_len = 0usize;
         for item in &block.items {
-            let is_match = BOLD_LEAD_IN_RE.is_match(line_at(&doc.masked, item.marker_byte));
+            // `ListItem` only records the marker byte, so slice the full line to anchor `^`.
+            let (start, end) = doc.line_span(item.marker_byte);
+            let is_match = BOLD_LEAD_IN_RE.is_match(&doc.masked[start..end]);
             if is_match {
                 if run_len == 0 {
                     run_start = item.marker_byte;
@@ -91,18 +93,6 @@ fn first_bold_lead_in_run(doc: &crate::prose::ProseDoc<'_>) -> Option<(usize, us
         }
     }
     None
-}
-
-/// The full line containing `byte` in `masked` (no trailing '\n'). `ListItem` only records the
-/// marker's byte offset, not the line's bounds, so the bold-lead-in regex needs this to anchor
-/// `^` at true line start.
-fn line_at(masked: &str, byte: usize) -> &str {
-    let start = masked[..byte].rfind('\n').map(|i| i + 1).unwrap_or(0);
-    let end = masked[byte..]
-        .find('\n')
-        .map(|i| byte + i)
-        .unwrap_or(masked.len());
-    &masked[start..end]
 }
 
 #[cfg(test)]
