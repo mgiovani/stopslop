@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{self, PROSE_LANGS};
+use crate::lang::{self, NatLang, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
 use regex::Regex;
@@ -24,6 +24,26 @@ static WORD_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\S+").unwrap());
 // legitimately run up to 47 words in non-slop prose. 50 stays above that ceiling while still
 // catching genuine run-ons.
 const OVERLONG_WORDS: usize = 50;
+
+/// Measured on 207 pt-BR docs / 26,574+ sentences vs. 71 en docs (en.wikipedia featured +
+/// random), share of sentences over N words:
+///
+/// |  N | en     | pt     |
+/// |----|--------|--------|
+/// | 35 | 11.24% | 15.94% |
+/// | 40 |  6.83% | 10.41% |
+/// | 45 |  4.00% |  6.85% |
+/// | 50 |  2.67% |  4.66% |
+/// | 60 |  1.40% |  2.19% |
+///
+/// The English 50-word percentile (2.67%) falls at about 57 words in Portuguese, so 57 is the
+/// Portuguese cap that trips at the same rate 50 does in English. The default union keeps 50
+/// (a document's language is unknown there, and per-document find rates are nearly equal: 4.7
+/// findings/doc in English vs 9.1 in Portuguese at a shared 50-word cap -- most of that gap is
+/// per-document rate, not per-sentence rate); the 57-word cap only applies once a run is
+/// Portuguese-only, via `language = "pt-BR"` in config or a narrowing `<html lang="pt-BR">`
+/// (`engine::lint_prose`).
+const OVERLONG_WORDS_PT_BR: usize = 57;
 
 /// Lines that contribute no words at all and act as hard sentence boundaries: frontmatter,
 /// heading lines, and table rows (trimmed line starts with `|`).
@@ -64,6 +84,15 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let spans = &doc.line_spans;
     let skip = skip_lines(doc, spans);
     let markers = marker_bytes(doc);
+    // Portuguese-only when `ctx.natlangs` (run-wide `language = "pt-BR"`, or a narrowing
+    // `<html lang="pt-BR">`; see `engine::lint_prose`) resolves to exactly Portuguese. The
+    // default union keeps the English cap: a mixed-language run has no per-sentence way to
+    // pick the right one.
+    let overlong_words = if ctx.natlangs.len() == 1 && ctx.natlangs[0] == NatLang::PtBr {
+        OVERLONG_WORDS_PT_BR
+    } else {
+        OVERLONG_WORDS
+    };
 
     let mut prev_line: Option<usize> = None;
     let mut sentence_start: Option<usize> = None;
@@ -74,7 +103,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     macro_rules! close_sentence {
         () => {
             if let Some(start) = sentence_start {
-                if word_count > OVERLONG_WORDS {
+                if word_count > overlong_words {
                     let (line, col) = doc.line_col(start);
                     out.push(Diagnostic::at_fix(
                         rule,
@@ -150,6 +179,19 @@ mod tests {
     }
 
     fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
+        diagnostics_in_natlangs(doc, src, lang, crate::lang::ALL_NATLANGS)
+    }
+
+    fn diagnostics_for_natlangs(src: &str, natlangs: &[NatLang]) -> Vec<Diagnostic> {
+        diagnostics_in_natlangs(ProseDoc::parse(src), src, Lang::Md, natlangs)
+    }
+
+    fn diagnostics_in_natlangs<'a>(
+        doc: ProseDoc<'a>,
+        src: &'a str,
+        lang: Lang,
+        natlangs: &'a [NatLang],
+    ) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
@@ -161,7 +203,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
-            natlangs: crate::lang::ALL_NATLANGS,
+            natlangs,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -247,5 +289,30 @@ mod tests {
         // ai-slop-ignore
         src.push_str(" https://example.com/a/very/long/path/that/is/many/tokens.\n");
         assert!(diagnostics_for(&src).is_empty());
+    }
+
+    /// 54 words clears the English cap (50) but not the Portuguese-only cap (57): the default
+    /// union and an English-only run both fire, a Portuguese-only run stays silent.
+    #[test]
+    fn pt_br_only_cap_raises_the_threshold() {
+        let src = format!("{}\n", words(54, "."));
+        assert_eq!(
+            diagnostics_for_natlangs(&src, crate::lang::ALL_NATLANGS).len(),
+            1
+        );
+        assert_eq!(diagnostics_for_natlangs(&src, &[NatLang::En]).len(), 1);
+        assert!(diagnostics_for_natlangs(&src, &[NatLang::PtBr]).is_empty());
+    }
+
+    /// 60 words clears both caps (50 and 57), so it fires regardless of which set is configured.
+    #[test]
+    fn sixty_words_fires_under_every_natlang_setting() {
+        let src = format!("{}\n", words(60, "."));
+        assert_eq!(
+            diagnostics_for_natlangs(&src, crate::lang::ALL_NATLANGS).len(),
+            1
+        );
+        assert_eq!(diagnostics_for_natlangs(&src, &[NatLang::En]).len(), 1);
+        assert_eq!(diagnostics_for_natlangs(&src, &[NatLang::PtBr]).len(), 1);
     }
 }

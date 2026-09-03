@@ -194,6 +194,18 @@ pub fn lint_file(
 /// Prose langs never build a `NodeIndex`: prose rules scan `ProseDoc::masked` (a byte-preserving
 /// stream with code blanked, or for HTML with everything but visible text blanked) instead of an
 /// AST. `ctx.index` stays `None`; `ctx.prose` is the only thing prose rules read.
+///
+/// `natlangs` is run-wide by default (`settings.natlangs`, resolved once from config), but an
+/// HTML page can narrow it for itself: `doc.html_lang` is `Some` only when its own `<html lang>`
+/// names a language the run already has enabled, in which case the diagnostics for this ONE file
+/// are computed as if only that language were configured. A declared language the config
+/// excludes leaves the run-wide set unchanged -- config is explicit, the hint only ever narrows a
+/// set the config already allows, it never adds a language config turned off. Under the default
+/// union this makes `<html lang="pt-BR">` skip that file's English-only rules (SLOP014, SLOP032,
+/// ...) while `ALL_NATLANGS` rules (SLOP018's em dash, SLOP033's sentence length, ...) and
+/// bilingual rules run exactly as before -- and it feeds SLOP033's Portuguese sentence-length cap
+/// (`sentence_length::OVERLONG_WORDS_PT_BR`), since that only activates when the file's own
+/// `natlangs` resolves to Portuguese alone.
 fn lint_prose(
     display_path: String,
     source: &str,
@@ -203,6 +215,14 @@ fn lint_prose(
     let doc = match lang {
         Lang::Html => crate::prose::ProseDoc::parse_html(source),
         _ => crate::prose::ProseDoc::parse(source),
+    };
+    let narrowed;
+    let natlangs: &[lang::NatLang] = match doc.html_lang {
+        Some(nl) if settings.natlangs.contains(&nl) => {
+            narrowed = [nl];
+            &narrowed
+        }
+        _ => &settings.natlangs,
     };
     let is_test = paths::is_test_path(&display_path);
     let ctx = LintContext {
@@ -216,7 +236,7 @@ fn lint_prose(
         is_stub_file: false,
         deps: None,
         prose: Some(&doc),
-        natlangs: &settings.natlangs,
+        natlangs,
     };
     let mut out = Vec::new();
     for &rule in RULES {
@@ -342,6 +362,44 @@ mod tests {
             vec!["SLOP018", "SLOP023"]
         );
         assert_eq!(codes(&settings(vec![lang::NatLang::PtBr])), vec!["SLOP018"]);
+    }
+
+    /// `doc.html_lang` narrows `ctx.natlangs` for one HTML file, independent of the run-wide
+    /// setting: SLOP032 (`natlangs: &[NatLang::En]`) is still genuinely English-only after phase
+    /// 3 (unlike SLOP018's em dash or SLOP033's sentence length, both `ALL_NATLANGS` and thus
+    /// unaffected by this narrowing either way), so it's the rule that demonstrates the outer
+    /// `rule.natlangs ∩ ctx.natlangs` gate actually failing shut.
+    #[test]
+    fn html_lang_narrows_natlangs_per_file_but_config_wins() {
+        let enabled = resolve_enabled(&["SLOP032".to_string()], &[], &[], &[], &[], false);
+        let body = |lang_attr: &str| {
+            format!(
+                "<html lang=\"{lang_attr}\"><body><p>A real-time view helps here. \
+                 The real-time system stays in sync. Another real-time check follows.</p>\
+                 </body></html>\n"
+            )
+        };
+        let settings = |natlangs: Vec<lang::NatLang>| Settings {
+            enabled: enabled.clone(),
+            deps: None,
+            custom_rules: Vec::new(),
+            natlangs,
+        };
+        let fires = |src: &str, s: &Settings| {
+            !lint_file("f.html".to_string(), src, Lang::Html, s).is_empty()
+        };
+
+        // Default union narrows to Portuguese for this file -> SLOP032's English-only gate fails.
+        assert!(!fires(
+            &body("pt-BR"),
+            &settings(lang::ALL_NATLANGS.to_vec())
+        ));
+        // Declaring English narrows to English -> the rule's own gate passes and it fires.
+        assert!(fires(&body("en"), &settings(lang::ALL_NATLANGS.to_vec())));
+        // Config restricted to English excludes the page's declared Portuguese, so the hint
+        // can't narrow into a language the config already turned off -- the run-wide set (just
+        // English) is used unchanged, and the rule still fires.
+        assert!(fires(&body("pt-BR"), &settings(vec![lang::NatLang::En])));
     }
 
     /// End-to-end: a custom rule runs through `lint_file`'s second pass and its finding is still

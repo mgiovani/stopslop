@@ -6,7 +6,7 @@
 //! only visible text, comments, and link targets are restored from a tree-sitter-html parse.
 
 use crate::context::TextNode;
-use crate::lang::Lang;
+use crate::lang::{Lang, NatLang};
 use regex::Regex;
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -96,6 +96,15 @@ pub struct ProseDoc<'a> {
     /// `<footer>`, `<aside>`, and `<nav>` element ranges. Their paragraphs are prose to the
     /// density rules but never the document's ending, which SLOP029 reads. Empty for Markdown.
     pub footers: Vec<(usize, usize)>,
+    /// The document's declared natural language, read from a `lang` attribute on the root
+    /// `<html>` start tag only -- a `lang` on an inner element marks a quotation or an embedded
+    /// snippet in a different language, not the document itself, and this crate has no per-span
+    /// natlang concept to express that. `None` for a missing/absent `lang`, an unrecognized tag
+    /// (`NatLang::from_tag`), or the whole Markdown family (no root tag to read): a file is not
+    /// config, so a declaration this crate doesn't understand is silently ignored rather than
+    /// treated as an error. `engine::lint_prose` reads this to narrow which language panels run
+    /// on this one file (see its doc comment for the narrowing rule).
+    pub html_lang: Option<NatLang>,
     line_starts: Vec<usize>, // byte offset of each line start; for line_col
     /// (byte, col) of the last `line_col` answer. Rules ask in byte order, so the next answer on
     /// the same line counts chars from here rather than from the line start -- a 1.8 MB
@@ -167,6 +176,7 @@ impl<'a> ProseDoc<'a> {
             entities: Vec::new(),
             bold_spans: Vec::new(),
             footers: Vec::new(),
+            html_lang: None,
             line_starts,
             col_memo: Cell::new((0, 1)),
             source,
@@ -257,6 +267,7 @@ impl<'a> ProseDoc<'a> {
             entities: scan.entities,
             bold_spans: scan.bold_spans,
             footers: scan.footers,
+            html_lang: detect_html_lang(source),
             line_starts,
             col_memo: Cell::new((0, 1)),
             source,
@@ -873,6 +884,31 @@ struct HtmlScan {
     entities: Vec<(usize, char)>,
     bold_spans: Vec<usize>,
     footers: Vec<(usize, usize)>,
+}
+
+/// Matches the root `<html ...>` start tag's `lang` attribute, unquoted or quoted. `(?-u:\b)`
+/// requires the literal tag name (not `<html5-app>`, where "html" and "5" share no boundary)
+/// without consuming a character -- `<html[\s>]` (an earlier version of this pattern) consumed
+/// the ONE separator space between "html" and "lang" in the overwhelmingly common single-space
+/// case (`<html lang="pt-BR">`), leaving nothing for the following `\slang` to match and so never
+/// matching real documents at all; `(?-u:\b)` is zero-width, so that same space is still there
+/// for `\slang` to consume. ASCII-only per AGENTS.md's perf notes (issue #21): this regex scans
+/// the whole file, and a Unicode `\b` forces PikeVM on any non-ASCII byte anywhere in an
+/// otherwise unrelated document. `[^>]*?` can't cross the tag's own closing `>`, so a `lang` on
+/// any later element is structurally out of reach -- no need to special-case "only the first tag"
+/// beyond taking the first match in the source. The value pattern
+/// (`[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*`) accepts a bare primary subtag (`pt`) or one with
+/// region/script/variant subtags (`pt-BR`, `pt_br`, `en-US`); only the primary subtag is read by
+/// `NatLang::from_tag`.
+static HTML_LANG_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?is)<html(?-u:\b)[^>]*?\slang\s*=\s*["']?([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*)"#)
+        .unwrap()
+});
+
+/// The document's declared language from its root `<html lang="...">`, or `None` for a missing
+/// tag/attribute or a tag `NatLang::from_tag` doesn't recognize.
+fn detect_html_lang(source: &str) -> Option<NatLang> {
+    NatLang::from_tag(&HTML_LANG_RE.captures(source)?[1])
 }
 
 /// The chars the punctuation rules read: the em dash and curly quotes, named or numeric.
@@ -1572,5 +1608,41 @@ More prose after the fence with a bare https://a.test/bare url and more text.\n\
                 "line_span mismatch at byte {byte}"
             );
         }
+    }
+
+    #[test]
+    fn html_lang_parses_common_tag_shapes() {
+        for (src, want) in [
+            (
+                "<html lang=\"pt-BR\"><body>x</body></html>\n",
+                Some(NatLang::PtBr),
+            ),
+            (
+                "<html lang='pt_br'><body>x</body></html>\n",
+                Some(NatLang::PtBr),
+            ),
+            ("<html lang=PT><body>x</body></html>\n", Some(NatLang::PtBr)),
+            (
+                "<html lang=\"en\"><body>x</body></html>\n",
+                Some(NatLang::En),
+            ),
+        ] {
+            assert_eq!(ProseDoc::parse_html(src).html_lang, want, "{src}");
+        }
+    }
+
+    #[test]
+    fn html_lang_ignores_inner_element_and_unknown_or_missing_tags() {
+        let inner = "<html><body><p lang=\"pt-BR\">x</p></body></html>\n";
+        assert_eq!(ProseDoc::parse_html(inner).html_lang, None);
+        let missing = "<html><body>x</body></html>\n";
+        assert_eq!(ProseDoc::parse_html(missing).html_lang, None);
+        let unknown = "<html lang=\"fr\"><body>x</body></html>\n";
+        assert_eq!(ProseDoc::parse_html(unknown).html_lang, None);
+    }
+
+    #[test]
+    fn html_lang_is_none_for_the_markdown_family() {
+        assert_eq!(ProseDoc::parse("hello\n").html_lang, None);
     }
 }

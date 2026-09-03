@@ -145,6 +145,32 @@ migration notes live here.
   with `--select SLOP030` (distinct-file counts): `ptbr-human` 226 -> 163 of
   323 files, `en-human` 98 -> 79 of 100, `ptbr-generated2` 20 -> 15 of 94,
   `ptbr-generated` 5 -> 0 of 60.
+- **Phase 3 of issue #30, closing it.** SLOP021 gains a Portuguese
+  title-case stopword list and a Portuguese reference-heading set (so a
+  short "Referências" section stops tripping the thin-section check).
+  SLOP034 gains five Portuguese concept sets mirroring the English ones
+  (`verificar`/`validar`/`conferir`/`checar`, `excluir`/`remover`,
+  `executar`/`rodar`, `configuração`/`ajustes`, `rápido`/`veloz`). Five
+  more from the catalog were measured and dropped because they fire on
+  8% to 33% of human Portuguese pages (`mostrar`/`exibir`,
+  `iniciar`/`começar`, `criar`/`gerar`, `alterar`/`mudar`,
+  `usar`/`utilizar`), ordinary narrative and technical writing rather
+  than rotation. SLOP042's tokenizer now
+  splits on Unicode alphanumerics instead of ASCII-only ones, so `não`,
+  `após`, and `além` stop being shredded into single letters (English input
+  tokenizes identically either way). Its why-marker, stopword, code-verb,
+  and code-noun lists gain Portuguese entries; no stemmer is added for
+  Portuguese verb inflection, the word lists enumerate the forms seen
+  instead. An HTML document's root `<html lang="...">` now narrows
+  that one file's natural-language set when the configured set allows it,
+  so a `<html lang="pt-BR">` page skips its English-only rules while
+  `ALL_NATLANGS` and bilingual rules run unaffected; a declared language
+  the config excludes leaves the run-wide set unchanged. SLOP033's
+  overlong-sentence cap becomes 57 words once a run resolves to Portuguese
+  only (config or the `<html lang>` hint): 2.67% of English sentences
+  exceed 50 words, and 57 is where Portuguese crosses that same
+  percentile. SLOP014, SLOP016, and SLOP032 are the rules issue #30 leaves
+  English-only.
 
 - `-j N` / `--threads N` picks the walk's worker count (`0`, the default,
   chooses automatically); `-j 1` makes per-rule timings add up for perf work.

@@ -13,7 +13,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Comment that restates the code",
     tier: Tier::B,
     langs: CODE_LANGS,
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: true,
     check,
@@ -28,7 +28,8 @@ const FIX: &str = "delete it or say why instead; if the name it restates is uncl
 const STOPWORDS_RAW: &str = "the a an this that these those it its to of for in on at by with \
 from as and or is are be was were been we our you your here now then into onto up down out \
 over all each every any some also just will can do does done has have had which what \
-via per current given one two s t";
+via per current given one two s t \
+o a os as um uma de do da dos das em no na nos nas para por com e ou que se";
 
 static STOPWORDS: LazyLock<HashSet<String>> = LazyLock::new(|| stemmed(STOPWORDS_RAW));
 
@@ -40,7 +41,11 @@ check call invoke create make build define declare assign update increment decre
 push pop remove delete insert compute calculate convert cast print log read write open close load \
 save store fetch send receive handle process run execute start stop import export include require \
 extract wrap unwrap clone copy move allocate free release reset clear flush validate verify test \
-try catch throw raise await yield spawn lock unlock acquire sleep wait retry skip use";
+try catch throw raise await yield spawn lock unlock acquire sleep wait retry skip use \
+definir define retorna retornar percorre percorrer incrementa incrementar decrementa decrementar \
+adiciona adicionar remove remover cria criar chama chamar calcula calcular converte converter \
+imprime imprimir salva salvar carrega carregar lê ler escreve escrever abre abrir fecha fechar \
+valida validar verifica verificar inicializa inicializar";
 
 static CODE_VERBS: LazyLock<HashSet<String>> = LazyLock::new(|| stemmed(CODE_VERBS_RAW));
 
@@ -59,7 +64,10 @@ field property prop param parameter arg argument array list vector vec map dict 
 string str int integer number bool boolean flag object instance pointer reference ref value result \
 error err exception index key element item entry iterator callback closure lambda constant const \
 default empty null nil none true false length len size count sum total max min name file path data \
-input output";
+input output \
+variável variavel função funcao método metodo classe lista mapa dicionário dicionario string \
+número numero valor resultado erro exceção excecao índice indice chave elemento item contador \
+arquivo caminho dados entrada saída saida";
 
 static CODE_NOUNS: LazyLock<HashSet<String>> = LazyLock::new(|| stemmed(CODE_NOUNS_RAW));
 
@@ -71,7 +79,11 @@ workaround hack todo fixme xxx safety see cf http https www issue bug cve rfc no
 unless before after first last but except until must should always still yet instead rather \
 without dont doesnt cant wont isnt important critical careful subtle beware warning caution \
 danger gotcha tricky intentional intentionally deliberate deliberately purpose temporary legacy \
-deprecated compat compatibility";
+deprecated compat compatibility \
+não nao nunca porque pois senão senao evitar evita gambiarra cuidado atenção atencao aviso \
+perigo importante crítico critico sutil intencional intencionalmente propósito proposito \
+temporário temporario legado descontinuado compatibilidade antes depois apenas somente exceto \
+até ate ainda mas";
 
 static WHY_MARKERS: LazyLock<HashSet<&'static str>> =
     LazyLock::new(|| WHY_MARKERS_RAW.split_whitespace().collect());
@@ -603,9 +615,12 @@ fn words_of(s: &str) -> Vec<&str> {
 
 /// Split on non-alphanumerics, split camelCase, lowercase, stem. Shared by both sides of the
 /// comparison (comment body and anchor code line) so identifiers compare equal regardless of
-/// naming convention or inflection.
+/// naming convention or inflection. `char::is_alphanumeric` (not `is_ascii_alphanumeric`) so
+/// accented Portuguese letters stay part of their word instead of becoming their own one-letter
+/// split: an ASCII-only test shreds "não" into "n" + "o" and "após"/"além" the same way. Plain
+/// ASCII English input tokenizes identically either way.
 fn tokenize(s: &str) -> Vec<String> {
-    s.split(|c: char| !c.is_ascii_alphanumeric())
+    s.split(|c: char| !c.is_alphanumeric())
         .filter(|p| !p.is_empty())
         .flat_map(split_camel)
         .map(|t| stem(&t.to_lowercase()))
@@ -615,6 +630,14 @@ fn tokenize(s: &str) -> Vec<String> {
 /// Steidl et al. match comment and code words at Levenshtein distance < 2, which is what lets
 /// `parsed` meet `parse`. A suffix strip covers the same inflections (`-s`, `-ed`, `-ing`, final
 /// `-e`) without the quadratic pairwise compare, and can't accidentally unify `set` with `get`.
+///
+/// No stemmer for Portuguese: its verb conjugations (`-ar`, `-a`, `-am`, `-ou`, `-ando`, `-ado`,
+/// `-ada`, `-ir`, `-e`, `-em`, `-iu`, `-indo`, `-ido`, `-ida`, ...) don't fit the same handful of
+/// suffixes English uses, and this crate adds no dependency for what an enumerated word list
+/// already covers (AGENTS.md). So `STOPWORDS_RAW`/`CODE_VERBS_RAW`/`CODE_NOUNS_RAW`'s Portuguese
+/// entries list the inflected forms actually seen (`incrementa` AND `incrementar`) rather than
+/// relying on this suffix strip to bridge them the way it bridges `parsed`/`parse_header` in
+/// English -- a Portuguese form outside the listed set simply isn't recognized.
 fn stem(w: &str) -> String {
     let w = depluralize(w);
     let w = ["ing", "ed"]
@@ -1010,6 +1033,16 @@ mod tests {
         assert_eq!(tokenize("parse_configs"), vec!["pars", "config"]);
         assert_eq!(tokenize("i"), vec!["i"]);
         assert_eq!(tokenize("class"), vec!["class"]); // "ss" ending is not a plural
+    }
+
+    /// `char::is_alphanumeric` (not `is_ascii_alphanumeric`) keeps "não" one token instead of
+    /// shredding it into "n" + "o" at the accented letter; "cache" still stems to "cach" (final
+    /// `-e` strip, same as any English word), which is the tokenizer's own unrelated behavior,
+    /// not something this fix changes.
+    #[test]
+    fn tokenize_keeps_accented_portuguese_words_whole() {
+        assert_eq!(tokenize("não use cache"), vec!["não", "use", "cach"]);
+        assert_eq!(tokenize("após além"), vec!["apó", "além"]);
     }
 
     /// The inflections Steidl et al.'s Levenshtein < 2 match would unify, plus `-ing`, all land
