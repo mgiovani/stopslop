@@ -21,7 +21,7 @@ pub static RULE: RuleDef = RuleDef {
         Lang::Rust,
         Lang::Html,
     ],
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: true,
     check,
@@ -48,13 +48,32 @@ static RE_CS: LazyLock<Regex> = LazyLock::new(|| {
 static RE_HTML: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)via\.placeholder\.com|placehold\.co|placekitten\.com|dummyimage\.com|^alt=["'](?:image|img|photo|picture|placeholder|image description|alt text|description)["']$"#).unwrap()
 });
+/// Brazilian-Portuguese twin of `RE_CI`. The CPF shapes are the sample values a placeholder
+/// leaves behind (a repeated digit, or the textbook sequential `123.456.789-XX`), never a
+/// general CPF regex -- this rule names placeholders, not real personal data, so it only matches
+/// the handful of values every Brazilian dev recognizes as fake. "Maria Silva" without "da" is a
+/// real, ordinary name and is excluded on purpose; requiring "da silva" narrows the match to the
+/// specific stock full name. "Fulano/Ciclano/Beltrano" are the Portuguese "John Doe"/"Jane Doe".
+static RE_CI_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?-u:\b)SEU_[A-Z0-9_]+|(?-u:\b)SUA_[A-Z0-9_]+|<(?:seu|sua)[ -][^>]*>|exemplo\.(?:com|org|net)|(?:jo[ãa]o|maria|jos[ée]) da silva(?-u:\b)|(?-u:\b)(?:fulan|ciclan|beltran)[oa](?-u:\b)|usu[áa]rio@exemplo\.|(?:mude|altere|troque)[_ -]?(?:me|aqui|isso)(?-u:\b)|(?-u:\b)(?:0{3}\.0{3}\.0{3}-00|1{3}\.1{3}\.1{3}-11|2{3}\.2{3}\.2{3}-22|3{3}\.3{3}\.3{3}-33|4{3}\.4{3}\.4{3}-44|5{3}\.5{3}\.5{3}-55|6{3}\.6{3}\.6{3}-66|7{3}\.7{3}\.7{3}-77|8{3}\.8{3}\.8{3}-88|9{3}\.9{3}\.9{3}-99|123\.456\.789-\d{2}|123456789\d{2})(?-u:\b)").unwrap()
+});
+/// Brazilian-Portuguese twin of `RE_HTML`'s generic-`alt` half. Applied at the same
+/// `ProseDoc::attr_values` path as `RE_HTML`.
+static RE_HTML_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)^alt=["'](?:imagem|foto|fotografia|figura|ilustra[çc][ãa]o|descri[çc][ãa]o(?: da imagem)?|texto alternativo)["']$"#).unwrap()
+});
 
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
+    let en = ctx.natlangs.contains(&NatLang::En);
+    let pt = ctx.natlangs.contains(&NatLang::PtBr);
     for s in ctx.strings {
         if s.is_doc {
             continue;
         }
-        if RE_CI.is_match(s.text) || RE_CS.is_match(s.text) || RE_HTML.is_match(s.text) {
+        let hit = (en && (RE_CI.is_match(s.text) || RE_HTML.is_match(s.text)))
+            || (pt && (RE_CI_PT_BR.is_match(s.text) || RE_HTML_PT_BR.is_match(s.text)))
+            || RE_CS.is_match(s.text);
+        if hit {
             out.push(Diagnostic::at(rule, ctx, s.line, s.col, MESSAGE));
         }
     }
@@ -63,6 +82,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tree_sitter::Parser;
 
     #[test]
     fn flags_your_api_key() {
@@ -134,5 +154,139 @@ mod tests {
     #[test]
     fn clean_specific_type_cast_like_string_not_flagged() {
         assert!(!RE_CI.is_match("hello world") && !RE_CS.is_match("hello world"));
+    }
+
+    #[test]
+    fn flags_pt_br_placeholder_tokens() {
+        assert!(RE_CI_PT_BR.is_match("SEU_TOKEN_AQUI")); // ai-slop-ignore
+        assert!(RE_CI_PT_BR.is_match("SUA_CHAVE_API")); // ai-slop-ignore
+        assert!(RE_CI_PT_BR.is_match("<seu-nome-aqui>")); // ai-slop-ignore
+        assert!(RE_CI_PT_BR.is_match("contato@exemplo.com")); // ai-slop-ignore
+        assert!(RE_CI_PT_BR.is_match("João da Silva")); // ai-slop-ignore
+        assert!(RE_CI_PT_BR.is_match("Maria da Silva")); // ai-slop-ignore
+        assert!(RE_CI_PT_BR.is_match("Fulano")); // ai-slop-ignore
+        assert!(RE_CI_PT_BR.is_match("Ciclana")); // ai-slop-ignore
+        assert!(RE_CI_PT_BR.is_match("usuario@exemplo.com")); // ai-slop-ignore
+        assert!(RE_CI_PT_BR.is_match("troque_me")); // ai-slop-ignore
+        assert!(RE_CI_PT_BR.is_match("111.111.111-11")); // ai-slop-ignore
+        assert!(RE_CI_PT_BR.is_match("123.456.789-00")); // ai-slop-ignore
+    }
+
+    #[test]
+    fn maria_silva_without_da_is_a_real_name() {
+        // "Maria Silva" -- no "da" between the names -- is an ordinary real name, not the stock
+        // placeholder full name.
+        assert!(!RE_CI_PT_BR.is_match("Maria Silva"));
+    }
+
+    #[test]
+    fn real_looking_cpf_is_not_a_placeholder() {
+        // Neither a repeated digit nor the textbook sequential value -- a real CPF must not fire,
+        // since this panel names sample/placeholder values, not general PII.
+        assert!(!RE_CI_PT_BR.is_match("529.982.247-25"));
+    }
+
+    #[test]
+    fn flags_pt_br_generic_alt() {
+        assert!(RE_HTML_PT_BR.is_match("alt=\"imagem\""));
+        assert!(RE_HTML_PT_BR.is_match("alt='Foto'"));
+        assert!(RE_HTML_PT_BR.is_match("alt=\"descrição da imagem\""));
+    }
+
+    #[test]
+    fn clean_pt_br_descriptive_alt() {
+        assert!(!RE_HTML_PT_BR.is_match("alt=\"foto da equipe reunida no escritório\""));
+    }
+
+    #[test]
+    fn re_ci_pt_br_alternatives() {
+        let samples: &[&str] = &[
+            "SUA_SENHA",           // ai-slop-ignore
+            "<sua chave>",         // ai-slop-ignore
+            "<seu token>",         // ai-slop-ignore
+            "exemplo.org",         // ai-slop-ignore
+            "exemplo.net",         // ai-slop-ignore
+            "joao da silva",       // ai-slop-ignore
+            "josé da silva",       // ai-slop-ignore
+            "jose da silva",       // ai-slop-ignore
+            "fulana",              // ai-slop-ignore
+            "ciclano",             // ai-slop-ignore
+            "beltrano",            // ai-slop-ignore
+            "beltrana",            // ai-slop-ignore
+            "mude-me",             // ai-slop-ignore
+            "altere aqui",         // ai-slop-ignore
+            "troque_isso",         // ai-slop-ignore
+            "usuário@exemplo.com", // ai-slop-ignore
+            "usuario@exemplo.com", // ai-slop-ignore
+            "000.000.000-00",      // ai-slop-ignore
+            "999.999.999-99",      // ai-slop-ignore
+            "123.456.789-09",      // ai-slop-ignore
+            "12345678909",         // ai-slop-ignore
+        ];
+        for s in samples {
+            assert!(RE_CI_PT_BR.is_match(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn re_html_pt_br_alternatives() {
+        let samples: &[&str] = &[
+            r#"alt="fotografia""#,
+            r#"alt='figura'"#,
+            r#"alt="ilustração""#,
+            r#"alt="descrição""#,
+            r#"alt="descrição da imagem""#,
+            r#"alt="texto alternativo""#,
+        ];
+        for s in samples {
+            assert!(RE_HTML_PT_BR.is_match(s), "{s}");
+        }
+    }
+
+    fn diagnostics_for_natlangs(src: &str, natlangs: &'static [NatLang]) -> Vec<Diagnostic> {
+        let mut p = Parser::new();
+        p.set_language(&crate::lang::ts_language(Lang::Ts)).unwrap();
+        let tree = p.parse(src, None).unwrap();
+        let (comments, strings, index) = crate::context::extract(&tree, src, Lang::Ts);
+        let ctx = LintContext {
+            display_path: "test.ts".to_string(),
+            source: src,
+            index: Some(&index),
+            lang: Lang::Ts,
+            comments: &comments,
+            strings: &strings,
+            is_test_path: false,
+            is_stub_file: false,
+            deps: None,
+            prose: None,
+            natlangs,
+        };
+        let mut out = Vec::new();
+        check(&RULE, &ctx, &mut out);
+        out
+    }
+
+    #[test]
+    fn pt_br_gate_silences_portuguese_panel_when_only_english_selected() {
+        let src_pt = "const nome = \"João da Silva\";\n"; // ai-slop-ignore
+        assert!(diagnostics_for_natlangs(src_pt, &[NatLang::En]).is_empty());
+
+        let src_en = "const key = \"YOUR_API_KEY\";\n"; // ai-slop-ignore
+        assert!(diagnostics_for_natlangs(src_en, &[NatLang::PtBr]).is_empty());
+    }
+
+    #[test]
+    fn credential_shapes_fire_regardless_of_natlangs() {
+        let src = "const key = \"sk-abcdefghijklmnop1234\";\n"; // ai-slop-ignore
+        assert_eq!(diagnostics_for_natlangs(src, &[NatLang::En]).len(), 1);
+        assert_eq!(diagnostics_for_natlangs(src, &[NatLang::PtBr]).len(), 1);
+    }
+
+    #[test]
+    fn pt_br_panel_fires_through_check_under_default_union() {
+        let src = "const nome = \"João da Silva\";\n"; // ai-slop-ignore
+        let diags = diagnostics_for_natlangs(src, crate::lang::ALL_NATLANGS);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP009");
     }
 }
