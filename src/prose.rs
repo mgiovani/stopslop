@@ -267,7 +267,9 @@ impl<'a> ProseDoc<'a> {
             entities: scan.entities,
             bold_spans: scan.bold_spans,
             footers: scan.footers,
-            html_lang: detect_html_lang(source),
+            html_lang: tree
+                .as_ref()
+                .and_then(|t| detect_html_lang(t.root_node(), &prepared)),
             line_starts,
             col_memo: Cell::new((0, 1)),
             source,
@@ -886,29 +888,31 @@ struct HtmlScan {
     footers: Vec<(usize, usize)>,
 }
 
-/// Matches the root `<html ...>` start tag's `lang` attribute, unquoted or quoted. `(?-u:\b)`
-/// requires the literal tag name (not `<html5-app>`, where "html" and "5" share no boundary)
-/// without consuming a character -- `<html[\s>]` (an earlier version of this pattern) consumed
-/// the ONE separator space between "html" and "lang" in the overwhelmingly common single-space
-/// case (`<html lang="pt-BR">`), leaving nothing for the following `\slang` to match and so never
-/// matching real documents at all; `(?-u:\b)` is zero-width, so that same space is still there
-/// for `\slang` to consume. ASCII-only per AGENTS.md's perf notes (issue #21): this regex scans
-/// the whole file, and a Unicode `\b` forces PikeVM on any non-ASCII byte anywhere in an
-/// otherwise unrelated document. `[^>]*?` can't cross the tag's own closing `>`, so a `lang` on
-/// any later element is structurally out of reach -- no need to special-case "only the first tag"
-/// beyond taking the first match in the source. The value pattern
-/// (`[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*`) accepts a bare primary subtag (`pt`) or one with
-/// region/script/variant subtags (`pt-BR`, `pt_br`, `en-US`); only the primary subtag is read by
-/// `NatLang::from_tag`.
-static HTML_LANG_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?is)<html(?-u:\b)[^>]*?\slang\s*=\s*["']?([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*)"#)
-        .unwrap()
-});
-
-/// The document's declared language from its root `<html lang="...">`, or `None` for a missing
-/// tag/attribute or a tag `NatLang::from_tag` doesn't recognize.
-fn detect_html_lang(source: &str) -> Option<NatLang> {
-    NatLang::from_tag(&HTML_LANG_RE.captures(source)?[1])
+/// The document's declared language from its root `<html lang="...">` start tag, read off the
+/// already-parsed tree rather than a second text scan over the source: a text scan for
+/// `<html ...lang=...>` matches whichever occurrence of that shape comes first in the file,
+/// comment included -- `<!-- fallback: <html lang="en"> -->` above the real
+/// `<html lang="pt-BR">` used to win, since the scan had no way to know it was reading inside a
+/// comment. Reading the tree's actual root sidesteps that: a `comment` node is never an
+/// `element`, so it can never stand in for the page's own root tag. `None` for a missing
+/// root/tag/attribute or a tag `NatLang::from_tag` doesn't recognize.
+fn detect_html_lang(root: Node, src: &str) -> Option<NatLang> {
+    let mut cursor = root.walk();
+    let html = root
+        .children(&mut cursor)
+        .find(|c| c.kind() == "element" && tag_name(*c, src).eq_ignore_ascii_case("html"))?;
+    let mut cursor = html.walk();
+    let start_tag = html
+        .children(&mut cursor)
+        .find(|c| matches!(c.kind(), "start_tag" | "self_closing_tag"))?;
+    let mut cursor = start_tag.walk();
+    let (_, (s, e)) = start_tag
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "attribute")
+        .find_map(|attr| {
+            attribute_parts(attr, src).filter(|(name, _)| name.eq_ignore_ascii_case("lang"))
+        })?;
+    NatLang::from_tag(&src[s..e])
 }
 
 /// The chars the punctuation rules read: the em dash and curly quotes, named or numeric.
@@ -1626,9 +1630,24 @@ More prose after the fence with a bare https://a.test/bare url and more text.\n\
                 "<html lang=\"en\"><body>x</body></html>\n",
                 Some(NatLang::En),
             ),
+            (
+                "<!doctype html>\n<html lang=\"pt-BR\"><body>x</body></html>\n",
+                Some(NatLang::PtBr),
+            ),
         ] {
             assert_eq!(ProseDoc::parse_html(src).html_lang, want, "{src}");
         }
+    }
+
+    /// The bug this fixes: a raw-text scan for `<html ...lang=...>` matches whichever occurrence
+    /// comes first in the file, comment included, so a decoy tag inside a leading comment used to
+    /// win over the page's real root tag. Reading the tree's actual root element instead means a
+    /// `comment` node never stands in for it.
+    #[test]
+    fn html_lang_ignores_a_decoy_tag_inside_a_leading_comment() {
+        let src =
+            "<!-- fallback: <html lang=\"en\"> -->\n<html lang=\"pt-BR\"><body>x</body></html>\n";
+        assert_eq!(ProseDoc::parse_html(src).html_lang, Some(NatLang::PtBr));
     }
 
     #[test]

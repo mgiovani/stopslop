@@ -107,7 +107,7 @@ static SETS: LazyLock<Vec<Vec<Member>>> = LazyLock::new(|| {
 /// featured pt.wikipedia articles of the human corpus against 94 generated summaries, ceiling
 /// 10% of either human subset: `verificar`/`validar`/`conferir`/`checar` 3 / 0 / 1,
 /// `configuração`/`ajustes`/`definições` 1 / 0 / 2, `excluir`/`remover`/`apagar`/`deletar`
-/// 7 / 1 / 0, `executar`/`rodar`/`invocar`/`disparar` 7 / 0 / 1, `rápido`/`veloz` 0 / 0 / 0.
+/// 7 / 1 / 0, `executar`/`rodar`/`invocar`/`disparar` 6 / 0 / 0, `rápido`/`veloz` 0 / 0 / 0.
 /// Dropped over the ceiling: `mostrar`/`exibir`/`apresentar` 32 / 47 / 7, `iniciar`/`começar`/
 /// `inicializar` 11 / 31 / 0, `criar`/`gerar`/`produzir` 28 / 45 / 36, `alterar`/`modificar`/
 /// `mudar`/`ajustar` 32 / 12 / 5, `usar`/`utilizar`/`empregar` 23 pydocs pages. Each of those is
@@ -135,13 +135,27 @@ static SETS_PT_BR: LazyLock<Vec<Vec<Member>>> = LazyLock::new(|| {
         ]),
         set(&[
             ("executar", r"execut(?:ar|a|am|ou|ando|ado|ada)"),
-            ("rodar", r"rod(?:ar|a|am|ou|ando|ado|ada)"),
+            // Bare `a` and `ada` dropped: they'd match the common nouns "roda" (wheel) and
+            // "rodada" (a round/lap) instead of a conjugation of "rodar" (to run).
+            ("rodar", r"rod(?:ar|am|ou|ando|ado)"),
             ("invocar", r"invoc(?:ar|a|am|ou|ando|ado|ada)"),
             ("disparar", r"dispar(?:ar|a|am|ou|ando|ado|ada)"),
         ]),
         set(&[("rápido", r"r[áa]pid[oa]s?"), ("veloz", r"veloz(?:es)?")]),
     ]
 });
+
+/// `(?-u:\b)` is an ASCII-only boundary, so an accented letter counts as a word edge under it:
+/// "verificação" matched the bare `a` alternative of `verific(?:ar|a|...)` (leftmost-first stops
+/// at "verifica" and the `ç` that follows passes as a boundary), and "validação" and "invocação"
+/// did the same. A letter on either edge means the match sits inside a longer word. Only letters
+/// count: a curly quote or an em dash next to the match is a real edge, and a Unicode `\b` in the
+/// pattern itself is the PikeVM trap AGENTS.md names.
+fn touches_letter(masked: &str, start: usize, end: usize) -> bool {
+    let before = masked[..start].chars().next_back();
+    let after = masked[end..].chars().next();
+    before.is_some_and(char::is_alphabetic) || after.is_some_and(char::is_alphabetic)
+}
 
 /// For each closed concept set, counts occurrences per member within one SECTION's running prose.
 /// A member "qualifies" once it occurs `>= 2` times there. Fires at most one diagnostic per set,
@@ -190,7 +204,11 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             let mut per_section: BTreeMap<usize, (usize, usize)> = BTreeMap::new();
             for m in member.re.find_iter(&doc.masked) {
                 let byte = m.start();
-                if doc.in_frontmatter(byte) || doc.in_url(byte) || !in_prose(byte) {
+                if doc.in_frontmatter(byte)
+                    || doc.in_url(byte)
+                    || !in_prose(byte)
+                    || touches_letter(&doc.masked, byte, m.end())
+                {
                     continue;
                 }
                 per_section.entry(section_of(byte)).or_insert((0, byte)).0 += 1;
@@ -369,10 +387,27 @@ mod tests {
         assert!(diagnostics_for(src).is_empty());
     }
 
-    /// The dropped catalog sets (see `SETS_PT_BR`'s doc comment) must stay silent.
+    /// The dropped catalog sets (see `SETS_PT_BR`'s doc comment) must stay silent: one pair per
+    /// dropped set, invented sentences, each member repeated twice in the same section.
     #[test]
     fn clean_pt_br_dropped_sets_do_not_fire() {
-        let src = "O painel vai mostrar o resultado. Depois vai mostrar o gráfico. Em seguida vai exibir o relatório. Por fim vai exibir o resumo. O comando vai criar o arquivo. Depois vai criar a pasta. Em seguida vai gerar o relatório. Por fim vai gerar o log. O sistema é ágil. A equipe é ágil. O vidro é frágil. O copo é frágil.\n";
+        let src = "O painel vai mostrar o resultado. Depois vai mostrar o gráfico. Em seguida vai exibir o relatório. Por fim vai exibir o resumo. O comando vai criar o arquivo. Depois vai criar a pasta. Em seguida vai gerar o relatório. Por fim vai gerar o log. O sistema é ágil. A equipe é ágil. O vidro é frágil. O copo é frágil. Vamos iniciar o processo agora. Depois vamos iniciar outra etapa. Em seguida vamos começar a revisão. Por fim vamos começar o teste. O time vai alterar o arquivo hoje. Depois vai alterar a configuração. Em seguida vai modificar o código legado. Por fim vai modificar o teste. Vamos usar a ferramenta padrão. Depois vamos usar o mesmo script. Em seguida vamos utilizar o novo recurso. Por fim vamos utilizar a biblioteca.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// "roda" (wheel) and "rodada" (a round/lap) are common nouns, not a conjugation of "rodar"
+    /// (to run); the trimmed pattern must not treat their bare `a`/`ada` endings as a match.
+    #[test]
+    fn clean_pt_br_rodar_pattern_does_not_match_wheel_or_round_nouns() {
+        let src = "A roda do carro furou hoje. A segunda rodada começa amanhã. A primeira roda foi trocada ontem. A rodada anterior já terminou.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// "verificação"/"validação" continue past the bare `a` alternative into accented letters;
+    /// the ASCII `(?-u:\b)` boundary must not treat that continuation as a real word edge.
+    #[test]
+    fn clean_pt_br_ascii_boundary_does_not_match_accented_continuations() {
+        let src = "A verificação de dados é feita aqui. A verificação continua depois. A validação do formulário ocorre em seguida. A validação final confirma tudo.\n";
         assert!(diagnostics_for(src).is_empty());
     }
 

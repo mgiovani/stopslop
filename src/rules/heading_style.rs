@@ -132,8 +132,8 @@ const STOPWORDS: &[&str] = &[
 /// small English-side cost, and it's lenient: a heading with those words left lowercase still
 /// counts as title case, never the reverse.
 const STOPWORDS_PT_BR: &[&str] = &[
-    "a", "o", "as", "os", "um", "uma", "e", "ou", "de", "da", "do", "das", "dos", "em", "no", "na",
-    "nos", "nas", "por", "para", "com", "sem", "sobre", "ao", "à", "aos", "às", "que",
+    "o", "os", "um", "uma", "e", "ou", "de", "da", "do", "das", "dos", "em", "no", "na", "nos",
+    "nas", "por", "para", "com", "sem", "sobre", "ao", "à", "aos", "às", "que",
 ];
 
 fn is_stopword(word: &str, use_pt_br: bool) -> bool {
@@ -518,5 +518,16 @@ mod tests {
     fn clean_pt_br_reference_heading_thin_body_excluded() {
         let src = "# Guide\n\n## Setup\n\nDone.\n\n## Refer\u{ea}ncias\n\nVer a lista completa no reposit\u{f3}rio.\n";
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// Under English-only, "Refer\u{ea}ncias" loses its reference-heading exemption, so its thin
+    /// body counts toward the floor alongside "Setup" -- the same source is clean under the union
+    /// (see `clean_pt_br_reference_heading_thin_body_excluded` above).
+    #[test]
+    fn natlangs_gate_silences_pt_br_reference_heading_exemption_under_en_only() {
+        let src = "# Guide\n\n## Setup\n\nDone.\n\n## Refer\u{ea}ncias\n\nVer a lista completa no reposit\u{f3}rio.\n";
+        let diags = diagnostics_for_natlangs(src, &[NatLang::En]);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP021");
     }
 }
