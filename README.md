@@ -204,25 +204,25 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP008 | structure | Stub-only / unimplemented body | A, on | TS, TSX, Python, Go, Rust | en, pt-BR | A function whose entire body is `pass`/`...`/`throw new Error("not implemented")`/`todo!()`/empty |
 | SLOP009 | structure | Placeholder / sample credential value | A, on | TS, TSX, Python, Go, Rust, HTML | en | A hardcoded `YOUR_API_KEY`, `example.com`, `sk-...`-shaped secret, or other sample value; in HTML attributes also a placeholder-image host (`via.placeholder.com`, `placehold.co`) or an `alt` that is just `image` |
 | SLOP010 | structure | Unresolved package import | B, off | TS, TSX, Python, Go, Rust | en, pt-BR | An imported package that isn't declared in the project's manifest or stdlib (opt-in, `--check-imports`) |
-| SLOP011 | artifact | Assistant-response residue in prose | A, on | Markdown, MDX, Text, reST, HTML | en | A leftover chat-turn phrase (self-ID disclaimer, refusal boilerplate, a line-initial `Certainly!` opener, a trailing `let me know if you have` closer, reasoning-chain scaffolding like `let's think about this`, a mid-sentence `step 1:` that isn't heading a section or list item, or a paragraph-initial acknowledgment loop like `To answer your question, ...`) left unedited in prose |
+| SLOP011 | artifact | Assistant-response residue in prose | A, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A leftover chat-turn phrase (self-ID disclaimer, refusal boilerplate, a line-initial `Certainly!` opener, a trailing `let me know if you have` closer, reasoning-chain scaffolding like `let's think about this`, a mid-sentence `step 1:` that isn't heading a section or list item, or a paragraph-initial acknowledgment loop like `To answer your question, ...`) left unedited in prose |
 | SLOP012 | artifact | LLM tool / citation artifact tokens | A, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A leftover search/citation-tool token (`turn0search0`, `:contentReference[oaicite:1]`, a `【12†L3】` marker, `utm_source=chatgpt.com`) left in text |
 | SLOP013 | artifact | Unfilled template placeholder text | A, on | Markdown, MDX, Text, reST, HTML | en | An unfilled placeholder (`[Your Name]`, `INSERT_SOURCE_URL_30`, a `date: 2025-XX-XX` stub) left in place of real content |
 | SLOP014 | rhetoric | Formulaic cliché phrase | B, on | Markdown, MDX, Text, reST, HTML | en | A stock marketing/narrative cliché (`unlock the power of`, `in today's fast-paced world`, `a testament to`) |
-| SLOP015 | verbosity | Hedging & filler-phrase density | B, on  | Markdown, MDX, Text, reST, HTML | en | A document-wide density of hedging/filler phrases (`it's worth noting that`, `in conclusion`, `first and foremost`); an adjacent hedge stack like `might potentially` fires on its own, without waiting for the density threshold |
+| SLOP015 | verbosity | Hedging & filler-phrase density | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A document-wide density of hedging/filler phrases (`it's worth noting that`, `in conclusion`, `first and foremost`); an adjacent hedge stack like `might potentially` fires on its own, without waiting for the density threshold |
 | SLOP016 | verbosity | Overused-vocabulary density | B, on  | Markdown, MDX, Text, reST, HTML | en | A document-wide density of overused vocabulary (`delve`, `tapestry`, `robust`, `leverage`) across enough distinct terms to read as filler |
-| SLOP017 | rhetoric | Rhetorical parallelism / false-depth scaffolding density | B, on  | Markdown, MDX, Text, reST, HTML | en | A document-wide density of three-item rhetorical lists and `not only X but also Y` phrasing. Trailing `, underscoring its...` participles count toward the same threshold. Longer enumerations and lists of proper nouns are not counted |
+| SLOP017 | rhetoric | Rhetorical parallelism / false-depth scaffolding density | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A document-wide density of three-item rhetorical lists and `not only X but also Y` phrasing. Trailing `, underscoring its...` participles count toward the same threshold. Longer enumerations and lists of proper nouns are not counted |
 | SLOP018 | format | Mid-prose em/en dash | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A mid-sentence em dash (`—`), en dash (`–`), or spaced ASCII `--` that should be rewritten out of the sentence (numeric ranges like `2020–2024`, and an attribution dash opening a block or blockquote like `— Oscar Wilde`, are exempt) |
 | SLOP019 | format | Boldface & bold-lead-in list overuse | B, on  | Markdown, MDX, HTML | en, pt-BR | Boldface overuse in body prose, or 3+ consecutive `- **Term**: ...` bold-lead-in list items |
 | SLOP020 | format | Typographic (smart) quotes in source | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | Curly quotes/apostrophes in source where straight ASCII quotes are expected |
 | SLOP021 | format | Heading & marker formatting affectations | B, on  | Markdown, MDX, HTML | en | Emoji or a decorative technical symbol used as a heading/list marker (counted and reported separately), headings written in Title Case against an otherwise sentence-case document, or headings stacked over two-sentence sections |
-| SLOP022 | rhetoric | Formulaic opener / rhetorical setup | B, on | Markdown, MDX, Text, reST, HTML | en | A throat-clearing or faux-insight opener (`Here's the thing`, `What nobody tells you`, `Plot twist:`), or a self-answered `Question? Answer.` pair opening a line |
-| SLOP023 | rhetoric | Binary contrast / negative listing | B, on | Markdown, MDX, Text, reST, HTML | en | The `It's not X. It's Y.` / `The question isn't X, it's Y` shape, or a `Not a X. Not a Y.` fragment run |
+| SLOP022 | rhetoric | Formulaic opener / rhetorical setup | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A throat-clearing or faux-insight opener (`Here's the thing`, `What nobody tells you`, `Plot twist:`), or a self-answered `Question? Answer.` pair opening a line |
+| SLOP023 | rhetoric | Binary contrast / negative listing | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | The `It's not X. It's Y.` / `The question isn't X, it's Y` shape, or a `Not a X. Not a Y.` fragment run |
 | SLOP024 | rhetoric | Importance puffery / fake-strong verb | B, on | Markdown, MDX, Text, reST, HTML | en | An inflated significance claim (`marks a pivotal moment`, `solidifies its position`), a `serves as a centralized hub`-style linking verb where plain `is` reads better, or a faux-scale range (`from the singularity of the Big Bang to the enigmatic dance of dark matter`) standing in for an actual magnitude |
 | SLOP025 | sourcing | Unsourced weasel attribution | B, on | Markdown, MDX, Text, reST, HTML | en | Anonymous authority (`experts agree`, `studies show`) with nothing citing it anywhere on the line, whether a link or a footnote. Also flags notability by name-dropping three-plus outlets (`cited in TechCrunch, Forbes, and Wired`) with no per-citation context |
-| SLOP026 | rhetoric | Dramatic colon reveal | B, on  | Markdown, MDX, Text, reST, HTML | en | A short noun phrase, a colon, then a lowercase dramatic reveal (`The best part: it learns`) |
+| SLOP026 | rhetoric | Dramatic colon reveal | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A short noun phrase, a colon, then a lowercase dramatic reveal (`The best part: it learns`) |
 | SLOP027 | verbosity | Empty filler phrase & adverb density | B, on  | Markdown, MDX, Text, reST, HTML | en | A document-wide density of empty phrases (`when it comes to`, `at its core`) and filler adverbs (`simply`, `actually`) |
 | SLOP028 | verbosity | Weak verb phrase / vague quantifier | B, on  | Markdown, MDX, Text, reST, HTML | en | A document-wide density of nominalizations (`made a decision`, `has the ability to`) and vague quantifiers used where a number belongs (`significantly improves`) |
-| SLOP029 | rhetoric | Summary-recap ending / fake-profound kicker | B, on | Markdown, MDX, Text, reST, HTML | en | A closing block that restates the piece (`In conclusion`, `Overall`) or lands a mic-drop line (`It's already here.`) |
+| SLOP029 | rhetoric | Summary-recap ending / fake-profound kicker | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A closing block that restates the piece (`In conclusion`, `Overall`) or lands a mic-drop line (`It's already here.`) |
 | SLOP030 | rhetoric | Dramatic fragmentation / robotic rhythm | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | Stacked one-clause fragments (`That's it. That's the whole thing.`), consecutive `And`-initial sentences, or paragraph-wide repeated sentence shapes |
 | SLOP031 | rhetoric | Promotional / advertisement language | B, on  | Markdown, MDX, Text, reST, HTML | en | Brochure register in technical prose (`boasts a`, `industry-leading`, `a hidden gem`) at document-wide density |
 | SLOP032 | verbosity | Hyphenated-compound overuse | B, on  | Markdown, MDX, Text, reST, HTML | en | Stacked hyphenated modifiers used as filler (`end-to-end`, `data-driven`, `battle-tested`) at document-wide density |
@@ -325,15 +325,16 @@ syntax (Markdown, MDX, ...); `NatLang` is a separate axis for which
 lexicons a rule's phrase panels actually cover, listed per rule in the `NL`
 column above. Structural and statistical rules (AST shape, punctuation,
 density) need no lexicon and already run on pt-BR text. Phrase-panel rules
-are English-only until their pt-BR panel ships, one rule at a time; track
-progress in [issue #30](https://github.com/mgiovani/stopslop/issues/30).
+gain a pt-BR panel one rule at a time, each proven by a fixture under
+`tests/fixtures/markdown/pt-br/` before the rule may list `pt-BR`; the rows
+still marked `en` alone are English-only for now, and
+[issue #30](https://github.com/mgiovani/stopslop/issues/30) tracks the rest.
 `pt` and `pt-PT` both resolve to the same Brazilian lexicon as `pt-BR`, a
-best-effort alias rather than a separate European-Portuguese panel. One
-known gap: SLOP023's English negative-listing shape can misfire on the
-Portuguese preposition contraction "no" (`No começo... No fim...`) until its
-pt-BR panel lands and narrows that pattern; `language = "pt-BR"` in
-`stopslop.toml` restricts a run to Portuguese and keeps every other panel
-silent in the meantime.
+best-effort alias rather than a separate European-Portuguese panel.
+Thresholds tuned on English word counts (SLOP033, SLOP041, SLOP043,
+SLOP029's caps) are not yet re-measured for Portuguese, which runs a little
+longer per idea; `language = "pt-BR"` in `stopslop.toml` restricts a run to
+the Portuguese panels only.
 
 ## Suppression
 

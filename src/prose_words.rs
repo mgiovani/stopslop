@@ -263,15 +263,26 @@ mod tests {
 
     // A Unicode word boundary drops the regex crate from its lazy DFA to the PikeVM as soon as
     // the haystack has one non-ASCII byte, so every boundary must stay ASCII-scoped (issue #21).
+    /// A bare Unicode boundary is never allowed: every `\b`, English or Portuguese, must read
+    /// `(?-u:\b)`. The one exemption is a line whose trimmed start is `//`, so a doc comment may
+    /// name the boundary it is explaining.
     fn first_unscoped_boundary(bytes: &[u8]) -> Option<usize> {
         #[allow(clippy::byte_char_slices)] // spelling the needle as a literal would trip the scan
         let needle = [b'\\', b'b'];
-        bytes
-            .windows(2)
-            .enumerate()
-            .filter(|(_, w)| *w == needle)
-            .map(|(pos, _)| pos)
-            .find(|&pos| pos < 5 || &bytes[pos - 5..pos] != b"(?-u:")
+        let mut line_start = 0;
+        bytes.split(|&b| b == b'\n').find_map(|line| {
+            let start = line_start;
+            line_start += line.len() + 1;
+            if line.trim_ascii_start().starts_with(b"//") {
+                return None;
+            }
+            line.windows(2)
+                .enumerate()
+                .filter(|(_, w)| *w == needle)
+                .map(|(pos, _)| pos)
+                .find(|&pos| pos < 5 || &line[pos - 5..pos] != b"(?-u:")
+                .map(|pos| start + pos)
+        })
     }
 
     #[test]
@@ -281,6 +292,21 @@ mod tests {
         let mut bare = br"(?i)(?-u:\b)word".to_vec();
         bare.extend([b'\\', b'b']);
         assert_eq!(first_unscoped_boundary(&bare), Some(16));
+        let mut second_line = b"(?i)ascii\n".to_vec();
+        second_line.extend(bare.iter());
+        assert_eq!(first_unscoped_boundary(&second_line), Some(26));
+        // An accented line no longer gets a pass -- a Portuguese panel's bare `\b` is just as
+        // unscoped as an English one's.
+        let mut accented = "(?i)n[ãa]o".as_bytes().to_vec();
+        accented.extend([b'\\', b'b']);
+        assert_eq!(first_unscoped_boundary(&accented), Some(11));
+        // Built with `extend`: a literal escape on this line would trip the self-scan below.
+        let mut comment = b"    // uses ".to_vec();
+        comment.extend([b'\\', b'b']);
+        comment.extend(b"word");
+        comment.extend([b'\\', b'b']);
+        comment.extend(b" as an example");
+        assert_eq!(first_unscoped_boundary(&comment), None);
     }
 
     #[test]
@@ -295,7 +321,7 @@ mod tests {
             let bytes = std::fs::read(path).unwrap();
             assert!(
                 first_unscoped_boundary(&bytes).is_none(),
-                "{}: a regex word boundary is not ASCII-scoped, write (?-u:) in front of it",
+                "{}: a regex word boundary on an ASCII-only line is not ASCII-scoped, write (?-u:) in front of it",
                 path.display()
             );
         }

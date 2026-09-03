@@ -53,9 +53,44 @@ migration notes live here.
   default every supported language) restricts a run to specific tags, and
   `--list-rules` gained a `NATLANG` column. A new `tests/natlang_witness.rs`
   harness requires a `tests/fixtures/markdown/pt-br/` fixture before a rule
-  can declare `PtBr`. No rule ships a pt-BR phrase panel yet; this lands the
-  axis and the neutral fixes below. See
+  can declare `PtBr`. See
   [#30](https://github.com/mgiovani/stopslop/issues/30).
+- **Brazilian-Portuguese panels, phase 1.** Seven prose rules now carry a
+  `pt-BR` lexicon next to the English one and list `en, pt-BR` in the README
+  and `--list-rules`. Every rule runs both panels by default; `language`
+  restricts to one. Each panel is a closed set that stayed silent on a
+  corpus of human-written pt-BR text (Wikipedia, public-domain fiction with
+  travessão dialogue, translated Python docs) before shipping:
+  - SLOP011: self-ID and cutoff disclaimers (`como um modelo de linguagem`,
+    `minha data de corte`), apologetic refusals, reasoning-chain leaks
+    (`vamos pensar passo a passo`), `Claro!`-style line openers, `espero que
+    ajude` closers, and a paragraph-initial `para responder à sua pergunta`.
+  - SLOP015: hedge phrases (`vale ressaltar`, `de certa forma`, `em tese`)
+    and adjacent stacks (`pode potencialmente`). The density tally now merges
+    both languages into one count and anchors on the earliest hedge in
+    either.
+  - SLOP017: `X, Y, e Z` two-comma tricolons with a Portuguese clause
+    rejector, the one-comma `X, Y e Z` triad of short lowercase items when
+    punctuation rather than a word leads it, `não só X, mas também Y` /
+    `não é X, mas sim Y` parallelism, and closed gerund tails
+    (`, destacando ...`).
+  - SLOP022: throat-clearing, signposting, rhetorical-setup, and
+    conversational openers (`A real é que`, `Sem mais delongas`, `Você já
+    parou para pensar`, `Hoje em dia,`).
+  - SLOP023: `não é sobre X, é sobre Y`, cross-sentence `Não é X. É Y.`,
+    `O problema não é X. O problema é Y.`, `não se trata de X, mas sim de Y`,
+    and `Sem X. Sem Y.` / `Não X. Não Y.` fragment runs.
+  - SLOP026: `A parte que ninguém vê:` / `O pulo do gato:` reveals, with
+    post-nominal adjectives (`A parte mais importante:`).
+  - SLOP029: final-block recap openers (`Resumindo`, `Em conclusão`, `No fim
+    das contas`), kickers (`muda tudo`, `simples assim`), `não ... É ...`
+    contrast closers, and vague positive endings (`o céu é o limite`, `só o
+    tempo dirá`).
+  Portuguese panels use the ASCII word boundary like every other panel: one
+  Unicode boundary anywhere in a regex sends the whole regex to the slow
+  engine on any non-ASCII input, which made the default lint 2.3x slower on
+  an 8 MB English file during review. Next to an accented letter the panels
+  require the literal space that follows instead.
 
 - `-j N` / `--threads N` picks the walk's worker count (`0`, the default,
   chooses automatically); `-j 1` makes per-rule timings add up for perf work.
@@ -131,6 +166,14 @@ migration notes live here.
 
 ### Fixed
 
+- **SLOP023**'s English negative-listing shape matched the Portuguese
+  contraction `no` ("in the"), so `No começo, tudo funcionava. No fim, nada
+  funcionava.` was flagged. A `no` fragment is now capped at 25 characters
+  and may not contain a comma, which is the shape of a real `No magic. No
+  config.` run. The same panel and the binary-contrast panel also no longer
+  pair two sentences across a blank line, so unrelated paragraphs that each
+  open with a negation stay separate, and both accept CRLF line endings
+  between the two sentences.
 - **SLOP009** matched `YOUR_` case-insensitively anywhere in a string, so a
   real image path such as `Leave_Your_Dog_at_Home.png` in an HTML `src` was a
   Tier A finding. The placeholder shape now has to start a token.

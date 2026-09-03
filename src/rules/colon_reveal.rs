@@ -1,6 +1,7 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{NatLang, PROSE_LANGS};
+use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::sync::LazyLock;
@@ -10,7 +11,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Dramatic colon reveal",
     tier: Tier::B,
     langs: PROSE_LANGS,
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: false,
     check,
@@ -34,13 +35,46 @@ static COLON_REVEAL: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-/// (a) only: a short noun phrase headed by a closed set of dramatic "reveal" nouns, then a colon,
-/// then a lowercase clause on the same line. See the static's doc comment for what keeps this
-/// silent on ordinary technical prose. Word-count cap (<=6, incl. the determiner) enforced here
-/// since the regex crate has no lookaround to bound it declaratively.
+/// Portuguese mirror of `COLON_REVEAL`: same anchor, closed reveal-noun set, colon, then clause.
+/// Two shape differences from English: adjectives typically FOLLOW the noun in Portuguese ("A
+/// parte mais importante:", "O detalhe curioso:") rather than only preceding it, so up to 3
+/// lowercase words are allowed after the noun in addition to up to 2 before it; and the
+/// relative-clause pronouns are `que`/`quem`/`onde` instead of `that`/`which`/`who`. No `(?i)`:
+/// the determiners must be genuinely capitalized, same as English -- folding case would also
+/// match the lowercase articles "um"/"uma"/"a"/"o" that open countless ordinary sentences.
+/// `resultado`/`problema`/`diferença` are dropped from the noun set: with a determiner in front,
+/// each is an ordinary postmortem/bug-report lead-in ("O problema: a equipe não testou o build."),
+/// not a dramatic reveal.
+static COLON_REVEAL_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?m)(?:^[ \t]*|[.!?]\s+)((?:A|O|Uma|Um|Essa|Esse|Esta|Este|Minha|Meu|Nossa|Nosso|Outra|Outro)(?:\s+\p{Ll}+){0,2}\s+(?:parte|coisa|segredo|truque|detalhe|verdade|surpresa|momento|li[çc][ãa]o|virada|sacada|pegadinha|pulo do gato)(?:\s+\p{Ll}+){0,3}(?:\s+(?:que|quem|onde)(?:\s+\p{Ll}+){0,4})?)\s*:\s+([^\W\d_][^\n]*[.!?])",
+    )
+    .unwrap()
+});
+
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
-    for caps in COLON_REVEAL.captures_iter(&doc.masked) {
+    if ctx.natlangs.contains(&NatLang::En) {
+        check_panel(&COLON_REVEAL, doc, rule, ctx, out);
+    }
+    if ctx.natlangs.contains(&NatLang::PtBr) {
+        check_panel(&COLON_REVEAL_PT_BR, doc, rule, ctx, out);
+    }
+}
+
+/// (a) only: a short noun phrase headed by a closed set of dramatic "reveal" nouns, then a colon,
+/// then a lowercase clause on the same line. See each static's doc comment for what keeps it
+/// silent on ordinary prose. Word-count cap (<=6, incl. the determiner) enforced here since the
+/// regex crate has no lookaround to bound it declaratively; shared by both panels so the two
+/// languages stay tuned to the same threshold.
+fn check_panel(
+    pattern: &Regex,
+    doc: &ProseDoc,
+    rule: &'static RuleDef,
+    ctx: &LintContext,
+    out: &mut Vec<Diagnostic>,
+) {
+    for caps in pattern.captures_iter(&doc.masked) {
         let phrase = caps.get(1).unwrap();
         if phrase.as_str().split_whitespace().count() > 6 {
             continue;
@@ -92,6 +126,15 @@ mod tests {
     }
 
     fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
+        diagnostics_in_natlangs(doc, src, lang, crate::lang::ALL_NATLANGS)
+    }
+
+    fn diagnostics_in_natlangs<'a>(
+        doc: ProseDoc<'a>,
+        src: &'a str,
+        lang: Lang,
+        natlangs: &'static [NatLang],
+    ) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
@@ -103,7 +146,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
-            natlangs: crate::lang::ALL_NATLANGS,
+            natlangs,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -185,5 +228,87 @@ mod tests {
         let src =
             "The single strangest detail that surprised everyone: it only happens under load.\n";
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn ptbr_flags_short_noun_phrase_reveal() {
+        let diags = diagnostics_for("A melhor parte: ele aprende sozinho.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP026");
+    }
+
+    #[test]
+    fn ptbr_flags_relative_clause_reveal() {
+        let diags = diagnostics_for("A parte que ninguém vê: o cache nunca expira.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP026");
+    }
+
+    #[test]
+    fn ptbr_flags_idiom_noun() {
+        let diags = diagnostics_for("O pulo do gato: rodar tudo em paralelo.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP026");
+    }
+
+    #[test]
+    fn ptbr_clean_ordinary_technical_colon_outside_noun_list() {
+        // Same shape, but "valor" (value) is not in the closed reveal-noun set.
+        let src = "O valor de retorno: um booleano.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn ptbr_clean_phrase_over_word_cap() {
+        let src = "A mais estranha parte que intrigou todo mundo: ninguém sabe explicar.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn ptbr_clean_bare_label_colon() {
+        // No determiner before the noun, so the sentence/line anchor never matches.
+        let src = "Resultado: 3 a 1.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn ptbr_clean_url_colon() {
+        let src = "Veja https://example.com/config/referencia para a lista completa de opções.\n"; // ai-slop-ignore
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn ptbr_clean_problema_lead_in() {
+        let src = "O problema: a equipe não testou o build antes do release.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn ptbr_clean_diferenca_lead_in() {
+        let src = "A diferença: o novo índice reduz o tempo de consulta.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn ptbr_flags_onde_relative_clause_reveal() {
+        let diags = diagnostics_for("O momento onde tudo mudou: o deploy de sexta.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP026");
+    }
+
+    #[test]
+    fn pt_br_gate_silences_portuguese_panel_when_only_english_selected() {
+        let src = "A melhor parte: ele aprende sozinho.\n";
+        assert!(
+            diagnostics_in_natlangs(ProseDoc::parse(src), src, Lang::Md, &[NatLang::En]).is_empty()
+        );
+        let src_en = "The best part: it learns.\n";
+        assert!(diagnostics_in_natlangs(
+            ProseDoc::parse(src_en),
+            src_en,
+            Lang::Md,
+            &[NatLang::PtBr]
+        )
+        .is_empty());
     }
 }

@@ -11,7 +11,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Formulaic opener / rhetorical setup",
     tier: Tier::B,
     langs: PROSE_LANGS,
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: false,
     check,
@@ -48,6 +48,29 @@ static OPENER_PHRASES: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
+/// Portuguese mirror of `OPENER_PHRASES`: throat-clearing/faux-insight, signposting, rhetorical
+/// setup, and conversational families, closed set, sentence-initial only via the same `PREFIX`
+/// anchor. `Spoiler:` and `Plot twist:` are common loanwords in Brazilian prose but stay in the
+/// English panel only (cross-language disjointness). "Ótima pergunta!" and "Claro!" are SLOP011's
+/// chat-residue openers (`rules::residue`), not this rule's. "Em resumo"/"Resumindo" are SLOP029's
+/// recap opener (`rules::recap`), which scopes to the document's final paragraph only; this rule
+/// has no such scoping and would fire on every occurrence, so it stays out.
+///
+/// Corpus-checked against Wikipedia and public-domain literary pt-BR prose to cut two shapes that
+/// read as ordinary human prose more often than as slop setups:
+/// - bare "hoje em dia" is a plain time adverbial that shows up mid-clause ("a teoria mais
+///   aceita hoje em dia, teve origem..."); requiring the trailing comma keeps only the
+///   sentence-opening "Hoje em dia, ..." construction (the `PREFIX` anchor alone still lets the
+///   mid-clause case through, since a comma isn't a sentence boundary).
+/// - bare "imagine" is ordinary expository/tutorial prose ("imagine uma função que..."); only
+///   "imagine que"/"imagine só"/"imagine a seguinte" read as the rhetorical-setup shape.
+static OPENER_PHRASES_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(
+        r#"(?im){PREFIX}(a real [ée] que|na real,|a verdade nua e crua|o que ningu[ée]m te conta|o que ningu[ée]m fala|e se eu te dissesse|sem mais delongas|vamos direto ao ponto|vamos mergulhar|vamos explorar|vamos l[áa]:|neste (?:artigo|post|texto),? (?:vamos|vou|iremos)|hoje (?:eu )?vou (?:te )?(?:mostrar|ensinar|contar)|bora (?:l[áa]|entender|come[çc]ar)|voc[êe] j[áa] (?:parou para|se) (?:pensar|perguntou|perguntar)|j[áa] (?:se )?perguntou|imagine (?:que|s[óo]|a seguinte)|n[ãa]o [ée] segredo (?:para ningu[ée]m )?que|todo mundo sabe que|em um mundo (?:onde|em que|cada vez mais)|no mundo (?:de hoje|atual),|hoje em dia,|nos dias de hoje,|vivemos em (?:uma|um)|desde os prim[óo]rdios|preparado\?|pronto\?|vem comigo|segura essa:)"#
+    ))
+    .unwrap()
+});
+
 /// Self-answered question/answer pairs: a short question (<=10 words, ending in "?") immediately
 /// followed on the SAME line by its own short answer clause (<=8 words, ending in "."/"!"), e.g.
 /// "The answer? Yes." / "O resultado? Zero." Group 1 is the question (the diagnostic anchor);
@@ -66,20 +89,36 @@ static QUESTION_ANSWER: LazyLock<Regex> = LazyLock::new(|| {
 /// Frontmatter and URL spans are skipped; code is already blanked. Headings are in scope (a
 /// formulaic heading like "## Here's the Thing About Caching" is a prime target, same rationale
 /// as cliche.rs). Emits one diagnostic per matching line, anchored at that line's first match.
+/// `OPENER_PHRASES`/`OPENER_PHRASES_PT_BR` are gated on `ctx.natlangs`; `QUESTION_ANSWER` has no
+/// language-specific lexicon (it matches by shape, not phrase) so it always runs.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
 
-    let bytes = OPENER_PHRASES
-        .captures_iter(&doc.masked)
-        .map(|c| c.get(1).unwrap().start())
-        .chain(
-            QUESTION_ANSWER
+    let mut bytes: Vec<usize> = Vec::new();
+    if ctx.natlangs.contains(&NatLang::En) {
+        bytes.extend(
+            OPENER_PHRASES
                 .captures_iter(&doc.masked)
-                // A minified page is one line, so a FAQ `<button>Q?</button><p>Sim.</p>` would
-                // read as self-answered; the answer has to sit in the question's own block.
-                .filter(|c| !doc.block_initial(c.get(2).unwrap().start()))
                 .map(|c| c.get(1).unwrap().start()),
-        )
+        );
+    }
+    if ctx.natlangs.contains(&NatLang::PtBr) {
+        bytes.extend(
+            OPENER_PHRASES_PT_BR
+                .captures_iter(&doc.masked)
+                .map(|c| c.get(1).unwrap().start()),
+        );
+    }
+    bytes.extend(
+        QUESTION_ANSWER
+            .captures_iter(&doc.masked)
+            // A minified page is one line, so a FAQ `<button>Q?</button><p>Sim.</p>` would
+            // read as self-answered; the answer has to sit in the question's own block.
+            .filter(|c| !doc.block_initial(c.get(2).unwrap().start()))
+            .map(|c| c.get(1).unwrap().start()),
+    );
+    let bytes = bytes
+        .into_iter()
         .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte));
     let by_line = first_byte_per_line(doc, bytes);
     for &byte in by_line.values() {
@@ -305,5 +344,105 @@ mod tests {
         // belt-and-suspenders check (same rationale as cliche.rs).
         let src = "Read more at https://example.com/heres-the-thing-guide today.\n"; // ai-slop-ignore
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn flags_pt_br_throat_clearing_openers() {
+        let diags = diagnostics_for(
+            "A real é que o cache nunca expira sozinho.\n\nNa real, o time já sabia disso.\n\nE se eu te dissesse que o deploy quebrou de novo?\n",
+        );
+        assert_eq!(diags.len(), 3);
+        assert!(diags.iter().all(|d| d.code == "SLOP022"));
+    }
+
+    #[test]
+    fn flags_pt_br_signposting_openers() {
+        let diags = diagnostics_for(
+            "Vamos direto ao ponto: o serviço caiu.\n\nVamos explorar a configuração agora.\n\nBora entender o motivo do erro.\n",
+        );
+        assert_eq!(diags.len(), 3);
+        assert!(diags.iter().all(|d| d.code == "SLOP022"));
+    }
+
+    #[test]
+    fn flags_pt_br_rhetorical_setup_openers() {
+        let diags = diagnostics_for(
+            "Você já parou para pensar no motivo do erro?\n\nImagine que o serviço caísse agora.\n\nTodo mundo sabe que o cache expira.\n",
+        );
+        assert_eq!(diags.len(), 3);
+        assert!(diags.iter().all(|d| d.code == "SLOP022"));
+    }
+
+    #[test]
+    fn flags_pt_br_conversational_openers() {
+        let diags = diagnostics_for(
+            "Segura essa: o build quebrou de novo.\n\nPronto? Vamos começar então.\n",
+        );
+        assert_eq!(diags.len(), 2);
+        assert!(diags.iter().all(|d| d.code == "SLOP022"));
+    }
+
+    #[test]
+    fn clean_na_realidade_is_not_na_real() {
+        // "Na realidade," is the ordinary word "realidade" (reality); the comma must sit
+        // directly after "real" for the slop phrase "na real," to match.
+        let diags = diagnostics_for("Na realidade, o cache expira depois de uma hora.\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn clean_bare_imagine_without_que_or_so() {
+        // Corpus-checked: bare "imagine" is ordinary expository prose, not a rhetorical setup.
+        let diags = diagnostics_for("Imagine a cena descrita no capítulo anterior.\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn clean_mid_sentence_a_real_e_que() {
+        // Sentence-initial only, same as the English panel: "a real é que" mid-clause (not
+        // preceded by a sentence boundary) stays silent.
+        let diags = diagnostics_for("O time sabia bem, e a real é que ninguém avisou a tempo.\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn clean_hoje_em_dia_without_comma() {
+        // Corpus-checked: "hoje em dia" without a trailing comma is a plain time adverbial.
+        let diags = diagnostics_for("Hoje em dia o sistema roda sem intervenção manual.\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn clean_nos_dias_de_hoje_without_comma() {
+        let diags = diagnostics_for("Nos dias de hoje é comum usar observabilidade.\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn flags_nos_dias_de_hoje_with_comma() {
+        let diags = diagnostics_for("Nos dias de hoje, é comum usar observabilidade.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP022");
+    }
+
+    #[test]
+    fn pt_br_gate_silences_portuguese_panel_when_only_english_selected() {
+        let doc = ProseDoc::parse("Na real, o deploy quebrou de novo.\n");
+        let ctx = LintContext {
+            display_path: "test.md".to_string(),
+            source: "Na real, o deploy quebrou de novo.\n",
+            index: None,
+            lang: Lang::Md,
+            comments: &doc.ignore_comments,
+            strings: &[],
+            is_test_path: false,
+            is_stub_file: false,
+            deps: None,
+            prose: Some(&doc),
+            natlangs: &[NatLang::En],
+        };
+        let mut out = Vec::new();
+        check(&RULE, &ctx, &mut out);
+        assert!(out.is_empty());
     }
 }

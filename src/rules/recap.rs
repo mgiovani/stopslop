@@ -11,7 +11,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Summary-recap ending / fake-profound kicker",
     tier: Tier::B,
     langs: PROSE_LANGS,
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: false,
     check,
@@ -34,13 +34,38 @@ static RECAP_OPENER: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
+/// Brazilian-Portuguese twin of `RECAP_OPENER`. `\b` is attached per-alternative rather than once
+/// after the whole group (the `regex` crate has no look-around to require it only up to the
+/// comma): `no fim,` requires the literal comma instead, so a plain time reference like "no fim
+/// do dia" ("at the end of the day") doesn't also match -- only the standalone recap use of "No
+/// fim, ..." does, and the comma itself is a strong enough terminator without an extra boundary.
+/// Every alternative's last letter before its `(?-u:\b)` is ASCII (`s[íi]ntese`/`an[áa]lise` end
+/// on `e`), so the ASCII-scoped boundary is exact here, not one letter short.
+static RECAP_OPENER_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^(?:em (?:conclus[ãa]o|suma|resumo|s[íi]ntese)(?-u:\b)|resumindo(?-u:\b)|concluindo(?-u:\b)|para (?:concluir|resumir|finalizar)(?-u:\b)|no (?:fim|final) das contas(?-u:\b)|por fim(?-u:\b)|enfim(?-u:\b)|afinal de contas(?-u:\b)|de modo geral(?-u:\b)|em [úu]ltima an[áa]lise(?-u:\b)|no fim,)",
+    )
+    .unwrap()
+});
+
 /// (b) opens with a conjunction/deictic mic-drop word.
 static KICKER_OPENER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^(and|because|that'?s)(?-u:\b)").unwrap());
+/// Brazilian-Portuguese twin of `KICKER_OPENER`. Every alternative ends on an ASCII letter
+/// ("isso"/"por isso" end on `o`), so `(?-u:\b)` is exact here too.
+static KICKER_OPENER_PT_BR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(e|porque|[ée] isso|[ée] por isso)(?-u:\b)").unwrap());
 /// (b) one of the stock mic-drop phrases, anywhere in the block.
 static KICKER_PHRASE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)changes everything|the real question|that'?s the whole game|welcome to the future",
+    )
+    .unwrap()
+});
+/// Brazilian-Portuguese twin of `KICKER_PHRASE`.
+static KICKER_PHRASE_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)muda tudo|a verdadeira (?:quest[ãa]o|pergunta)|bem-vindo ao futuro|esse [ée] o jogo|[ée] s[óo] isso|simples assim",
     )
     .unwrap()
 });
@@ -52,6 +77,22 @@ static BINARY_CONTRAST: LazyLock<Regex> = LazyLock::new(|| {
     )
     .unwrap()
 });
+/// Brazilian-Portuguese twin of `BINARY_CONTRAST`, e.g. "O futuro não está chegando. Ele já
+/// chegou." The affirming clause opens with the copula or a subject pronoun/demonstrative, the
+/// closed set that plays the role of English "it's"/"this is"/"they're".
+///
+/// The copula alternative is the literal word "é", not the single-character class `[ée]`: a
+/// class matches one letter, so it also matched the conjunction "E" starting the next sentence
+/// ("Não é bug. E foi corrigido rapidamente."). Every alternative in that group is followed by a
+/// required literal space instead of a trailing `\b`, since "é"/"já" end on an accented letter
+/// where `(?-u:\b)` would never match. `n[ãa]o|nunca|jamais|nem` all start and end on ASCII
+/// letters, so `(?-u:\b)` around that group is exact.
+static BINARY_CONTRAST_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)(?-u:\b)(?:n[ãa]o|nunca|jamais|nem)(?-u:\b)[^.!?\n]*[.!?]\s+(?:é|ele|ela|eles|elas|isso|isto|esse|essa|este|esta|agora|j[áa]) [^.!?\n]*[.!?]$",
+    )
+    .unwrap()
+});
 
 /// (c) vague, generic positive-note ending: a stock upbeat closer with no concrete outcome
 /// behind it, e.g. "The future looks bright." / "Watch this space." Scoped to the same short
@@ -60,6 +101,13 @@ static BINARY_CONTRAST: LazyLock<Regex> = LazyLock::new(|| {
 static POSITIVE_CONCLUSION_PHRASE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?i)the future looks bright|exciting times (?:lie ahead|are ahead)|a step in the right direction|the possibilities are endless|only time will tell|one thing is clear|the sky'?s the limit|watch this space",
+    )
+    .unwrap()
+});
+/// Brazilian-Portuguese twin of `POSITIVE_CONCLUSION_PHRASE`.
+static POSITIVE_CONCLUSION_PHRASE_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)o futuro [ée] promissor|o c[ée]u [ée] o limite|s[óo] o tempo dir[áa]|uma coisa [ée] certa|as possibilidades s[ãa]o infinitas|um passo na dire[çc][ãa]o certa|fique (?:ligado|de olho|atento)|vem coisa boa por a[íi]|o melhor ainda est[áa] por vir",
     )
     .unwrap()
 });
@@ -184,8 +232,14 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     }
 
     let words = block.text.split_whitespace().count();
+    let en = ctx.natlangs.contains(&NatLang::En);
+    let pt = ctx.natlangs.contains(&NatLang::PtBr);
 
-    if let Some(m) = RECAP_OPENER.find(&block.text) {
+    let opener = en
+        .then(|| RECAP_OPENER.find(&block.text))
+        .flatten()
+        .or_else(|| pt.then(|| RECAP_OPENER_PT_BR.find(&block.text)).flatten());
+    if let Some(m) = opener {
         if words <= RECAP_WORD_CAP {
             let (line, col) = doc.line_col(block.first_byte);
             out.push(Diagnostic::at(
@@ -202,11 +256,17 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         }
     }
 
-    if words <= KICKER_WORD_CAP
-        && (BINARY_CONTRAST.is_match(block.text.trim())
-            || KICKER_OPENER.is_match(&block.text)
-            || KICKER_PHRASE.is_match(&block.text))
-    {
+    let trimmed = block.text.trim();
+    let kicker_hit = words <= KICKER_WORD_CAP
+        && ((en
+            && (KICKER_OPENER.is_match(trimmed)
+                || KICKER_PHRASE.is_match(trimmed)
+                || BINARY_CONTRAST.is_match(trimmed)))
+            || (pt
+                && (KICKER_OPENER_PT_BR.is_match(trimmed)
+                    || KICKER_PHRASE_PT_BR.is_match(trimmed)
+                    || BINARY_CONTRAST_PT_BR.is_match(trimmed))));
+    if kicker_hit {
         let (line, col) = doc.line_col(block.first_byte);
         out.push(Diagnostic::at(
             rule,
@@ -218,7 +278,10 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         return;
     }
 
-    if words <= KICKER_WORD_CAP && POSITIVE_CONCLUSION_PHRASE.is_match(&block.text) {
+    let positive_hit = words <= KICKER_WORD_CAP
+        && ((en && POSITIVE_CONCLUSION_PHRASE.is_match(&block.text))
+            || (pt && POSITIVE_CONCLUSION_PHRASE_PT_BR.is_match(&block.text)));
+    if positive_hit {
         let (line, col) = doc.line_col(block.first_byte);
         out.push(Diagnostic::at_fix(
             rule,
@@ -237,14 +300,33 @@ mod tests {
     use crate::lang::Lang;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
+        diagnostics_in(
+            ProseDoc::parse(src),
+            src,
+            Lang::Md,
+            crate::lang::ALL_NATLANGS,
+        )
+    }
+
+    fn diagnostics_for_natlangs(src: &str, natlangs: &[NatLang]) -> Vec<Diagnostic> {
+        diagnostics_in(ProseDoc::parse(src), src, Lang::Md, natlangs)
     }
 
     fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
-        diagnostics_in(ProseDoc::parse_html(src), src, Lang::Html)
+        diagnostics_in(
+            ProseDoc::parse_html(src),
+            src,
+            Lang::Html,
+            crate::lang::ALL_NATLANGS,
+        )
     }
 
-    fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
+    fn diagnostics_in<'a>(
+        doc: ProseDoc<'a>,
+        src: &'a str,
+        lang: Lang,
+        natlangs: &[NatLang],
+    ) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
@@ -256,7 +338,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
-            natlangs: crate::lang::ALL_NATLANGS,
+            natlangs,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -389,6 +471,79 @@ mod tests {
         // The phrase appears, but the final block is well over KICKER_WORD_CAP words, so this is
         // ordinary prose referencing the phrase, not the short vacuous-kicker shape.
         let src = "Watch this space is a phrase the team explicitly banned from release notes after an old announcement used it without ever following up with a real update for the next six months.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn flags_short_recap_opener_pt_br() {
+        let diags = diagnostics_for("Resumindo, essa mudança economiza tempo todo dia.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP029");
+    }
+
+    #[test]
+    fn clean_long_recap_opener_pt_br_not_flagged() {
+        // Same opener as above, but the final block runs well past RECAP_WORD_CAP: a genuine
+        // fact-dense closing paragraph, not the short vacuous-recap shape.
+        let src = "Resumindo, essa mudança reduziu o tempo de implantação em várias equipes ao longo do último trimestre, simplificou o processo de revisão de código e ainda deixou a documentação interna mais fácil de manter no dia a dia.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn flags_binary_contrast_kicker_pt_br() {
+        let diags = diagnostics_for("O futuro não está chegando. Ele já chegou.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP029");
+    }
+
+    /// The affirming-clause alternative must be the literal word "é", not the single-character
+    /// class `[ée]`, which also matched the conjunction "E" opening the next sentence.
+    #[test]
+    fn clean_negation_followed_by_unrelated_e_sentence_pt_br() {
+        let diags = diagnostics_for("Não é bug. E foi corrigido rapidamente.\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn flags_kicker_opener_pt_br() {
+        let diags = diagnostics_for("Porque isso muda tudo.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP029");
+    }
+
+    #[test]
+    fn flags_kicker_phrase_pt_br_alone() {
+        let diags = diagnostics_for("O resultado final? Simples assim.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP029");
+    }
+
+    #[test]
+    fn natlang_gate_silences_the_other_languages_panel() {
+        let pt_positive = "Resumindo, essa mudança economiza tempo todo dia.\n";
+        assert!(diagnostics_for_natlangs(pt_positive, &[NatLang::En]).is_empty());
+
+        let en_positive = "Ultimately, this update saves the team real time every day.\n";
+        assert!(diagnostics_for_natlangs(en_positive, &[NatLang::PtBr]).is_empty());
+    }
+
+    #[test]
+    fn flags_positive_conclusion_pt_br() {
+        let diags = diagnostics_for("Uma coisa é certa: vem coisa boa por aí.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP029");
+    }
+
+    #[test]
+    fn clean_long_factual_conclusion_pt_br_not_flagged() {
+        let src = "Em conclusão, a migração atingiu as metas de latência e confiabilidade definidas no início do projeto, e as ferramentas construídas ao longo do caminho devem facilitar a próxima mudança de infraestrutura tanto para testar quanto para implantar com segurança.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn skips_heading_only_final_block_pt_br() {
+        let src =
+            "Alguma introdução comum antes do fechamento do documento por aqui.\n\n## Resumindo\n";
         assert!(diagnostics_for(src).is_empty());
     }
 }
