@@ -125,13 +125,18 @@ fn describe_scope(scope: &Scope) -> String {
 // ponytail: these warnings are eprintln! rather than real diagnostics because surfacing them in
 // JSON/SARIF output needs a rule code of their own (a "dead suppression" lint) -- deferred until
 // something actually consumes structured output for this.
+/// True when `diags` contains nothing this suppression actually absorbs: no diagnostic both
+/// lands on one of its target lines (or the whole file, when `file_wide`) and matches its scope.
+fn is_dead(s: &Suppression, diags: &[Diagnostic]) -> bool {
+    !diags.iter().any(|d| {
+        let on_target = s.file_wide || s.target_lines.contains(&d.line);
+        on_target && scope_matches(&s.scope, d.code)
+    })
+}
+
 fn report_dead(suppressions: &[Suppression], diags: &[Diagnostic], display_path: &str) {
     for s in suppressions {
-        let absorbed = diags.iter().any(|d| {
-            let on_target = s.file_wide || s.target_lines.contains(&d.line);
-            on_target && scope_matches(&s.scope, d.code)
-        });
-        if !absorbed {
+        if is_dead(s, diags) {
             let directive = if s.file_wide {
                 "ai-slop-ignore-file"
             } else {
@@ -281,14 +286,13 @@ mod tests {
     fn dead_suppression_is_detected() {
         let suppressions = parse(&[node("// ai-slop-ignore: SLOP018", 3)]);
         let diags = [diag(3, "SLOP004")]; // wrong code -> the ignore absorbs nothing
-        assert!(!suppressions.is_empty());
-        let absorbed = diags.iter().any(|d| {
-            suppressions[0].target_lines.contains(&d.line)
-                && scope_matches(&suppressions[0].scope, d.code)
-        });
-        assert!(
-            !absorbed,
-            "SLOP018-scoped ignore must not claim a SLOP004 finding"
-        );
+        assert!(is_dead(&suppressions[0], &diags));
+    }
+
+    #[test]
+    fn live_suppression_is_not_dead() {
+        let suppressions = parse(&[node("// ai-slop-ignore: SLOP018", 3)]);
+        let diags = [diag(3, "SLOP018")]; // matching code and line -> absorbed
+        assert!(!is_dead(&suppressions[0], &diags));
     }
 }

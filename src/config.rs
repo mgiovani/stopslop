@@ -194,6 +194,34 @@ mod tests {
         assert_eq!(cfg.natlangs().unwrap(), vec![NatLang::PtBr, NatLang::En]);
     }
 
+    /// `[[custom-rule]]`, `[per-file-ignores]`, and `language` are independent top-level tables;
+    /// this checks they parse together in one document rather than each in isolation.
+    #[test]
+    fn parses_custom_rule_per_file_ignores_and_language_together() {
+        let cfg = parse(
+            r#"
+language = ["en", "pt-BR"]
+
+[per-file-ignores]
+"docs/**" = ["SLOP012", "rhetoric"]
+
+[[custom-rule]]
+pattern = "synergy"
+message = "banned word: synergy"
+tier = "B"
+"#,
+        );
+        assert_eq!(cfg.natlangs().unwrap(), vec![NatLang::En, NatLang::PtBr]);
+        assert_eq!(
+            cfg.per_file_ignores.get("docs/**"),
+            Some(&vec!["SLOP012".to_string(), "rhetoric".to_string()])
+        );
+        assert_eq!(cfg.custom_rule.len(), 1);
+        assert_eq!(cfg.custom_rule[0].pattern, "synergy");
+        assert_eq!(cfg.custom_rule[0].message, "banned word: synergy");
+        assert_eq!(cfg.custom_rule[0].tier, "B");
+    }
+
     fn touch(p: &Path) {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, "").unwrap();

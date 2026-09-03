@@ -110,8 +110,13 @@ pub fn lint_paths(
         .iter()
         .filter(|r| seen.insert(r.canonicalize().unwrap_or_else(|_| (*r).clone())))
         .collect();
-    let mut builder = WalkBuilder::new(roots[0]);
-    for root in &roots[1..] {
+    let Some((first, rest)) = roots.split_first() else {
+        // Re-exported as `stopslop::lint_paths`; an empty root slice is a caller bug, not a
+        // filesystem error, so it gets an empty result rather than a `roots[0]` panic.
+        return Ok((Vec::new(), Stats::default()));
+    };
+    let mut builder = WalkBuilder::new(first);
+    for root in rest {
         builder.add(root);
     }
     builder.hidden(false).git_ignore(true).parents(true);
@@ -257,6 +262,29 @@ mod tests {
             custom_rules: Vec::new(),
             natlangs: crate::lang::ALL_NATLANGS.to_vec(),
         }
+    }
+
+    #[test]
+    fn lint_paths_with_no_roots_returns_empty_result_instead_of_panicking() {
+        let settings = go_settings();
+        let (diags, stats) = lint_paths(&[], &[], &settings, 0).unwrap();
+        assert!(diags.is_empty());
+        assert_eq!(stats.files, 0);
+    }
+
+    /// `-j 1` and `-j 4` must find the same diagnostics on the same tree; only wall time should
+    /// differ. Both sides go through `Accumulator::finish`'s sort, so a plain equality check is
+    /// enough -- the explicit re-sort here just makes that guarantee visible at the call site.
+    #[test]
+    fn threads_1_and_4_produce_identical_diagnostics() {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/go");
+        let settings = go_settings();
+        let (mut one, _) = lint_paths(std::slice::from_ref(&dir), &[], &settings, 1).unwrap();
+        let (mut four, _) = lint_paths(std::slice::from_ref(&dir), &[], &settings, 4).unwrap();
+        one.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
+        four.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
+        assert!(!one.is_empty(), "fixture dir should produce findings");
+        assert_eq!(format!("{one:?}"), format!("{four:?}"));
     }
 
     #[test]
