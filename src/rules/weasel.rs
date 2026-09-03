@@ -12,7 +12,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Unsourced weasel attribution",
     tier: Tier::B,
     langs: PROSE_LANGS,
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: false,
     check,
@@ -23,6 +23,29 @@ pub static RULE: RuleDef = RuleDef {
 static WEASEL_ATTRIBUTION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?-u:\b)(experts (?:agree|say)|studies (?:show|suggest)|research (?:shows|suggests|indicates)|industry reports suggest|many (?:argue|believe)|some (?:say|argue)|it is widely regarded as|widely considered|widely regarded as|it is believed that|critics argue|analysts predict|reports indicate|sources say|it is often said|observers have (?:cited|noted)|several sources|several publications|many have (?:argued|noted|suggested)|it has been (?:suggested|argued|noted)|commentators (?:say|note|argue)|proponents (?:argue|say)|detractors (?:argue|say))(?-u:\b)")
         .unwrap()
+});
+
+/// Brazilian-Portuguese twin of `WEASEL_ATTRIBUTION_RE`. `NOTABILITY_NAME_DROP_RE` has no pt-BR
+/// twin -- not measured for phase 2, stays English-only. Measured against a 318-document,
+/// 1.3-million-word human corpus and dropped above 2 hits: the impersonal `-se que` construction (`acredita-se que` 24
+/// human hits, `estima-se que` 9, `sabe-se que` 5, `diz-se que` 4, `considera-se que` 5) is
+/// standard encyclopedic Portuguese, not a weasel; likewise `estudos mostram` (5), `alguns dizem`
+/// (2), `críticos argumentam` (1), `segundo especialistas` (3) -- every one has human hits,
+/// exactly as issue #30 predicted for the impersonal `-se` form. `de acordo com especialistas` is
+/// the one entry that ships (1 human hit).
+///
+/// Split into two groups instead of one `\b(?:...)\b`, same idiom as `hedging.rs`'s
+/// `HEDGE_PHRASES_PT_BR`: the ASCII-initial alternatives sit under a leading+trailing
+/// `(?-u:\b)`, while `[ée] amplamente ...` opens on the accented "é" -- a leading `(?-u:\b)`
+/// right there never matches, since neither the preceding space byte nor `é`'s lead byte
+/// (0xC3, not an ASCII word byte) is a word byte, so that assertion always fails at the one
+/// position where this branch would start. Dropping the leading boundary and keeping only the
+/// trailing one (every branch ends on the ASCII `[oa]s?`) fixes it.
+static WEASEL_ATTRIBUTION_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)(?:(?-u:\b)(?:especialistas (?:afirmam|concordam|apontam|dizem|recomendam)|pesquisas (?:mostram|indicam|sugerem|apontam|revelam)|a ci[êe]ncia (?:mostra|comprova)|muitos (?:acreditam|argumentam|afirmam|defendem)|analistas (?:preveem|apontam|afirmam)|relat[óo]rios (?:indicam|apontam)|fontes (?:afirmam|dizem|indicam|apontam)|costuma-se dizer|observadores (?:notaram|apontam|destacam)|diversas fontes|tem sido (?:sugerido|argumentado|apontado|dito)|comentaristas (?:dizem|apontam|argumentam)|defensores (?:argumentam|afirmam)|de acordo com especialistas)(?-u:\b)|[ée] amplamente (?:considerad|reconhecid|aceit)[oa]s?(?-u:\b))",
+    )
+    .unwrap()
 });
 
 /// Notability by name-dropping: three or more bare, comma-chained capitalized outlet/publication
@@ -61,16 +84,30 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         .map(|m| doc.line_col(m.start()).0)
         .collect();
 
-    let attribution: HashSet<usize> = WEASEL_ATTRIBUTION_RE
-        .find_iter(&doc.masked)
-        .map(|m| m.start())
-        .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte))
-        .collect();
-    let name_drop: HashSet<usize> = NOTABILITY_NAME_DROP_RE
-        .find_iter(&doc.masked)
-        .map(|m| m.start())
-        .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte))
-        .collect();
+    let mut attribution: HashSet<usize> = HashSet::new();
+    let mut name_drop: HashSet<usize> = HashSet::new();
+    if ctx.natlangs.contains(&NatLang::En) {
+        attribution.extend(
+            WEASEL_ATTRIBUTION_RE
+                .find_iter(&doc.masked)
+                .map(|m| m.start())
+                .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte)),
+        );
+        name_drop.extend(
+            NOTABILITY_NAME_DROP_RE
+                .find_iter(&doc.masked)
+                .map(|m| m.start())
+                .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte)),
+        );
+    }
+    if ctx.natlangs.contains(&NatLang::PtBr) {
+        attribution.extend(
+            WEASEL_ATTRIBUTION_PT_BR
+                .find_iter(&doc.masked)
+                .map(|m| m.start())
+                .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte)),
+        );
+    }
 
     let bytes = attribution
         .iter()
@@ -102,6 +139,10 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
+        diagnostics_for_natlangs(src, crate::lang::ALL_NATLANGS)
+    }
+
+    fn diagnostics_for_natlangs(src: &str, natlangs: &[NatLang]) -> Vec<Diagnostic> {
         let doc = ProseDoc::parse(src);
         let ctx = LintContext {
             display_path: "test.md".to_string(),
@@ -114,7 +155,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
-            natlangs: crate::lang::ALL_NATLANGS,
+            natlangs,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -222,5 +263,63 @@ mod tests {
         // One outlet, no chain of names -- an ordinary, checkable attribution.
         let src = "The report was featured in The New York Times.\n";
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// One sample per `WEASEL_ATTRIBUTION_PT_BR` top-level alternative.
+    #[test]
+    fn flags_each_pt_br_weasel_attribution_alternative() {
+        let cases = [
+            "Especialistas afirmam que a mudança reduziu o tempo de resposta.\n",
+            "Pesquisas mostram uma queda significativa na taxa de erro.\n",
+            "A ciência mostra que o método funciona na maioria dos casos.\n",
+            "Muitos acreditam que a migração foi precipitada demais.\n",
+            "A prática é amplamente considerada segura pela comunidade.\n",
+            "Analistas preveem uma queda na adoção da ferramenta.\n",
+            "Relatórios indicam uma lentidão crescente no sistema.\n",
+            "Fontes afirmam que o lançamento foi adiado sem aviso.\n",
+            "Costuma-se dizer que a simplicidade vence a complexidade.\n",
+            "Observadores notaram um atraso incomum na resposta do serviço.\n",
+            "Diversas fontes descrevem a falha como evitável.\n",
+            "Tem sido sugerido que o rollback foi desnecessário.\n",
+            "Comentaristas dizem que o redesenho perdeu o ponto principal.\n",
+            "Defensores argumentam que a mudança reduz a carga operacional.\n",
+            "De acordo com especialistas, o problema tende a se repetir.\n",
+        ];
+        for src in cases {
+            let diags = diagnostics_for(src);
+            assert_eq!(diags.len(), 1, "expected exactly one finding for: {src}");
+            assert_eq!(diags[0].code, "SLOP025");
+        }
+    }
+
+    /// The impersonal `-se que` construction and the other shapes measured and dropped for the
+    /// pt-BR corpus: standard encyclopedic Portuguese, not a weasel (see the panel's doc comment).
+    #[test]
+    fn clean_pt_br_dropped_shapes() {
+        for src in [
+            "Acredita-se que o novo modelo reduz o tempo de resposta.\n",
+            "Estima-se que o custo total aumente até o fim do ano.\n",
+            "Sabe-se que o sistema falha sob carga extrema.\n",
+            "Diz-se que a nova versão corrige o problema antigo.\n",
+            "Considera-se que o projeto está pronto para produção.\n",
+            "Estudos mostram uma melhora consistente na taxa de acerto.\n",
+            "Alguns dizem que a mudança foi precipitada demais.\n",
+            "Críticos argumentam que o preço ficou alto demais.\n",
+            "Segundo especialistas, o mercado deve se recuperar em breve.\n",
+        ] {
+            assert!(
+                diagnostics_for(src).is_empty(),
+                "unexpectedly flagged: {src:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn natlang_gate_silences_the_other_languages_panel() {
+        let pt_positive = "Especialistas afirmam que a mudança reduziu o tempo de resposta.\n";
+        assert!(diagnostics_for_natlangs(pt_positive, &[NatLang::En]).is_empty());
+
+        let en_positive = "Experts agree that the migration reduced downtime.\n";
+        assert!(diagnostics_for_natlangs(en_positive, &[NatLang::PtBr]).is_empty());
     }
 }

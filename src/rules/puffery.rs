@@ -12,7 +12,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Importance puffery / fake-strong verb",
     tier: Tier::B,
     langs: PROSE_LANGS,
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: false,
     check,
@@ -29,6 +29,21 @@ pub static RULE: RuleDef = RuleDef {
 /// shift`), so the catalog entry is a same-panel duplicate, not a new phrase.
 static IMPORTANCE_PUFFERY_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?-u:\b)(marks? a pivotal moment|marked a pivotal moment|marks? a turning point|marked a turning point|solidif(?:ies|ied) its position|cements? its place|cemented its place|underscores? its significance|underscored its significance|represents? a significant milestone|represented a significant milestone|highlights? the importance of|highlighted the importance of|reflects? a broader shift|reflected a broader shift|is poised to revolutionize|are poised to revolutionize|sets? a new standard for|set a new standard for|is a reminder of|is a reminder that|symboliz(?:es|ing) its (?:ongoing|enduring|lasting)|setting the stage for|a key turning point|an indelible mark|is deeply rooted in|remains deeply rooted in|represents? a shift|marks? a shift|the focal point)(?-u:\b)")
+        .unwrap()
+});
+
+/// Brazilian-Portuguese twin of `IMPORTANCE_PUFFERY_RE` only -- the (b)/(c) sub-patterns
+/// (`FAKE_STRONG_VERB_RE`, `FAUX_SCALE_RANGE_RE`) stay English-only, see the corpus note below.
+/// Measured against a 318-document, 1.3-million-word human corpus (Wikipedia + public-domain
+/// fiction + translated Python docs) and dropped above 2 hits: `serve/atua/funciona como um` (14 human hits, 11 docs)
+/// and `desde X até Y` (10 human hits) are ordinary Portuguese, not puffery -- only this
+/// importance panel ships. `prepara o terreno para` is the measured signal (0 human hits, 6
+/// generated hits across 5 documents). `é um lembrete de que` is written only as `serve como um
+/// lembrete de que`: the bare `é` form starts on the accented letter, where the leading
+/// `(?-u:\b)` can never sit. Trailing boundary: every alternative ends on an ASCII letter
+/// (`posição` ends in `o`, `enraizada` in `a`), so the trailing `(?-u:\b)` is valid throughout.
+static IMPORTANCE_PUFFERY_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?-u:\b)(?:marc(?:a|ou|am) um (?:momento|ponto) (?:decisivo|crucial|de virada|de inflex[ãa]o)|representa(?:m)? um marco (?:significativo|importante|hist[óo]rico)|consolid(?:a|ou|am) (?:sua|a sua|a) posi[çc][ãa]o|(?:destaca|ressalta|refor[çc]a|evidencia)(?:m)? a import[âa]ncia d[eoa]|reflete(?:m)? uma mudan[çc]a (?:mais ampla|maior)|est[áa] prestes a revolucionar|estabelece(?:m)? um novo padr[ãa]o|serve como um lembrete de que|abre(?:m)? caminho para|prepar(?:a|ou|am) o terreno para|(?:est[áa]|permanece) profundamente enraizad[oa]|representa(?:m)? uma mudan[çc]a de paradigma|o ponto focal)(?-u:\b)")
         .unwrap()
 });
 
@@ -67,22 +82,44 @@ static FAUX_SCALE_RANGE_RE: LazyLock<Regex> = LazyLock::new(|| {
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
 
-    let importance: HashSet<usize> = IMPORTANCE_PUFFERY_RE
-        .find_iter(&doc.masked)
-        .map(|m| m.start())
-        .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte))
-        .collect();
-    let fake_strong: HashSet<usize> = FAKE_STRONG_VERB_RE
-        .find_iter(&doc.masked)
-        .filter(|m| !m.as_str().to_lowercase().contains("testament"))
-        .map(|m| m.start())
-        .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte))
-        .collect();
-    let faux_scale: HashSet<usize> = FAUX_SCALE_RANGE_RE
-        .find_iter(&doc.masked)
-        .map(|m| m.start())
-        .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte))
-        .collect();
+    let en = ctx.natlangs.contains(&NatLang::En);
+    let mut importance: HashSet<usize> = HashSet::new();
+    if en {
+        importance.extend(
+            IMPORTANCE_PUFFERY_RE
+                .find_iter(&doc.masked)
+                .map(|m| m.start())
+                .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte)),
+        );
+    }
+    if ctx.natlangs.contains(&NatLang::PtBr) {
+        importance.extend(
+            IMPORTANCE_PUFFERY_PT_BR
+                .find_iter(&doc.masked)
+                .map(|m| m.start())
+                .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte)),
+        );
+    }
+    // (b) and (c) stay English-only: the pt-BR corpus check found their literal shapes
+    // (`serve/atua/funciona como um`, `desde X até Y`) are ordinary Portuguese, not puffery, so
+    // no pt-BR twin ships for either sub-pattern (see IMPORTANCE_PUFFERY_PT_BR's doc comment).
+    let mut fake_strong: HashSet<usize> = HashSet::new();
+    let mut faux_scale: HashSet<usize> = HashSet::new();
+    if en {
+        fake_strong.extend(
+            FAKE_STRONG_VERB_RE
+                .find_iter(&doc.masked)
+                .filter(|m| !m.as_str().to_lowercase().contains("testament"))
+                .map(|m| m.start())
+                .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte)),
+        );
+        faux_scale.extend(
+            FAUX_SCALE_RANGE_RE
+                .find_iter(&doc.masked)
+                .map(|m| m.start())
+                .filter(|&byte| !doc.in_frontmatter(byte) && !doc.in_url(byte)),
+        );
+    }
 
     let bytes = importance
         .iter()
@@ -117,6 +154,10 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
+        diagnostics_for_natlangs(src, crate::lang::ALL_NATLANGS)
+    }
+
+    fn diagnostics_for_natlangs(src: &str, natlangs: &[NatLang]) -> Vec<Diagnostic> {
         let doc = ProseDoc::parse(src);
         let ctx = LintContext {
             display_path: "test.md".to_string(),
@@ -129,7 +170,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
-            natlangs: crate::lang::ALL_NATLANGS,
+            natlangs,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -287,5 +328,56 @@ mod tests {
         // hedging.rs is a density rule (needs 3+ hits or a repeat) so a single occurrence alone
         // won't fire either -- the point of this test is only that puffery.rs never claims it.
         assert!(hedging_out.is_empty());
+    }
+
+    /// One sample per `IMPORTANCE_PUFFERY_PT_BR` top-level alternative.
+    #[test]
+    fn flags_each_pt_br_importance_puffery_alternative() {
+        let cases = [
+            "O lançamento marca um momento decisivo para a empresa este ano.\n",
+            "A crise marcou um ponto de virada na história da fábrica.\n",
+            "O acordo representa um marco significativo para o setor de tecnologia.\n",
+            "A nova lei consolida a posição do país na região.\n",
+            "O relatório destaca a importância do investimento em pesquisa.\n",
+            "A decisão reflete uma mudança mais ampla na política da empresa.\n",
+            "A tecnologia está prestes a revolucionar a forma como trabalhamos.\n",
+            "O produto estabelece um novo padrão para a indústria.\n",
+            "Isso serve como um lembrete de que a segurança importa.\n",
+            "A parceria abre caminho para novos investimentos na região.\n",
+            "A reforma prepara o terreno para mudanças futuras na empresa.\n",
+            "A tradição está profundamente enraizada na cultura local.\n",
+            "A atualização representa uma mudança de paradigma para o setor.\n",
+            "A qualidade é o ponto focal deste projeto este ano.\n",
+        ];
+        for src in cases {
+            let diags = diagnostics_for(src);
+            assert_eq!(diags.len(), 1, "expected exactly one finding for: {src}");
+            assert_eq!(diags[0].code, "SLOP024");
+            assert_eq!(diags[0].fix.as_deref(), Some("state the fact instead"));
+        }
+    }
+
+    /// The two shapes measured and dropped for the pt-BR corpus: ordinary Portuguese, not
+    /// puffery (see `IMPORTANCE_PUFFERY_PT_BR`'s doc comment).
+    #[test]
+    fn clean_pt_br_dropped_shapes() {
+        for src in [
+            "O motor serve como um sistema de resfriamento auxiliar no veículo.\n",
+            "A viagem foi planejada desde o início até o fim pela mesma equipe.\n",
+        ] {
+            assert!(
+                diagnostics_for(src).is_empty(),
+                "unexpectedly flagged: {src:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn natlang_gate_silences_the_other_languages_panel() {
+        let pt_positive = "O lançamento marca um momento decisivo para a empresa este ano.\n";
+        assert!(diagnostics_for_natlangs(pt_positive, &[NatLang::En]).is_empty());
+
+        let en_positive = "The launch marks a pivotal moment for the product line.\n";
+        assert!(diagnostics_for_natlangs(en_positive, &[NatLang::PtBr]).is_empty());
     }
 }

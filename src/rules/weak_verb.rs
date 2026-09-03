@@ -12,7 +12,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Weak verb phrase / vague quantifier",
     tier: Tier::B,
     langs: PROSE_LANGS,
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: false,
     check,
@@ -34,6 +34,31 @@ static WEAK_VERB_PHRASE_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// actually measured the thing.
 static VAGUE_QUANTIFIER_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?-u:\b)(?:significantly|substantially|dramatically|vastly|greatly|considerably|markedly) (?:improves?|improved|increases?|reduces?|faster|better|more|higher|lower)(?-u:\b)|(?-u:\b)(?:improves?|improved|increases?|reduces?|faster|better|more|higher|lower) (?:significantly|substantially|dramatically|vastly|greatly|considerably|markedly)(?-u:\b)|(?-u:\b)a wide range of(?-u:\b)|(?-u:\b)a variety of(?-u:\b)|(?-u:\b)numerous(?-u:\b)|(?-u:\b)countless(?-u:\b)")
+        .unwrap()
+});
+
+/// Brazilian-Portuguese twin of `WEAK_VERB_PHRASE_RE`. Measured against a 318-document,
+/// 1.3-million-word human corpus and dropped above 2 hits: `uma série de` (59 human hits), `inúmeros` (29), `uma variedade de`
+/// (20), `oferece suporte a` (21), `com o objetivo de` (18), `é capaz de` (30, 24 docs), `são
+/// capazes de` (7), `possui a capacidade de` (1), `fornece suporte a/para` (3), `realizar uma
+/// análise` (1), `levar em consideração` (4), `neste momento` (13), `devido ao fato de que` (1),
+/// `com a finalidade de` (2), `no sentido de` (11), `dá a possibilidade de` (4), the forward-order
+/// vague quantifier (verb-then-adverb), `uma ampla gama de` (6), `uma grande variedade de` (18),
+/// `incontáveis` (2), `tomar uma decisão` (2, one of them generated; dropped as a plain
+/// connective) -- every one has human hits, the Portuguese counterpart of the English panel's own
+/// dropped nominalizations. `tem a capacidade de` starts on the ASCII `t`, so the leading
+/// `(?-u:\b)` is fine throughout.
+static WEAK_VERB_PHRASE_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?-u:\b)(?:t[êe]m? a capacidade de|efetu(?:ar|ou|am) uma avalia[çc][ãa]o|faz(?:er|em)? uma avalia[çc][ãa]o|em tempo h[áa]bil|de forma regular)(?-u:\b)")
+        .unwrap()
+});
+
+/// Brazilian-Portuguese twin of `VAGUE_QUANTIFIER_RE`. Only the adjective/verb-then-adverb order
+/// ships: Portuguese naturally puts the intensifying adverb after the verb ("reduz
+/// significativamente"), so the reverse order the English panel also covers has no pt-BR twin
+/// here. Same digit-on-line gate as English, applied at the call site.
+static VAGUE_QUANTIFIER_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?-u:\b)(?:melhor|maior|menor|mais r[áa]pid[oa]|reduz|aumenta|melhora)(?:m|s)? (?:significativamente|substancialmente|drasticamente|consideravelmente|amplamente|notavelmente)(?-u:\b)")
         .unwrap()
 });
 
@@ -75,6 +100,23 @@ fn weak_verb_phrase_fix(phrase: &str) -> Option<&'static str> {
     }
 }
 
+/// Per-matched-phrase replacement for a `WEAK_VERB_PHRASE_PT_BR` match, same shape as
+/// `weak_verb_phrase_fix`. Returns `None` for anything else -- in particular every
+/// `VAGUE_QUANTIFIER_PT_BR` match -- so the caller falls back to the shared fix.
+fn weak_verb_phrase_fix_pt_br(phrase: &str) -> Option<&'static str> {
+    if phrase.contains("capacidade de") {
+        Some("pode")
+    } else if phrase.contains("avaliação") {
+        Some("avaliar")
+    } else if phrase == "em tempo hábil" {
+        Some("dê o prazo real")
+    } else if phrase == "de forma regular" {
+        Some("diga a frequência")
+    } else {
+        None
+    }
+}
+
 /// A digit anywhere on `byte`'s own line in `masked`. Used only to gate (b): a concrete number
 /// on the line means the vague quantifier isn't standing in for one after all.
 ///
@@ -109,34 +151,55 @@ fn line_digit_check<'d>(doc: &'d ProseDoc<'_>) -> impl FnMut(usize) -> bool + 'd
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
     let mut total = 0usize;
-    let mut first_byte = None;
+    let mut first_byte: Option<usize> = None;
     let mut first_phrase: Option<String> = None;
     let mut per_phrase: HashMap<String, usize> = HashMap::new();
 
-    for m in WEAK_VERB_PHRASE_RE.find_iter(&doc.masked) {
-        let byte = m.start();
-        if doc.in_frontmatter(byte) || doc.in_url(byte) {
-            continue;
-        }
-        total += 1;
-        if first_byte.is_none() {
-            first_byte = Some(byte);
-            first_phrase = Some(m.as_str().to_lowercase());
-        }
-        *per_phrase.entry(m.as_str().to_lowercase()).or_insert(0) += 1;
+    let en = ctx.natlangs.contains(&NatLang::En);
+    let pt_br = ctx.natlangs.contains(&NatLang::PtBr);
+
+    if en {
+        count_phrases(
+            doc,
+            &WEAK_VERB_PHRASE_RE,
+            &mut total,
+            &mut first_byte,
+            &mut first_phrase,
+            &mut per_phrase,
+        );
+    }
+    if pt_br {
+        count_phrases(
+            doc,
+            &WEAK_VERB_PHRASE_PT_BR,
+            &mut total,
+            &mut first_byte,
+            &mut first_phrase,
+            &mut per_phrase,
+        );
     }
     let mut line_has_digit = line_digit_check(doc);
-    for m in VAGUE_QUANTIFIER_RE.find_iter(&doc.masked) {
-        let byte = m.start();
-        if doc.in_frontmatter(byte) || doc.in_url(byte) || line_has_digit(byte) {
-            continue;
-        }
-        total += 1;
-        if first_byte.is_none() {
-            first_byte = Some(byte);
-            first_phrase = Some(m.as_str().to_lowercase());
-        }
-        *per_phrase.entry(m.as_str().to_lowercase()).or_insert(0) += 1;
+    if en {
+        count_quantifiers(
+            doc,
+            &VAGUE_QUANTIFIER_RE,
+            &mut line_has_digit,
+            &mut total,
+            &mut first_byte,
+            &mut first_phrase,
+            &mut per_phrase,
+        );
+    }
+    if pt_br {
+        count_quantifiers(
+            doc,
+            &VAGUE_QUANTIFIER_PT_BR,
+            &mut line_has_digit,
+            &mut total,
+            &mut first_byte,
+            &mut first_phrase,
+            &mut per_phrase,
+        );
     }
 
     let threshold = (3 * doc.words).div_ceil(1000).max(3);
@@ -153,13 +216,79 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
                 "weak-verb/vague-quantifier phrase repeated: \"{phrase}\" appears multiple times"
             )
         };
-        // `weak_verb_phrase_fix` only recognizes family (a) phrases, so any family (b)
-        // (vague-quantifier) anchor falls through to the shared fallback fix.
+        // `weak_verb_phrase_fix`/`weak_verb_phrase_fix_pt_br` only recognize family (a) phrases,
+        // so any family (b) (vague-quantifier) anchor, in either language, falls through to the
+        // shared fallback fix.
         let anchor_phrase: &str = repeated_phrase
             .map(String::as_str)
             .unwrap_or_else(|| first_phrase.as_deref().unwrap());
-        let fix = weak_verb_phrase_fix(anchor_phrase).unwrap_or("give the measured number");
+        let fix = weak_verb_phrase_fix(anchor_phrase)
+            .or_else(|| weak_verb_phrase_fix_pt_br(anchor_phrase))
+            .unwrap_or("give the measured number");
         out.push(Diagnostic::at_fix(rule, ctx, line, col, message, fix));
+    }
+}
+
+/// Updates `first_byte`/`first_phrase` to `byte`/`phrase` when `byte` is earlier than (or the
+/// first) seen so far. Needed because `check` merges up to four independent `find_iter` passes
+/// (English/pt-BR x phrase/quantifier) into one anchor: within a single pass matches arrive in
+/// byte order, but across passes they don't, so "first encountered" is wrong and "minimum byte"
+/// is required instead.
+fn track_first(
+    byte: usize,
+    phrase: &str,
+    first_byte: &mut Option<usize>,
+    first_phrase: &mut Option<String>,
+) {
+    if first_byte.is_none_or(|b| byte < b) {
+        *first_byte = Some(byte);
+        *first_phrase = Some(phrase.to_string());
+    }
+}
+
+/// One language panel's family-(a) contribution: every match outside frontmatter/URLs bumps
+/// `total`, tracks the earliest byte/phrase via `track_first`, and tallies its lowercased text in
+/// `per_phrase` for the repeated-phrase branch.
+fn count_phrases(
+    doc: &ProseDoc,
+    re: &Regex,
+    total: &mut usize,
+    first_byte: &mut Option<usize>,
+    first_phrase: &mut Option<String>,
+    per_phrase: &mut HashMap<String, usize>,
+) {
+    for m in re.find_iter(&doc.masked) {
+        let byte = m.start();
+        if doc.in_frontmatter(byte) || doc.in_url(byte) {
+            continue;
+        }
+        *total += 1;
+        let phrase = m.as_str().to_lowercase();
+        track_first(byte, &phrase, first_byte, first_phrase);
+        *per_phrase.entry(phrase).or_insert(0) += 1;
+    }
+}
+
+/// One language panel's family-(b) contribution, additionally gated by `line_has_digit` (see
+/// its doc comment).
+fn count_quantifiers(
+    doc: &ProseDoc,
+    re: &Regex,
+    line_has_digit: &mut impl FnMut(usize) -> bool,
+    total: &mut usize,
+    first_byte: &mut Option<usize>,
+    first_phrase: &mut Option<String>,
+    per_phrase: &mut HashMap<String, usize>,
+) {
+    for m in re.find_iter(&doc.masked) {
+        let byte = m.start();
+        if doc.in_frontmatter(byte) || doc.in_url(byte) || line_has_digit(byte) {
+            continue;
+        }
+        *total += 1;
+        let phrase = m.as_str().to_lowercase();
+        track_first(byte, &phrase, first_byte, first_phrase);
+        *per_phrase.entry(phrase).or_insert(0) += 1;
     }
 }
 
@@ -167,9 +296,12 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 mod tests {
     use super::*;
     use crate::lang::Lang;
-    use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
+        diagnostics_for_natlangs(src, crate::lang::ALL_NATLANGS)
+    }
+
+    fn diagnostics_for_natlangs(src: &str, natlangs: &[NatLang]) -> Vec<Diagnostic> {
         let doc = ProseDoc::parse(src);
         let ctx = LintContext {
             display_path: "test.md".to_string(),
@@ -182,7 +314,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
-            natlangs: crate::lang::ALL_NATLANGS,
+            natlangs,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -271,5 +403,110 @@ mod tests {
         // shape this rule targets.
         let src = "Caching reduces database load significantly, according to the benchmark.\n\nCaching reduces database load significantly, and it also cuts memory pressure.\n\nCaching reduces database load significantly, per the dashboard.\n";
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn flags_each_pt_br_weak_verb_phrase_alternative() {
+        let phrases = [
+            "tem a capacidade de",
+            "efetuar uma avaliação",
+            "fazer uma avaliação",
+            "em tempo hábil",
+            "de forma regular",
+        ];
+        for phrase in phrases {
+            assert!(WEAK_VERB_PHRASE_PT_BR.is_match(phrase), "{phrase}");
+        }
+    }
+
+    #[test]
+    fn flags_each_pt_br_vague_quantifier_alternative() {
+        let phrases = [
+            "melhor significativamente",
+            "maior significativamente",
+            "menor significativamente",
+            "mais rápido significativamente",
+            "reduz significativamente",
+            "aumenta significativamente",
+            "melhora significativamente",
+        ];
+        for phrase in phrases {
+            assert!(VAGUE_QUANTIFIER_PT_BR.is_match(phrase), "{phrase}");
+        }
+    }
+
+    #[test]
+    fn pt_br_fix_hints_match_the_lookup_table() {
+        let cases: &[(&str, &str)] = &[
+            ("tem a capacidade de", "pode"),
+            ("efetuar uma avaliação", "avaliar"),
+            ("fazer uma avaliação", "avaliar"),
+            ("em tempo hábil", "dê o prazo real"),
+            ("de forma regular", "diga a frequência"),
+        ];
+        for (phrase, fix) in cases {
+            // Two occurrences of the SAME phrase, same convention as the English lookup test.
+            let src = format!("O time {phrase} uma vez. Depois, o time {phrase} de novo.\n");
+            let diags = diagnostics_for(&src);
+            assert_eq!(diags.len(), 1, "expected exactly one finding for: {phrase}");
+            assert_eq!(
+                diags[0].fix.as_deref(),
+                Some(*fix),
+                "wrong fix for phrase: {phrase}"
+            );
+        }
+    }
+
+    #[test]
+    fn flags_three_distinct_pt_br_weak_verb_hits_at_threshold() {
+        // 3 distinct pt-BR weak-verb phrases, matching the density floor of 3 exactly.
+        let src = "O sistema tem a capacidade de escalar sob carga.\n\nA equipe vai efetuar uma avaliação completa no próximo sprint.\n\nEntregamos o relatório em tempo hábil.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP028");
+        assert!(diags[0].message.contains("vs threshold"));
+    }
+
+    /// Every one of these has human hits in the pt-BR corpus (see `WEAK_VERB_PHRASE_PT_BR`'s doc
+    /// comment) and was dropped from both panels, including the reverse-order vague quantifier
+    /// (Portuguese only ships the verb/adjective-then-adverb order).
+    #[test]
+    fn clean_pt_br_dropped_weak_verb_shapes() {
+        let dropped = [
+            "uma série de",
+            "inúmeros",
+            "uma variedade de",
+            "oferece suporte a",
+            "com o objetivo de",
+            "é capaz de",
+            "são capazes de",
+            "possui a capacidade de",
+            "fornece suporte",
+            "realizar uma análise",
+            "levar em consideração",
+            "neste momento",
+            "devido ao fato de que",
+            "com a finalidade de",
+            "no sentido de",
+            "dá a possibilidade de",
+            "significativamente reduz",
+            "uma ampla gama de",
+            "uma grande variedade de",
+            "incontáveis",
+        ];
+        for phrase in dropped {
+            assert!(!WEAK_VERB_PHRASE_PT_BR.is_match(phrase), "{phrase}");
+            assert!(!VAGUE_QUANTIFIER_PT_BR.is_match(phrase), "{phrase}");
+        }
+    }
+
+    #[test]
+    fn natlang_gate_silences_the_other_languages_panel() {
+        let pt_positive =
+            "Em tempo hábil, o time revisa o código. Depois, em tempo hábil, revisa de novo.\n";
+        assert!(diagnostics_for_natlangs(pt_positive, &[NatLang::En]).is_empty());
+
+        let en_positive = "We take into consideration every request. Later, we take into consideration the edge cases too.\n";
+        assert!(diagnostics_for_natlangs(en_positive, &[NatLang::PtBr]).is_empty());
     }
 }

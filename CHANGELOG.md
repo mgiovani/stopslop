@@ -106,6 +106,46 @@ migration notes live here.
     `data de acesso = a definir`, `<!-- Adicionar citação -->`.
   Same closed-set-on-a-corpus discipline and ASCII word boundary as phase 1.
 
+- **Brazilian-Portuguese panels, phase 2.** Seven more prose rules gain a
+  `pt-BR` lexicon and list `en, pt-BR` in the README. Each panel is measured
+  the same way as phase 1: a closed set that stays under 2 hits on a
+  318-document, 1.3-million-word human corpus (featured and random
+  Wikipedia articles, public-domain fiction, translated Python docs)
+  before shipping, with dropped entries and their hit counts recorded in
+  the panel's doc comment.
+  - SLOP024: importance puffery only (`marca um momento decisivo`,
+    `prepara o terreno para`); the fake-strong-verb and faux-scale-range
+    sub-patterns stay English-only.
+  - SLOP025: weasel attribution (`especialistas afirmam`,
+    `de acordo com especialistas`); the impersonal `-se que` construction
+    (`acredita-se que`) is standard encyclopedic Portuguese and was dropped,
+    exactly as issue #30 predicted.
+  - SLOP027: filler phrases (`o fato é que`, `vale lembrar que`) and
+    adverbs (`sinceramente`).
+  - SLOP028: weak-verb phrases (`tem a capacidade de`, `em tempo hábil`)
+    and the verb/adjective-then-adverb vague quantifier
+    (`reduz significativamente`).
+  - SLOP031: promo phrases (`o melhor da categoria`, `deslumbrante`,
+    `garanta já`).
+  - SLOP035: filler headings (`Desafios e Perspectivas`) and body phrases
+    (`apesar destes desafios`); the ABNT-mandated `Considerações finais` /
+    `Perspectivas futuras` conclusion headings are excluded on purpose.
+  - SLOP036: diff-anchor phrases (`isso substitui o antigo`,
+    `na versão anterior`) and their own exempt-heading list
+    (`histórico de mudanças`, `guia de migração`).
+  - SLOP016 (vocabulary) stays `en`-only: candidate pt-BR words discriminate
+    human from generated text, but even the full candidate list fires the
+    rule's own density gate on 0 of 94 generated documents.
+- **SLOP030 neutral fixes.** `robotic_rhythm` now skips a
+  determiner/preposition opener (`the`, `a`, `o`, `em`, ...) before counting
+  repeats, since three sentences opening on the same article is unremarkable
+  in either language; pronouns still count. `dramatic_fragmentation`'s
+  short-sentence run no longer counts, or resets on, a lone initial (`A.`,
+  an abbreviation split) or a travessão dialogue turn (`— Sim.`). Measured
+  with `--select SLOP030` (distinct-file counts): `ptbr-human` 226 -> 163 of
+  323 files, `en-human` 98 -> 79 of 100, `ptbr-generated2` 20 -> 15 of 94,
+  `ptbr-generated` 5 -> 0 of 60.
+
 - `-j N` / `--threads N` picks the walk's worker count (`0`, the default,
   chooses automatically); `-j 1` makes per-rule timings add up for perf work.
 - `bench/gen_inputs.py` and `bench/run.sh` generate the stress inputs from
