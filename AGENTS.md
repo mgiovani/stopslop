@@ -85,7 +85,7 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 - `next_named_sibling()` is O(index). Iterate `named_children` once instead of asking for siblings inside a loop.
 - Query the shared index through `ctx.nodes(&["kind"])`. A rule never walks the tree again.
 - `ProseDoc` memoizes line lookups in a `Cell` and is therefore `!Sync`. Keep it inside the per-file scope, since the walk is parallel.
-- A Unicode `\b` under `(?i)` drops the regex crate to PikeVM on non-ASCII input. Write `(?-u:\b)` on ASCII-only panels. See issue #21.
+- One Unicode `\b` anywhere in a regex sends the whole regex to PikeVM on any non-ASCII input, an English document with an em dash included. Write `(?-u:\b)` in every panel, Portuguese ones too; next to an accented character drop the boundary or require the literal space that follows. Measured in the issue #30 phase-1 review: a single Unicode `\b` made the default lint 2.3x slower on an 8 MB English file. See issue #21.
 - Compile every regex in a module-scope `LazyLock`, never inside `check`.
 
 ## Workflow
