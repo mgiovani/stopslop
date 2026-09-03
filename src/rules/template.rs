@@ -320,6 +320,91 @@ mod tests {
     }
 
     #[test]
+    fn re_bracket_open_pt_br_alternatives() {
+        let samples: &[&str] = &[
+            "[insira texto]",
+            "[descrever aqui]",
+            "[descreva aqui]",
+            "[adicione aqui]",
+            "[substituir aqui]",
+            "[substitua aqui]",
+            "[colar aqui]",
+            "[cole aqui]",
+            "[sua empresa]",
+            "[nome da empresa]",
+            "[nome do artista]",
+            "[nome da cliente]",
+            "[nome do autor]",
+            "[nome da autora]",
+            "[nome do produto]",
+            "[nome do projeto]",
+            "[link para o site]",
+            "[a definir]",
+            "[a preencher]",
+            "[preencher]",
+            "[preencha]",
+            "[espaço reservado]",
+        ];
+        for s in samples {
+            assert!(RE_BRACKET_OPEN_PT_BR.is_match(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn re_allcaps_pt_br_alternatives() {
+        let samples: &[&str] = &[
+            "INSIRA_X",
+            "COLE_X",
+            "ADICIONAR_X",
+            "ADICIONE_X",
+            "SUBSTITUIR_X",
+            "SUBSTITUA_X",
+            "SEU_X", // ai-slop-ignore
+            "SUA_X", // ai-slop-ignore
+            "FONTE_X",
+            "EXEMPLO_X",
+            "VALOR_AQUI",
+        ];
+        for s in samples {
+            assert!(RE_ALLCAPS_PT_BR.is_match(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn re_date_pt_br_alternatives() {
+        let samples: &[&str] = &[
+            "data: a definir",
+            "data_acesso = a definir",
+            "data-acesso: a definir",
+            "data de acesso = a definir",
+            "data_de_acesso = a definir",
+        ];
+        for s in samples {
+            assert!(RE_DATE_PT_BR.is_match(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn re_html_comment_pt_br_alternatives() {
+        let samples: &[&str] = &[
+            "<!-- adicione uma seção -->",
+            "<!-- inserir link -->",
+            "<!-- insira o texto -->",
+            "<!-- preencher campo -->",
+            "<!-- preencha aqui -->",
+            "<!-- substituir valor -->",
+            "<!-- substitua o valor -->",
+            "<!-- descrever a imagem -->",
+            "<!-- descreva a imagem -->",
+            "<!-- seu nome completo aqui -->",
+            "<!-- sua descrição breve aqui -->",
+        ];
+        for s in samples {
+            assert!(RE_HTML_COMMENT_PT_BR.is_match(s), "{s}");
+        }
+    }
+
+    #[test]
     fn pt_br_gate_silences_portuguese_panel_when_only_english_selected() {
         let src_pt = "Escrito por [seu nome], colaborador do blog.\n";
         assert!(diagnostics_for_natlangs(src_pt, &[NatLang::En]).is_empty());

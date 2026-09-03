@@ -82,6 +82,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tree_sitter::Parser;
 
     #[test]
     fn flags_your_api_key() {
@@ -197,8 +198,52 @@ mod tests {
         assert!(!RE_HTML_PT_BR.is_match("alt=\"foto da equipe reunida no escritório\""));
     }
 
+    #[test]
+    fn re_ci_pt_br_alternatives() {
+        let samples: &[&str] = &[
+            "SUA_SENHA",           // ai-slop-ignore
+            "<sua chave>",         // ai-slop-ignore
+            "<seu token>",         // ai-slop-ignore
+            "exemplo.org",         // ai-slop-ignore
+            "exemplo.net",         // ai-slop-ignore
+            "joao da silva",       // ai-slop-ignore
+            "josé da silva",       // ai-slop-ignore
+            "jose da silva",       // ai-slop-ignore
+            "fulana",              // ai-slop-ignore
+            "ciclano",             // ai-slop-ignore
+            "beltrano",            // ai-slop-ignore
+            "beltrana",            // ai-slop-ignore
+            "mude-me",             // ai-slop-ignore
+            "altere aqui",         // ai-slop-ignore
+            "troque_isso",         // ai-slop-ignore
+            "usuário@exemplo.com", // ai-slop-ignore
+            "usuario@exemplo.com", // ai-slop-ignore
+            "000.000.000-00",      // ai-slop-ignore
+            "999.999.999-99",      // ai-slop-ignore
+            "123.456.789-09",      // ai-slop-ignore
+            "12345678909",         // ai-slop-ignore
+        ];
+        for s in samples {
+            assert!(RE_CI_PT_BR.is_match(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn re_html_pt_br_alternatives() {
+        let samples: &[&str] = &[
+            r#"alt="fotografia""#,
+            r#"alt='figura'"#,
+            r#"alt="ilustração""#,
+            r#"alt="descrição""#,
+            r#"alt="descrição da imagem""#,
+            r#"alt="texto alternativo""#,
+        ];
+        for s in samples {
+            assert!(RE_HTML_PT_BR.is_match(s), "{s}");
+        }
+    }
+
     fn diagnostics_for_natlangs(src: &str, natlangs: &'static [NatLang]) -> Vec<Diagnostic> {
-        use tree_sitter::Parser;
         let mut p = Parser::new();
         p.set_language(&crate::lang::ts_language(Lang::Ts)).unwrap();
         let tree = p.parse(src, None).unwrap();

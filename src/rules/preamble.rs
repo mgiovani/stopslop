@@ -35,10 +35,12 @@ static RE: LazyLock<Regex> = LazyLock::new(|| {
 /// dizendo" never has. `passo 1:`/`etapa 1:` mirror the English line-initial `step 1:` shape --
 /// SLOP011 (the prose rule) drops `passo N:` entirely because bulleted step lists are structure
 /// there, but a line-initial CODE COMMENT is exactly the shape the English panel already flags
-/// here, so parity holds.
+/// here, so parity holds. The self-ID article is `um[a]?` rather than a fixed `uma`: "modelo de
+/// linguagem" is masculine ("como um modelo de linguagem"), "inteligência artificial" is feminine
+/// ("como uma IA"), so the fixed feminine article missed the masculine phrasing entirely.
 static RE_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
-        r"(?im)^\s*(?://|#|\*+)\s*(?:claro[!,]|com certeza[!,]|certamente[!,]|aqui est[áa] [oa] \w+ (?:atualizad|revisad|complet|nov|corrigid)|segue (?:abaixo )?[oa] \w+ (?:atualizad|revisad|complet|nov|corrigid)|abaixo est[áa] [oa] \w+ (?:atualizad|complet)|como uma ia(?-u:\b)|como (?:uma )?(?:intelig[êe]ncia artificial|modelo de linguagem)|espero que (?:isso )?ajude|espero ter ajudado|passo 1:|etapa 1:|{REASONING_CHAIN_FRAGMENT_PT_BR})",
+        r"(?im)^\s*(?://|#|\*+)\s*(?:claro[!,]|com certeza[!,]|certamente[!,]|aqui est[áa] [oa] \w+ (?:atualizad|revisad|complet|nov|corrigid)|segue (?:abaixo )?[oa] \w+ (?:atualizad|revisad|complet|nov|corrigid)|abaixo est[áa] [oa] \w+ (?:atualizad|complet)|como uma ia(?-u:\b)|como (?:um[a]? )?(?:intelig[êe]ncia artificial|modelo de linguagem)|espero que (?:isso )?ajude|espero ter ajudado|passo 1:|etapa 1:|{REASONING_CHAIN_FRAGMENT_PT_BR})",
     ))
     .unwrap()
 });
@@ -106,6 +108,29 @@ mod tests {
     fn matches_pt_br_reasoning_chain_leakage() {
         assert!(RE_PT_BR.is_match("// Vamos pensar passo a passo antes de aplicar a correção"));
         assert!(RE_PT_BR.is_match("# Vamos pensar sobre isso com calma"));
+    }
+
+    #[test]
+    fn re_pt_br_alternatives() {
+        let samples: &[&str] = &[
+            "// claro!",
+            "// com certeza,",
+            "// certamente!",
+            "// aqui está o código atualizado",
+            "// segue abaixo a versão revisada",
+            "// abaixo está a solução completa",
+            "// como uma IA",
+            "// como inteligência artificial",
+            "// como um modelo de linguagem",
+            "// espero que isso ajude",
+            "// espero ter ajudado",
+            "// passo 1:",
+            "// etapa 1:",
+            "// vamos pensar passo a passo",
+        ];
+        for s in samples {
+            assert!(RE_PT_BR.is_match(s), "{s}");
+        }
     }
 
     #[test]

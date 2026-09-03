@@ -98,6 +98,21 @@ mod tests {
     }
 
     #[test]
+    fn re_tool_pt_br_alternatives() {
+        let samples: &[&str] = &[
+            "// produzido por ChatGPT",
+            "// escrita usando Chat GPT",
+            "// criado com o auxílio do GPT-4",
+            "// gerados pelo Copilot",
+            "// sugerida com a ajuda da Claude Code",
+            "// de autoria do Gemini",
+        ];
+        for s in samples {
+            assert!(RE_TOOL_PT_BR.is_match(s), "{s}");
+        }
+    }
+
+    #[test]
     fn does_not_match_pt_br_benign_ai_mention() {
         assert!(!RE_TOOL_PT_BR.is_match("// Esta função usa IA para classificar dados"));
     }

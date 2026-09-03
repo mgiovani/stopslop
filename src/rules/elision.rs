@@ -125,6 +125,43 @@ mod tests {
         assert!(!RE_B_PT_BR.is_match("// resto da lógica fica no módulo de auth"));
     }
 
+    #[test]
+    fn re_a_pt_br_alternatives() {
+        let samples: &[&str] = &[
+            "// ... demais ...",
+            "// ... existente ...",
+            "// ... manter ...",
+            "// ... continua ...",
+            "// ... permanece ...",
+            "// ... sem mudanças ...",
+            "// ... inalteradas ...",
+            "// ... mantém ...",
+            "// ... restante ...",
+            "// ... resto ...",
+            "// ... sem alteração ...",
+            "// ... sem alterações ...",
+        ];
+        for s in samples {
+            assert!(RE_A_PT_BR.is_match(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn re_b_pt_br_alternatives() {
+        let samples: &[&str] = &[
+            "// ... código existente",
+            "// ... resto do",
+            "// ... restante da",
+            "// ... demais métodos",
+            "// ... o restante",
+            "// ... sem alterações",
+            "// ... inalterada",
+        ];
+        for s in samples {
+            assert!(RE_B_PT_BR.is_match(s), "{s}");
+        }
+    }
+
     fn diagnostics_for_natlangs(src: &str, natlangs: &'static [NatLang]) -> Vec<Diagnostic> {
         let mut p = Parser::new();
         p.set_language(&crate::lang::ts_language(Lang::Ts)).unwrap();
