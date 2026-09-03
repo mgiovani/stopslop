@@ -13,7 +13,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Comment that restates the code",
     tier: Tier::B,
     langs: CODE_LANGS,
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: true,
     check,
@@ -32,6 +32,15 @@ via per current given one two s t";
 
 static STOPWORDS: LazyLock<HashSet<String>> = LazyLock::new(|| stemmed(STOPWORDS_RAW));
 
+/// Portuguese twin of [`STOPWORDS`], consulted only when `NatLang::PtBr` is enabled (config is
+/// explicit, so an English-only run gets none of these subtracted from its coherence check).
+/// `a` and `as` are already in [`STOPWORDS_RAW`], so they're left out here per the
+/// cross-language disjointness invariant in AGENTS.md.
+const STOPWORDS_PT_BR_RAW: &str =
+    "o os um uma de do da dos das em no na nos nas para por com e ou que se";
+
+static STOPWORDS_PT_BR: LazyLock<HashSet<String>> = LazyLock::new(|| stemmed(STOPWORDS_PT_BR_RAW));
+
 // Per issue #6's predicate, verbs naming only the operation the code shows are dropped before
 // the subset test: `// parse and validate` over `parse(x)` restates despite having no vocabulary
 // of its own, and never count against the coherence ratio.
@@ -43,6 +52,19 @@ extract wrap unwrap clone copy move allocate free release reset clear flush vali
 try catch throw raise await yield spawn lock unlock acquire sleep wait retry skip use";
 
 static CODE_VERBS: LazyLock<HashSet<String>> = LazyLock::new(|| stemmed(CODE_VERBS_RAW));
+
+/// Portuguese twin of [`CODE_VERBS`], consulted only when `NatLang::PtBr` is enabled -- same
+/// gating as [`STOPWORDS_PT_BR`]. `remove` (English "remove") is already in [`CODE_VERBS_RAW`],
+/// so only `remover` (Portuguese) is listed here per the cross-language disjointness invariant
+/// in AGENTS.md.
+const CODE_VERBS_PT_BR_RAW: &str = "definir define retorna retornar percorre percorrer \
+incrementa incrementar decrementa decrementar adiciona adicionar remover cria criar chama chamar \
+calcula calcular converte converter imprime imprimir salva salvar carrega carregar lê ler \
+escreve escrever abre abrir fecha fechar valida validar verifica verificar inicializa \
+inicializar";
+
+static CODE_VERBS_PT_BR: LazyLock<HashSet<String>> =
+    LazyLock::new(|| stemmed(CODE_VERBS_PT_BR_RAW));
 
 // The CODE_VERBS subset naming the compound construct itself. A block comment can describe body
 // content we can't see, so `// print x` over `if x == nil {` isn't excused the way it would be
@@ -63,6 +85,15 @@ input output";
 
 static CODE_NOUNS: LazyLock<HashSet<String>> = LazyLock::new(|| stemmed(CODE_NOUNS_RAW));
 
+/// Portuguese twin of [`CODE_NOUNS`], consulted only when `NatLang::PtBr` is enabled -- same
+/// gating as [`STOPWORDS_PT_BR`]. `string` and `item` are already in [`CODE_NOUNS_RAW`], so
+/// they're left out here per the cross-language disjointness invariant in AGENTS.md.
+const CODE_NOUNS_PT_BR_RAW: &str = "variável função método classe lista mapa dicionário número \
+valor resultado erro exceção índice chave elemento contador arquivo caminho dados entrada saída";
+
+static CODE_NOUNS_PT_BR: LazyLock<HashSet<String>> =
+    LazyLock::new(|| stemmed(CODE_NOUNS_PT_BR_RAW));
+
 // Issue #6's escape hatches (why/constraint/emphasis/citation markers). Condition words
 // (if/when/while) are deliberately excluded: `// retry when locked` over `if locked { retry() }`
 // still restates, and including them was the single largest recall loss measured.
@@ -75,6 +106,19 @@ deprecated compat compatibility";
 
 static WHY_MARKERS: LazyLock<HashSet<&'static str>> =
     LazyLock::new(|| WHY_MARKERS_RAW.split_whitespace().collect());
+
+/// Portuguese twin of [`WHY_MARKERS`], consulted only when `NatLang::PtBr` is enabled -- same
+/// gating as [`STOPWORDS_PT_BR`]. This is the set that motivated the gating: an earlier version
+/// listed the unaccented `ate` alongside `até`, and since the merged set was never gated on
+/// `ctx.natlangs`, `ate` (an ordinary English word, past tense of "eat") exempted any English
+/// comment containing it from SLOP042 in every configuration. Only the accented spelling is kept
+/// here so that collision can't recur.
+const WHY_MARKERS_PT_BR_RAW: &str = "não nunca porque pois senão evitar evita gambiarra cuidado \
+atenção aviso perigo importante crítico sutil intencional intencionalmente propósito temporário \
+legado descontinuado compatibilidade antes depois apenas somente exceto até ainda mas";
+
+static WHY_MARKERS_PT_BR: LazyLock<HashSet<&'static str>> =
+    LazyLock::new(|| WHY_MARKERS_PT_BR_RAW.split_whitespace().collect());
 
 fn stemmed(raw: &str) -> HashSet<String> {
     raw.split_whitespace().map(stem).collect()
@@ -176,6 +220,7 @@ const STATEMENT_CONTAINERS: &[&str] = &[
 /// a run of n sibling comments into O(n^2). A comment block's span `[i, j]` is found by
 /// extending `j` forward; the loop then jumps straight to `j + 1`.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
+    let pt_br = ctx.natlangs.contains(&NatLang::PtBr);
     for parent in ctx.nodes(STATEMENT_CONTAINERS) {
         // Godoc mandates a comment on every exported identifier at file scope, so any comment
         // there is redundant-but-undeletable rather than slop -- skip the whole scope at once.
@@ -214,7 +259,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
                 }
                 j += 1;
             }
-            if let Some((line, col)) = evaluate_block(ctx, &kids, i, j, scope) {
+            if let Some((line, col)) = evaluate_block(ctx, &kids, i, j, scope, pt_br) {
                 out.push(Diagnostic::at_fix(rule, ctx, line, col, MSG, FIX));
             }
             i = j + 1;
@@ -237,6 +282,7 @@ fn evaluate_block(
     i: usize,
     j: usize,
     scope: Scope,
+    pt_br: bool,
 ) -> Option<(usize, usize)> {
     let lines: Vec<String> = kids[i..=j]
         .iter()
@@ -250,15 +296,19 @@ fn evaluate_block(
     let body = body_raw.to_lowercase();
     let (anchor, anchor_is_compound) = find_anchor(ctx, kids, i, j, scope)?;
     let raw_head = ctx.node_text(&kids[i]).trim_start().to_lowercase();
-    if should_skip(&body, &anchor, &raw_head) || names_other_identifier(&body_raw, &anchor) {
+    if should_skip(&body, &anchor, &raw_head, pt_br) || names_other_identifier(&body_raw, &anchor) {
         return None;
     }
+    let is_code_verb = |w: &str| CODE_VERBS.contains(w) || (pt_br && CODE_VERBS_PT_BR.contains(w));
+    let is_code_noun = |w: &str| CODE_NOUNS.contains(w) || (pt_br && CODE_NOUNS_PT_BR.contains(w));
+    let is_stopword = |w: &str| STOPWORDS.contains(w) || (pt_br && STOPWORDS_PT_BR.contains(w));
+
     // An attribute-assignment comment is doc by convention (Sphinx reads `#:` there) only for a
     // noun phrase; an imperative ("set the size") forfeits the exemption. Only the first word
     // decides, so "the return status" keeps it.
     let imperative = tokenize(&body)
         .first()
-        .is_some_and(|w| CODE_VERBS.contains(w));
+        .is_some_and(|w| is_code_verb(w.as_str()));
     if is_attribute_assignment(&anchor) && !imperative {
         return None;
     }
@@ -266,7 +316,7 @@ fn evaluate_block(
     let code_tokens: HashSet<String> = tokenize(&anchor).into_iter().collect();
     let content_words: Vec<String> = tokenize(&body)
         .into_iter()
-        .filter(|w| !STOPWORDS.contains(w.as_str()))
+        .filter(|w| !is_stopword(w.as_str()))
         .collect();
     // A one-word comment over a compound block is a section label (body unseen); over a single
     // statement it's Steidl's "<=2 words" case -- their survey voted to delete it 70% of the
@@ -277,13 +327,12 @@ fn evaluate_block(
 
     let literal = |w: &String| code_tokens.contains(w.as_str());
     let excused = |w: &String| {
-        CODE_NOUNS.contains(w.as_str())
+        is_code_noun(w.as_str())
             || if anchor_is_compound {
-                &*CONSTRUCT_VERBS
+                CONSTRUCT_VERBS.contains(w.as_str())
             } else {
-                &*CODE_VERBS
+                is_code_verb(w.as_str())
             }
-            .contains(w.as_str())
     };
     let all_explained = content_words.iter().all(|w| literal(w) || excused(w));
     let matched = content_words.iter().filter(|w| literal(w)).count();
@@ -291,7 +340,7 @@ fn evaluate_block(
     // flags it. Excused verbs drop from the denominator per issue #6; excused nouns don't.
     let denominator = content_words
         .iter()
-        .filter(|w| literal(w) || !CODE_VERBS.contains(w.as_str()))
+        .filter(|w| literal(w) || !is_code_verb(w.as_str()))
         .count();
     let coherent = matched * 2 > denominator;
 
@@ -496,7 +545,7 @@ fn first_real_statement(lang: Lang, node: Node) -> Node {
     n
 }
 
-fn should_skip(body: &str, anchor: &str, raw_head: &str) -> bool {
+fn should_skip(body: &str, anchor: &str, raw_head: &str, pt_br: bool) -> bool {
     let body = body.trim();
     if body.ends_with('?') {
         return true;
@@ -522,7 +571,10 @@ fn should_skip(body: &str, anchor: &str, raw_head: &str) -> bool {
     {
         return true;
     }
-    if words.iter().any(|w| WHY_MARKERS.contains(w)) {
+    if words
+        .iter()
+        .any(|w| WHY_MARKERS.contains(w) || (pt_br && WHY_MARKERS_PT_BR.contains(w)))
+    {
         return true;
     }
     if body.contains("n't") || body.contains("n\u{2019}t") || URL_OR_ISSUE_RE.is_match(body) {
@@ -595,17 +647,24 @@ fn normalize_body(raw: &str) -> String {
 
 /// Plain word split (no camel-case or plural normalization) for the exclusion checks in
 /// `should_skip`, which need to see literal typed words like "avoids" or "does".
+/// `char::is_alphanumeric` (not `is_ascii_alphanumeric`), same reasoning as `tokenize` below: an
+/// ASCII-only split shreds an accented word into fragments, which also silently inflates the
+/// 12-word count `should_skip` gates on -- an 11-word accented comment would count far more than
+/// 12 fragments and be wrongly exempted as "too long to be a restatement".
 fn words_of(s: &str) -> Vec<&str> {
-    s.split(|c: char| !c.is_ascii_alphanumeric())
+    s.split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty())
         .collect()
 }
 
 /// Split on non-alphanumerics, split camelCase, lowercase, stem. Shared by both sides of the
 /// comparison (comment body and anchor code line) so identifiers compare equal regardless of
-/// naming convention or inflection.
+/// naming convention or inflection. `char::is_alphanumeric` (not `is_ascii_alphanumeric`) so
+/// accented Portuguese letters stay part of their word instead of becoming their own one-letter
+/// split: an ASCII-only test shreds "não" into "n" + "o" and "após"/"além" the same way. Plain
+/// ASCII English input tokenizes identically either way.
 fn tokenize(s: &str) -> Vec<String> {
-    s.split(|c: char| !c.is_ascii_alphanumeric())
+    s.split(|c: char| !c.is_alphanumeric())
         .filter(|p| !p.is_empty())
         .flat_map(split_camel)
         .map(|t| stem(&t.to_lowercase()))
@@ -615,6 +674,14 @@ fn tokenize(s: &str) -> Vec<String> {
 /// Steidl et al. match comment and code words at Levenshtein distance < 2, which is what lets
 /// `parsed` meet `parse`. A suffix strip covers the same inflections (`-s`, `-ed`, `-ing`, final
 /// `-e`) without the quadratic pairwise compare, and can't accidentally unify `set` with `get`.
+///
+/// No stemmer for Portuguese: its verb conjugations (`-ar`, `-a`, `-am`, `-ou`, `-ando`, `-ado`,
+/// `-ada`, `-ir`, `-e`, `-em`, `-iu`, `-indo`, `-ido`, `-ida`, ...) don't fit the same handful of
+/// suffixes English uses, and this crate adds no dependency for what an enumerated word list
+/// already covers (AGENTS.md). So `STOPWORDS_RAW`/`CODE_VERBS_RAW`/`CODE_NOUNS_RAW`'s Portuguese
+/// entries list the inflected forms actually seen (`incrementa` AND `incrementar`) rather than
+/// relying on this suffix strip to bridge them the way it bridges `parsed`/`parse_header` in
+/// English -- a Portuguese form outside the listed set simply isn't recognized.
 fn stem(w: &str) -> String {
     let w = depluralize(w);
     let w = ["ing", "ed"]
@@ -674,6 +741,10 @@ mod tests {
     use tree_sitter::Parser;
 
     fn run(lang: Lang, src: &str) -> Vec<Diagnostic> {
+        run_with_natlangs(lang, src, crate::lang::ALL_NATLANGS)
+    }
+
+    fn run_with_natlangs(lang: Lang, src: &str, natlangs: &[NatLang]) -> Vec<Diagnostic> {
         let mut parser = Parser::new();
         parser.set_language(&ts_language(lang)).unwrap();
         let tree = parser.parse(src, None).unwrap();
@@ -689,7 +760,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
-            natlangs: crate::lang::ALL_NATLANGS,
+            natlangs,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -1010,6 +1081,16 @@ mod tests {
         assert_eq!(tokenize("parse_configs"), vec!["pars", "config"]);
         assert_eq!(tokenize("i"), vec!["i"]);
         assert_eq!(tokenize("class"), vec!["class"]); // "ss" ending is not a plural
+    }
+
+    /// `char::is_alphanumeric` (not `is_ascii_alphanumeric`) keeps "não" one token instead of
+    /// shredding it into "n" + "o" at the accented letter; "cache" still stems to "cach" (final
+    /// `-e` strip, same as any English word), which is the tokenizer's own unrelated behavior,
+    /// not something this fix changes.
+    #[test]
+    fn tokenize_keeps_accented_portuguese_words_whole() {
+        assert_eq!(tokenize("não use cache"), vec!["não", "use", "cach"]);
+        assert_eq!(tokenize("após além"), vec!["apó", "além"]);
     }
 
     /// The inflections Steidl et al.'s Levenshtein < 2 match would unify, plus `-ing`, all land
@@ -1465,5 +1546,38 @@ mod tests {
         let elapsed = start.elapsed();
         assert_eq!(diags.len(), 0);
         assert!(elapsed.as_secs() < 10, "took {elapsed:?}");
+    }
+
+    // -- round 5 (natlang gating regression) --------------------------------------------------
+
+    /// "não" is literal in both the comment and the anchor (the identifier itself), so nothing
+    /// but the why-marker exemption decides this case: clean under the union, since `não` is a
+    /// PT-BR why marker there; fires under English-only, since the exemption is off and the rest
+    /// of the comment is ordinary coherent restatement ("increment" excuses itself, "não" is a
+    /// literal match).
+    #[test]
+    fn pt_br_why_marker_clean_under_union_fires_under_en_only() {
+        let src = "def f():\n    # increment não\n    não += 1\n";
+        assert!(run_with_natlangs(Lang::Python, src, crate::lang::ALL_NATLANGS).is_empty());
+        assert_eq!(
+            run_with_natlangs(Lang::Python, src, &[NatLang::En]).len(),
+            1
+        );
+    }
+
+    /// Regression for the `ate`/`até` collision: before the fix, the unaccented `ate` sat in the
+    /// same why-marker set as English "ate" (no gating at all), so any English comment containing
+    /// it -- "self.ate" included -- was silently exempted in every configuration. Only the
+    /// accented `até` survives the split, so this now fires like any other restating comment.
+    #[test]
+    fn ascii_ate_collision_no_longer_exempts_english_comment() {
+        assert_eq!(
+            run(
+                Lang::Python,
+                "class T:\n    def __init__(self):\n        # set self.ate\n        self.ate = 5\n"
+            )
+            .len(),
+            1
+        );
     }
 }

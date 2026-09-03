@@ -6,7 +6,7 @@
 //! only visible text, comments, and link targets are restored from a tree-sitter-html parse.
 
 use crate::context::TextNode;
-use crate::lang::Lang;
+use crate::lang::{Lang, NatLang};
 use regex::Regex;
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -96,6 +96,15 @@ pub struct ProseDoc<'a> {
     /// `<footer>`, `<aside>`, and `<nav>` element ranges. Their paragraphs are prose to the
     /// density rules but never the document's ending, which SLOP029 reads. Empty for Markdown.
     pub footers: Vec<(usize, usize)>,
+    /// The document's declared natural language, read from a `lang` attribute on the root
+    /// `<html>` start tag only -- a `lang` on an inner element marks a quotation or an embedded
+    /// snippet in a different language, not the document itself, and this crate has no per-span
+    /// natlang concept to express that. `None` for a missing/absent `lang`, an unrecognized tag
+    /// (`NatLang::from_tag`), or the whole Markdown family (no root tag to read): a file is not
+    /// config, so a declaration this crate doesn't understand is silently ignored rather than
+    /// treated as an error. `engine::lint_prose` reads this to narrow which language panels run
+    /// on this one file (see its doc comment for the narrowing rule).
+    pub html_lang: Option<NatLang>,
     line_starts: Vec<usize>, // byte offset of each line start; for line_col
     /// (byte, col) of the last `line_col` answer. Rules ask in byte order, so the next answer on
     /// the same line counts chars from here rather than from the line start -- a 1.8 MB
@@ -167,6 +176,7 @@ impl<'a> ProseDoc<'a> {
             entities: Vec::new(),
             bold_spans: Vec::new(),
             footers: Vec::new(),
+            html_lang: None,
             line_starts,
             col_memo: Cell::new((0, 1)),
             source,
@@ -257,6 +267,9 @@ impl<'a> ProseDoc<'a> {
             entities: scan.entities,
             bold_spans: scan.bold_spans,
             footers: scan.footers,
+            html_lang: tree
+                .as_ref()
+                .and_then(|t| detect_html_lang(t.root_node(), &prepared)),
             line_starts,
             col_memo: Cell::new((0, 1)),
             source,
@@ -873,6 +886,33 @@ struct HtmlScan {
     entities: Vec<(usize, char)>,
     bold_spans: Vec<usize>,
     footers: Vec<(usize, usize)>,
+}
+
+/// The document's declared language from its root `<html lang="...">` start tag, read off the
+/// already-parsed tree rather than a second text scan over the source: a text scan for
+/// `<html ...lang=...>` matches whichever occurrence of that shape comes first in the file,
+/// comment included -- `<!-- fallback: <html lang="en"> -->` above the real
+/// `<html lang="pt-BR">` used to win, since the scan had no way to know it was reading inside a
+/// comment. Reading the tree's actual root sidesteps that: a `comment` node is never an
+/// `element`, so it can never stand in for the page's own root tag. `None` for a missing
+/// root/tag/attribute or a tag `NatLang::from_tag` doesn't recognize.
+fn detect_html_lang(root: Node, src: &str) -> Option<NatLang> {
+    let mut cursor = root.walk();
+    let html = root
+        .children(&mut cursor)
+        .find(|c| c.kind() == "element" && tag_name(*c, src).eq_ignore_ascii_case("html"))?;
+    let mut cursor = html.walk();
+    let start_tag = html
+        .children(&mut cursor)
+        .find(|c| matches!(c.kind(), "start_tag" | "self_closing_tag"))?;
+    let mut cursor = start_tag.walk();
+    let (_, (s, e)) = start_tag
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "attribute")
+        .find_map(|attr| {
+            attribute_parts(attr, src).filter(|(name, _)| name.eq_ignore_ascii_case("lang"))
+        })?;
+    NatLang::from_tag(&src[s..e])
 }
 
 /// The chars the punctuation rules read: the em dash and curly quotes, named or numeric.
@@ -1572,5 +1612,56 @@ More prose after the fence with a bare https://a.test/bare url and more text.\n\
                 "line_span mismatch at byte {byte}"
             );
         }
+    }
+
+    #[test]
+    fn html_lang_parses_common_tag_shapes() {
+        for (src, want) in [
+            (
+                "<html lang=\"pt-BR\"><body>x</body></html>\n",
+                Some(NatLang::PtBr),
+            ),
+            (
+                "<html lang='pt_br'><body>x</body></html>\n",
+                Some(NatLang::PtBr),
+            ),
+            ("<html lang=PT><body>x</body></html>\n", Some(NatLang::PtBr)),
+            (
+                "<html lang=\"en\"><body>x</body></html>\n",
+                Some(NatLang::En),
+            ),
+            (
+                "<!doctype html>\n<html lang=\"pt-BR\"><body>x</body></html>\n",
+                Some(NatLang::PtBr),
+            ),
+        ] {
+            assert_eq!(ProseDoc::parse_html(src).html_lang, want, "{src}");
+        }
+    }
+
+    /// The bug this fixes: a raw-text scan for `<html ...lang=...>` matches whichever occurrence
+    /// comes first in the file, comment included, so a decoy tag inside a leading comment used to
+    /// win over the page's real root tag. Reading the tree's actual root element instead means a
+    /// `comment` node never stands in for it.
+    #[test]
+    fn html_lang_ignores_a_decoy_tag_inside_a_leading_comment() {
+        let src =
+            "<!-- fallback: <html lang=\"en\"> -->\n<html lang=\"pt-BR\"><body>x</body></html>\n";
+        assert_eq!(ProseDoc::parse_html(src).html_lang, Some(NatLang::PtBr));
+    }
+
+    #[test]
+    fn html_lang_ignores_inner_element_and_unknown_or_missing_tags() {
+        let inner = "<html><body><p lang=\"pt-BR\">x</p></body></html>\n";
+        assert_eq!(ProseDoc::parse_html(inner).html_lang, None);
+        let missing = "<html><body>x</body></html>\n";
+        assert_eq!(ProseDoc::parse_html(missing).html_lang, None);
+        let unknown = "<html lang=\"fr\"><body>x</body></html>\n";
+        assert_eq!(ProseDoc::parse_html(unknown).html_lang, None);
+    }
+
+    #[test]
+    fn html_lang_is_none_for_the_markdown_family() {
+        assert_eq!(ProseDoc::parse("hello\n").html_lang, None);
     }
 }

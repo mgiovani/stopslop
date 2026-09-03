@@ -11,7 +11,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Synonym rotation across a closed concept set",
     tier: Tier::B,
     langs: PROSE_LANGS,
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: false,
     check,
@@ -22,24 +22,25 @@ struct Member {
     re: Regex,
 }
 
+/// `pat` may itself be a top-level alternation (e.g. "run(?:s|ning)?|ran"), so the boundary
+/// anchors must wrap the whole thing in a non-capturing group -- `(?-u:\b){pat}(?-u:\b)` would
+/// only bind `(?-u:\b)` to the first alternative.
+fn set(members: &[(&'static str, &str)]) -> Vec<Member> {
+    members
+        .iter()
+        .map(|&(name, pat)| Member {
+            name,
+            re: Regex::new(&format!(r"(?i)(?-u:\b)(?:{pat})(?-u:\b)")).unwrap(),
+        })
+        .collect()
+}
+
 /// Ten closed concept sets, each member word-bounded/case-insensitive and stem-tolerant where
 /// sensible (verb inflections; bare adjectives left uninflected). The catalog's "use / utilize /
 /// leverage / employ" set is narrowed to "use / employ": "utilize" and "leverage" are already
 /// matched bare by prose_words.rs's VOCAB_TIER2 (SLOP016) -- keeping them here would double-flag
 /// the same span under two rules.
 static SETS: LazyLock<Vec<Vec<Member>>> = LazyLock::new(|| {
-    fn set(members: &[(&'static str, &str)]) -> Vec<Member> {
-        members
-            .iter()
-            .map(|&(name, pat)| Member {
-                name,
-                // `pat` may itself be a top-level alternation (e.g. "run(?:s|ning)?|ran"), so
-                // the boundary anchors must wrap the whole thing in a non-capturing group --
-                // `(?-u:\b){pat}(?-u:\b)` would only bind `(?-u:\b)` to the first alternative.
-                re: Regex::new(&format!(r"(?i)(?-u:\b)(?:{pat})(?-u:\b)")).unwrap(),
-            })
-            .collect()
-    }
     vec![
         set(&[
             ("check", r"check(?:s|ed|ing)?"),
@@ -97,6 +98,65 @@ static SETS: LazyLock<Vec<Vec<Member>>> = LazyLock::new(|| {
     ]
 });
 
+/// Portuguese twin of [`SETS`], the five concept sets that stay quiet on human Portuguese,
+/// consulted only when `NatLang::PtBr` is enabled. `config` is spelled the same in both
+/// languages and stays in [`SETS`] only, so a Portuguese-only run never claims it under a
+/// Portuguese label.
+///
+/// Files with a finding per set, measured on the 129 translated Python-docs pages and 143
+/// featured pt.wikipedia articles of the human corpus against 94 generated summaries, ceiling
+/// 10% of either human subset: `verificar`/`validar`/`conferir`/`checar` 3 / 0 / 1,
+/// `configuração`/`ajustes`/`definições` 1 / 0 / 2, `excluir`/`remover`/`apagar`/`deletar`
+/// 7 / 1 / 0, `executar`/`rodar`/`invocar`/`disparar` 6 / 0 / 0, `rápido`/`veloz` 0 / 0 / 0.
+/// Dropped over the ceiling: `mostrar`/`exibir`/`apresentar` 32 / 47 / 7, `iniciar`/`começar`/
+/// `inicializar` 11 / 31 / 0, `criar`/`gerar`/`produzir` 28 / 45 / 36, `alterar`/`modificar`/
+/// `mudar`/`ajustar` 32 / 12 / 5, `usar`/`utilizar`/`empregar` 23 pydocs pages. Each of those is
+/// ordinary Portuguese narrative or technical prose ("iniciou ... começou", "cria ... gera"),
+/// not one author rotating a term. `ágil` left the speed set: it starts on an accented letter,
+/// so the ASCII leading boundary cannot anchor it and the bare pattern also matched `frágil`.
+static SETS_PT_BR: LazyLock<Vec<Vec<Member>>> = LazyLock::new(|| {
+    vec![
+        set(&[
+            ("verificar", r"verific(?:ar|a|am|ou|ando|ado|ada)"),
+            ("validar", r"valid(?:ar|a|am|ou|ando|ado|ada)"),
+            ("conferir", r"confer(?:ir|e|em|iu|indo|ido|ida)"),
+            ("checar", r"chec(?:ar|a|am|ou|ando|ado|ada)"),
+        ]),
+        set(&[
+            ("configuração", r"configura[çc](?:[ãa]o|[õo]es)"),
+            ("ajustes", r"ajustes?"),
+            ("definições", r"defini[çc][õo]es"),
+        ]),
+        set(&[
+            ("excluir", r"exclu(?:ir|i|em|iu|indo|[íi]do|[íi]da)"),
+            ("remover", r"remov(?:er|e|em|eu|endo|ido|ida)"),
+            ("apagar", r"apag(?:ar|a|am|ou|ando|ado|ada)"),
+            ("deletar", r"delet(?:ar|a|am|ou|ando|ado|ada)"),
+        ]),
+        set(&[
+            ("executar", r"execut(?:ar|a|am|ou|ando|ado|ada)"),
+            // Bare `a` and `ada` dropped: they'd match the common nouns "roda" (wheel) and
+            // "rodada" (a round/lap) instead of a conjugation of "rodar" (to run).
+            ("rodar", r"rod(?:ar|am|ou|ando|ado)"),
+            ("invocar", r"invoc(?:ar|a|am|ou|ando|ado|ada)"),
+            ("disparar", r"dispar(?:ar|a|am|ou|ando|ado|ada)"),
+        ]),
+        set(&[("rápido", r"r[áa]pid[oa]s?"), ("veloz", r"veloz(?:es)?")]),
+    ]
+});
+
+/// `(?-u:\b)` is an ASCII-only boundary, so an accented letter counts as a word edge under it:
+/// "verificação" matched the bare `a` alternative of `verific(?:ar|a|...)` (leftmost-first stops
+/// at "verifica" and the `ç` that follows passes as a boundary), and "validação" and "invocação"
+/// did the same. A letter on either edge means the match sits inside a longer word. Only letters
+/// count: a curly quote or an em dash next to the match is a real edge, and a Unicode `\b` in the
+/// pattern itself is the PikeVM trap AGENTS.md names.
+fn touches_letter(masked: &str, start: usize, end: usize) -> bool {
+    let before = masked[..start].chars().next_back();
+    let after = masked[end..].chars().next();
+    before.is_some_and(char::is_alphabetic) || after.is_some_and(char::is_alphabetic)
+}
+
 /// For each closed concept set, counts occurrences per member within one SECTION's running prose.
 /// A member "qualifies" once it occurs `>= 2` times there. Fires at most one diagnostic per set,
 /// only when two or more distinct members qualify in the same section, anchored at the first
@@ -130,14 +190,25 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             .any(|b| byte >= b.first_byte && byte < b.end_byte)
     };
 
-    for set in SETS.iter() {
+    let en = ctx.natlangs.contains(&NatLang::En);
+    let pt_br = ctx.natlangs.contains(&NatLang::PtBr);
+    let sets = SETS
+        .iter()
+        .filter(|_| en)
+        .chain(SETS_PT_BR.iter().filter(|_| pt_br));
+
+    for set in sets {
         // section -> [(member name, first byte in that section)]
         let mut by_section: BTreeMap<usize, Vec<(&str, usize)>> = BTreeMap::new();
         for member in set {
             let mut per_section: BTreeMap<usize, (usize, usize)> = BTreeMap::new();
             for m in member.re.find_iter(&doc.masked) {
                 let byte = m.start();
-                if doc.in_frontmatter(byte) || doc.in_url(byte) || !in_prose(byte) {
+                if doc.in_frontmatter(byte)
+                    || doc.in_url(byte)
+                    || !in_prose(byte)
+                    || touches_letter(&doc.masked, byte, m.end())
+                {
                     continue;
                 }
                 per_section.entry(section_of(byte)).or_insert((0, byte)).0 += 1;
@@ -182,6 +253,10 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
+        diagnostics_for_natlangs(src, crate::lang::ALL_NATLANGS)
+    }
+
+    fn diagnostics_for_natlangs(src: &str, natlangs: &[NatLang]) -> Vec<Diagnostic> {
         let doc = ProseDoc::parse(src);
         let ctx = LintContext {
             display_path: "test.md".to_string(),
@@ -194,7 +269,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
-            natlangs: crate::lang::ALL_NATLANGS,
+            natlangs,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -276,5 +351,73 @@ mod tests {
         // silent on them even when repeated.
         let src = "We utilize the cache. We utilize it again. We leverage the queue. We leverage it again.\n";
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// One positive per PT-BR set: two of its members, each repeated twice, in one section.
+    #[test]
+    fn flags_rotation_for_each_pt_br_set() {
+        let cases = [
+            ("Vamos verificar a resposta agora. Depois verificar de novo mais tarde. Agora vamos validar a resposta com calma. Depois validar outra vez para garantir.\n", "verificar", "validar"),
+            ("A configuração está pronta. A configuração foi revisada. Os ajustes finais chegaram ontem. Os ajustes foram aplicados hoje.\n", "configuração", "ajustes"),
+            ("Vamos excluir o arquivo agora. Depois vamos excluir o registro antigo. Então remove a entrada duplicada. Por fim remove o registro extra.\n", "excluir", "remover"),
+            ("Vamos executar o script agora. Depois vamos executar o job noturno. Então rodar o teste completo. Por fim rodar o pipeline inteiro.\n", "executar", "rodar"),
+            ("O processo é muito rápido hoje. O sistema ficou rápido depois da mudança. Além disso o motor é veloz na subida. O carro permanece veloz na reta.\n", "rápido", "veloz"),
+        ];
+        for (src, name_a, name_b) in cases {
+            let diags = diagnostics_for(src);
+            assert_eq!(diags.len(), 1, "expected exactly one finding for: {src}");
+            assert_eq!(diags[0].code, "SLOP034");
+            assert!(
+                diags[0].message.contains(name_a),
+                "{src}: missing {name_a} in {}",
+                diags[0].message
+            );
+            assert!(
+                diags[0].message.contains(name_b),
+                "{src}: missing {name_b} in {}",
+                diags[0].message
+            );
+        }
+    }
+
+    #[test]
+    fn clean_pt_br_single_member_repeated_alone() {
+        // Only "verificar" qualifies; a lone repeated word choice is not rotation.
+        let src = "Vamos verificar o arquivo agora. Verificar de novo. Verificar mais uma vez. Verificar outra vez ainda.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// The dropped catalog sets (see `SETS_PT_BR`'s doc comment) must stay silent: one pair per
+    /// dropped set, invented sentences, each member repeated twice in the same section.
+    #[test]
+    fn clean_pt_br_dropped_sets_do_not_fire() {
+        let src = "O painel vai mostrar o resultado. Depois vai mostrar o gráfico. Em seguida vai exibir o relatório. Por fim vai exibir o resumo. O comando vai criar o arquivo. Depois vai criar a pasta. Em seguida vai gerar o relatório. Por fim vai gerar o log. O sistema é ágil. A equipe é ágil. O vidro é frágil. O copo é frágil. Vamos iniciar o processo agora. Depois vamos iniciar outra etapa. Em seguida vamos começar a revisão. Por fim vamos começar o teste. O time vai alterar o arquivo hoje. Depois vai alterar a configuração. Em seguida vai modificar o código legado. Por fim vai modificar o teste. Vamos usar a ferramenta padrão. Depois vamos usar o mesmo script. Em seguida vamos utilizar o novo recurso. Por fim vamos utilizar a biblioteca.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// "roda" (wheel) and "rodada" (a round/lap) are common nouns, not a conjugation of "rodar"
+    /// (to run); the trimmed pattern must not treat their bare `a`/`ada` endings as a match.
+    #[test]
+    fn clean_pt_br_rodar_pattern_does_not_match_wheel_or_round_nouns() {
+        let src = "A roda do carro furou hoje. A segunda rodada começa amanhã. A primeira roda foi trocada ontem. A rodada anterior já terminou.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// "verificação"/"validação" continue past the bare `a` alternative into accented letters;
+    /// the ASCII `(?-u:\b)` boundary must not treat that continuation as a real word edge.
+    #[test]
+    fn clean_pt_br_ascii_boundary_does_not_match_accented_continuations() {
+        let src = "A verificação de dados é feita aqui. A verificação continua depois. A validação do formulário ocorre em seguida. A validação final confirma tudo.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn natlang_gate_silences_pt_br_sets_under_en_only() {
+        let pt_positive = "Vamos verificar a resposta agora. Depois verificar de novo mais tarde. Agora vamos validar a resposta com calma. Depois validar outra vez para garantir.\n";
+        assert!(diagnostics_for_natlangs(pt_positive, &[NatLang::En]).is_empty());
+
+        let en_positive =
+            "Check the response. Check it twice. Now verify the response. Verify it again.\n";
+        assert!(diagnostics_for_natlangs(en_positive, &[NatLang::PtBr]).is_empty());
     }
 }

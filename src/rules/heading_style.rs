@@ -10,7 +10,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Heading & marker formatting affectations",
     tier: Tier::B,
     langs: &[Lang::Md, Lang::Mdx, Lang::Html],
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: false,
     check,
@@ -90,9 +90,34 @@ const REFERENCE_HEADINGS: &[&str] = &[
     "bibliography",
 ];
 
-fn is_reference_heading(text: &str) -> bool {
+/// Brazilian-Portuguese twin of [`REFERENCE_HEADINGS`], consulted only when `NatLang::PtBr` is
+/// enabled: exact lowercase prefixes, same shape as the English list.
+const REFERENCE_HEADINGS_PT_BR: &[&str] = &[
+    "referências",
+    "referencias",
+    "apêndice",
+    "apendice",
+    "notas",
+    "notas de rodapé",
+    "leitura adicional",
+    "leituras adicionais",
+    "veja também",
+    "ver também",
+    "agradecimentos",
+    "licença",
+    "licenca",
+    "histórico de mudanças",
+    "citações",
+    "bibliografia",
+];
+
+fn is_reference_heading(text: &str, use_pt_br: bool) -> bool {
     let lower = text.trim().to_lowercase();
     REFERENCE_HEADINGS.iter().any(|kw| lower.starts_with(kw))
+        || (use_pt_br
+            && REFERENCE_HEADINGS_PT_BR
+                .iter()
+                .any(|kw| lower.starts_with(kw)))
 }
 
 const STOPWORDS: &[&str] = &[
@@ -100,11 +125,23 @@ const STOPWORDS: &[&str] = &[
     "as", "from", "into", "over", "per", "via", "vs", "is", "are",
 ];
 
-fn is_stopword(word: &str) -> bool {
+/// Brazilian-Portuguese twin of [`STOPWORDS`], consulted only when `NatLang::PtBr` is enabled.
+/// Under the default union, some of these are spelled the same as ordinary English words --
+/// "do" (of the) and "no" (in the) chief among them -- so an English heading using either as a
+/// capitalized word ("Do Not Panic") now has it excused from the title-case count too. That's a
+/// small English-side cost, and it's lenient: a heading with those words left lowercase still
+/// counts as title case, never the reverse.
+const STOPWORDS_PT_BR: &[&str] = &[
+    "o", "os", "um", "uma", "e", "ou", "de", "da", "do", "das", "dos", "em", "no", "na", "nos",
+    "nas", "por", "para", "com", "sem", "sobre", "ao", "à", "aos", "às", "que",
+];
+
+fn is_stopword(word: &str, use_pt_br: bool) -> bool {
     let stripped = word
         .trim_matches(|c: char| !c.is_alphanumeric())
         .to_lowercase();
     STOPWORDS.contains(&stripped.as_str())
+        || (use_pt_br && STOPWORDS_PT_BR.contains(&stripped.as_str()))
 }
 
 fn starts_capitalized(word: &str) -> bool {
@@ -115,10 +152,10 @@ fn starts_capitalized(word: &str) -> bool {
 
 /// A heading (already known to have >=3 total words) is title-cased when >=80% of its
 /// non-stopword tokens start with an uppercase letter.
-fn is_title_case_heading(text: &str) -> bool {
+fn is_title_case_heading(text: &str, use_pt_br: bool) -> bool {
     let non_stop: Vec<&str> = text
         .split_whitespace()
-        .filter(|w| !is_stopword(w))
+        .filter(|w| !is_stopword(w, use_pt_br))
         .collect();
     if non_stop.is_empty() {
         return false;
@@ -155,6 +192,7 @@ fn marker_run(doc: &crate::prose::ProseDoc, ctx: &LintContext, re: &Regex) -> Op
 
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
+    let use_pt_br = ctx.natlangs.contains(&NatLang::PtBr);
 
     for (re, message) in [
         (&*EMOJI_MARKER_RE, "emoji used as heading / list marker"),
@@ -177,14 +215,17 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let h = eligible.len();
     let title_cased = eligible
         .iter()
-        .filter(|h| is_title_case_heading(&h.text))
+        .filter(|h| is_title_case_heading(&h.text, use_pt_br))
         .count();
     let guard = SENTENCE_CASE_GUARD_RE
         .find_iter(&doc.masked)
         .any(|m| !doc.in_heading(m.start()) && !doc.in_frontmatter(m.start()));
 
     if h >= 3 && title_cased * 100 >= 75 * h && guard {
-        if let Some(first) = eligible.iter().find(|h| is_title_case_heading(&h.text)) {
+        if let Some(first) = eligible
+            .iter()
+            .find(|h| is_title_case_heading(&h.text, use_pt_br))
+        {
             let (line, col) = doc.line_col(first.byte_start);
             out.push(Diagnostic::at(
                 rule,
@@ -216,7 +257,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         {
             continue;
         }
-        if is_reference_heading(&h.text) {
+        if is_reference_heading(&h.text, use_pt_br) {
             continue;
         }
         let body_start = (h.byte_end + 1).min(doc.masked.len());
@@ -260,14 +301,33 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
+        diagnostics_in(
+            ProseDoc::parse(src),
+            src,
+            Lang::Md,
+            crate::lang::ALL_NATLANGS,
+        )
     }
 
     fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
-        diagnostics_in(ProseDoc::parse_html(src), src, Lang::Html)
+        diagnostics_in(
+            ProseDoc::parse_html(src),
+            src,
+            Lang::Html,
+            crate::lang::ALL_NATLANGS,
+        )
     }
 
-    fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
+    fn diagnostics_for_natlangs(src: &str, natlangs: &[NatLang]) -> Vec<Diagnostic> {
+        diagnostics_in(ProseDoc::parse(src), src, Lang::Md, natlangs)
+    }
+
+    fn diagnostics_in<'a>(
+        doc: ProseDoc<'a>,
+        src: &'a str,
+        lang: Lang,
+        natlangs: &'a [NatLang],
+    ) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
@@ -279,7 +339,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
-            natlangs: crate::lang::ALL_NATLANGS,
+            natlangs,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -431,5 +491,43 @@ mod tests {
         // is a legitimate structural pattern, not a thin section.
         let src = "# Guide\n\n## Example\n\n```\nfoo()\n```\n\n## Data\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n";
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// Each heading's lowercase word ("sobre"/"o", "de"/"para", "sem") is a Portuguese-only
+    /// stopword: none of the three headings clears the 80% per-heading threshold under English
+    /// alone (see `natlangs_gate_silences_pt_br_stopwords_under_en_only` below), only the union
+    /// (or Portuguese) does.
+    #[test]
+    fn flags_pt_br_title_case_headings_with_pt_br_stopwords() {
+        let src = "# Vis\u{e3}o Geral sobre o Sistema\n\nThis is a normal sentence written in plain lowercase words.\n\n## Configura\u{e7}\u{e3}o de Ambiente para Desenvolvimento\n\nThis section walks through the environment variables read on startup. Override them locally when testing changes.\n\n## Testando Funcionalidades sem Erros\n\nThis section explains where the report is generated. Reviewers check it before it ships to stakeholders.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP021");
+        assert!(diags[0].message.contains("title-case"));
+    }
+
+    #[test]
+    fn natlangs_gate_silences_pt_br_stopwords_under_en_only() {
+        let src = "# Vis\u{e3}o Geral sobre o Sistema\n\nThis is a normal sentence written in plain lowercase words.\n\n## Configura\u{e7}\u{e3}o de Ambiente para Desenvolvimento\n\nThis section walks through the environment variables read on startup. Override them locally when testing changes.\n\n## Testando Funcionalidades sem Erros\n\nThis section explains where the report is generated. Reviewers check it before it ships to stakeholders.\n";
+        assert!(diagnostics_for_natlangs(src, &[NatLang::En]).is_empty());
+    }
+
+    /// "Referências" is the Portuguese reference-heading set; a thin body under it must not count
+    /// toward the thin-section floor, same as English "Appendix" above.
+    #[test]
+    fn clean_pt_br_reference_heading_thin_body_excluded() {
+        let src = "# Guide\n\n## Setup\n\nDone.\n\n## Refer\u{ea}ncias\n\nVer a lista completa no reposit\u{f3}rio.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// Under English-only, "Refer\u{ea}ncias" loses its reference-heading exemption, so its thin
+    /// body counts toward the floor alongside "Setup" -- the same source is clean under the union
+    /// (see `clean_pt_br_reference_heading_thin_body_excluded` above).
+    #[test]
+    fn natlangs_gate_silences_pt_br_reference_heading_exemption_under_en_only() {
+        let src = "# Guide\n\n## Setup\n\nDone.\n\n## Refer\u{ea}ncias\n\nVer a lista completa no reposit\u{f3}rio.\n";
+        let diags = diagnostics_for_natlangs(src, &[NatLang::En]);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP021");
     }
 }

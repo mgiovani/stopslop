@@ -214,7 +214,7 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP018 | format | Mid-prose em/en dash | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A mid-sentence em dash (`—`), en dash (`–`), or spaced ASCII `--` that should be rewritten out of the sentence (numeric ranges like `2020–2024`, and an attribution dash opening a block or blockquote like `— Oscar Wilde`, are exempt) |
 | SLOP019 | format | Boldface & bold-lead-in list overuse | B, on  | Markdown, MDX, HTML | en, pt-BR | Boldface overuse in body prose, or 3+ consecutive `- **Term**: ...` bold-lead-in list items |
 | SLOP020 | format | Typographic (smart) quotes in source | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | Curly quotes/apostrophes in source where straight ASCII quotes are expected |
-| SLOP021 | format | Heading & marker formatting affectations | B, on  | Markdown, MDX, HTML | en | Emoji or a decorative technical symbol used as a heading/list marker (counted and reported separately), headings written in Title Case against an otherwise sentence-case document, or headings stacked over two-sentence sections |
+| SLOP021 | format | Heading & marker formatting affectations | B, on  | Markdown, MDX, HTML | en, pt-BR | Emoji or a decorative technical symbol used as a heading/list marker (counted and reported separately), headings written in Title Case against an otherwise sentence-case document, or headings stacked over two-sentence sections |
 | SLOP022 | rhetoric | Formulaic opener / rhetorical setup | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A throat-clearing or faux-insight opener (`Here's the thing`, `What nobody tells you`, `Plot twist:`), or a self-answered `Question? Answer.` pair opening a line |
 | SLOP023 | rhetoric | Binary contrast / negative listing | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | The `It's not X. It's Y.` / `The question isn't X, it's Y` shape, or a `Not a X. Not a Y.` fragment run |
 | SLOP024 | rhetoric | Importance puffery / fake-strong verb | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | An inflated significance claim (`marks a pivotal moment`, `solidifies its position`), a `serves as a centralized hub`-style linking verb where plain `is` reads better, or a faux-scale range (`from the singularity of the Big Bang to the enigmatic dance of dark matter`) standing in for an actual magnitude |
@@ -227,7 +227,7 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP031 | rhetoric | Promotional / advertisement language | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | Brochure register in technical prose (`boasts a`, `industry-leading`, `a hidden gem`) at document-wide density |
 | SLOP032 | verbosity | Hyphenated-compound overuse | B, on  | Markdown, MDX, Text, reST, HTML | en | Stacked hyphenated modifiers used as filler (`end-to-end`, `data-driven`, `battle-tested`) at document-wide density |
 | SLOP033 | verbosity | Overlong sentence | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A sentence over 50 words, reported with its actual word count (URLs count as one word) |
-| SLOP034 | verbosity | Synonym rotation across a closed concept set | B, on  | Markdown, MDX, Text, reST, HTML | en | One concept named two ways within one section's running prose (`check` and `verify`, `config` and `settings`) where technical writing should fix one term. Bullet lists and tables are excluded, so a catalog of differently-named things doesn't count as rotation |
+| SLOP034 | verbosity | Synonym rotation across a closed concept set | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | One concept named two ways within one section's running prose (`check` and `verify`, `config` and `settings`) where technical writing should fix one term. Bullet lists and tables are excluded, so a catalog of differently-named things doesn't count as rotation |
 | SLOP035 | rhetoric | Outline-shaped filler section | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A `Challenges and Future Prospects`-style section heading, or `despite these challenges` boilerplate, standing in for specifics |
 | SLOP036 | rhetoric | Diff-anchored documentation | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | Docs narrating a change (`was added to replace`, `no longer requires`) instead of describing current behavior; changelogs and migration guides are exempt |
 | SLOP037 | stdlib | Reinvented stdlib / native platform feature | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | Hand-rolled code where a standard-library or platform primitive exists (`JSON.parse(JSON.stringify(x))`, `for i in range(len(xs))`, `ioutil.ReadFile`) |
@@ -235,7 +235,7 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP039 | structure | Pass-through wrapper function | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | A function whose whole body forwards its own parameters, unchanged, to another function |
 | SLOP040 | structure | Single-implementation interface / abstract | B, on  | TS, TSX, Python | en, pt-BR | An interface or abstract class with exactly one implementor in the same file: abstraction with no second user |
 | SLOP041 | verbosity | Mechanical uniformity (templated prose) | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A document of 200+ words where at least 2 of 3 document-level signals trip together: flat sentence-length burstiness, low type-token vocabulary ratio, and repeated word-trigrams |
-| SLOP042 | verbosity | Comment that restates the code | B, on  | TS, TSX, Python, Go, Rust | en | A plain comment of 2 to 12 words whose content words all already appear in the one statement it sits on, or only name the construct that statement is (`// increment the counter` above `counter += 1`), so it adds nothing the code doesn't say. Doc comments (and the plain comments that serve as docs where a language has no doc syntax: Go file scope and struct fields, Python module and class attributes), pragmas, banners, questions, comments with code symbols or quotes in them, comments naming an identifier the statement lacks, and any comment carrying a *why* (`because`, `otherwise`, `workaround`, a URL, an issue number), a constraint (`not`, `only`, `unless`, `before`) or a warning (`careful`, `subtle`) are exempt. Inflection is ignored (`parsed` matches `parse_header`) but abbreviations are not (`max` is not `maximum`) |
+| SLOP042 | verbosity | Comment that restates the code | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | A plain comment of 2 to 12 words whose content words all already appear in the one statement it sits on, or only name the construct that statement is (`// increment the counter` above `counter += 1`), so it adds nothing the code doesn't say. Doc comments (and the plain comments that serve as docs where a language has no doc syntax: Go file scope and struct fields, Python module and class attributes), pragmas, banners, questions, comments with code symbols or quotes in them, comments naming an identifier the statement lacks, and any comment carrying a *why* (`because`, `otherwise`, `workaround`, a URL, an issue number), a constraint (`not`, `only`, `unless`, `before`) or a warning (`careful`, `subtle`) are exempt. Inflection is ignored (`parsed` matches `parse_header`) but abbreviations are not (`max` is not `maximum`) |
 | SLOP043 | verbosity | Comment that runs long | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | A plain comment block (consecutive comment lines count as one) of more than 40 words. A reason fits in a sentence or two; a comment that needs three full lines is narrating the code or carrying a design note that belongs in a doc comment, the README or the commit message. Doc comments, godoc (any Go comment outside a function body), license headers, generated files and commented-out code are exempt |
 | SLOP044 | artifact | Boilerplate or empty page title | B, on  | HTML | en, pt-BR | A `<title>Document</title>` (the editor's `!` expansion left in place) or an empty `<title>` |
 
@@ -326,15 +326,20 @@ lexicons a rule's phrase panels actually cover, listed per rule in the `NL`
 column above. Structural and statistical rules (AST shape, punctuation,
 density) need no lexicon and already run on pt-BR text. Phrase-panel rules
 gain a pt-BR panel one rule at a time, each proven by a fixture under
-`tests/fixtures/markdown/pt-br/` before the rule may list `pt-BR`; the rows
-still marked `en` alone are English-only for now, and
+`tests/fixtures/markdown/pt-br/` before the rule may list `pt-BR`; SLOP014
+(cliché phrases), SLOP016 (vocabulary), and SLOP032 (hyphenated-compound
+overuse) still stay English-only, and
 [issue #30](https://github.com/mgiovani/stopslop/issues/30) tracks the rest.
 `pt` and `pt-PT` both resolve to the same Brazilian lexicon as `pt-BR`, a
-best-effort alias rather than a separate European-Portuguese panel.
-Thresholds tuned on English word counts (SLOP033, SLOP041, SLOP043,
-SLOP029's caps) are not yet re-measured for Portuguese, which runs a little
-longer per idea; `language = "pt-BR"` in `stopslop.toml` restricts a run to
-the Portuguese panels only.
+best-effort alias rather than a separate European-Portuguese panel. An HTML
+page that declares `<html lang="...">` narrows its own run to that language
+when the config allows it (`.rst` docinfo and Markdown front matter carry no
+such hint yet). SLOP033's overlong-sentence cap rises to 57 words once a run
+is Portuguese-only (`language = "pt-BR"`, measured against English's 50 on
+matched corpora). SLOP041's thresholds hold as measured (Portuguese trips
+them less often than English, not more); SLOP043 and SLOP029's caps are
+still unmeasured for Portuguese, and `language = "pt-BR"` in
+`stopslop.toml` restricts a run to the Portuguese panels only.
 
 ## Suppression
 
