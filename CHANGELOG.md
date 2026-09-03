@@ -91,6 +91,20 @@ migration notes live here.
   engine on any non-ASCII input, which made the default lint 2.3x slower on
   an 8 MB English file during review. Next to an accented letter the panels
   require the literal space that follows instead.
+- **Brazilian-Portuguese panels, phase 1, code comments.** The five
+  code-comment rules gain a `pt-BR` lexicon and list `en, pt-BR` in the
+  README:
+  - SLOP001: `// ... resto do código sem alteração`, `// ... mantém o
+    restante`.
+  - SLOP002: `// Claro! Aqui está a versão atualizada`, `// Passo 1:` code
+    comments, and the shared reasoning-chain fragment (`vamos pensar passo a
+    passo`) that SLOP011 also uses.
+  - SLOP004: `// Gerado por ChatGPT`, `// Escrito com a ajuda do Copilot`.
+  - SLOP009: `SUA_CHAVE_API`, `João da Silva`, `Fulano`, the textbook
+    `123.456.789-XX`-shaped CPF, and (HTML) `alt="imagem"`.
+  - SLOP013: `[seu nome]`, `INSERIR_URL_FONTE_30`,
+    `data de acesso = a definir`, `<!-- Adicionar citação -->`.
+  Same closed-set-on-a-corpus discipline and ASCII word boundary as phase 1.
 
 - `-j N` / `--threads N` picks the walk's worker count (`0`, the default,
   chooses automatically); `-j 1` makes per-rule timings add up for perf work.

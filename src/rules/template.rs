@@ -11,7 +11,7 @@ pub static RULE: RuleDef = RuleDef {
     name: "Unfilled template placeholder text",
     tier: Tier::A,
     langs: PROSE_LANGS,
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: false,
     check,
@@ -70,15 +70,39 @@ static RE_HTML_COMMENT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)<!--\s*(?:(?:add|insert|todo|fill in|replace|describe)(?-u:\b)[^>]*|(?:\w+\s+)?your\s+(?:\w+\s+){1,3}here[.!]?\s*)-->").unwrap()
 });
 
-/// Scope: headings in scope, frontmatter IN SCOPE (placeholder dates commonly appear as
-/// `date: 2025-XX-XX` in YAML frontmatter), URLs in scope. Only code (already blanked in
-/// `doc.masked`) is excluded. One diagnostic per matching line, first byte wins.
-fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
-    let Some(doc) = ctx.prose else { return };
-    let masked = doc.masked.as_str();
-    let mut bytes: Vec<usize> = Vec::new();
+/// Brazilian-Portuguese twin of `RE_BRACKET_OPEN`. Same close-bracket rejection applies below --
+/// a Markdown link `[link para o site](url)` must stay quiet exactly like `[link to ...](url)`
+/// does in English.
+static RE_BRACKET_OPEN_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\[(?:inserir|insira|descrever|descreva|adicionar|adicione|substituir|substitua|colar|cole|seu nome|sua empresa|nome da empresa|nome d[oa] (?:artista|cliente|autor|autora|produto|projeto)|link para|a definir|a preencher|preencher|preencha|espa[çc]o reservado)(?-u:\b)")
+        .unwrap()
+});
 
-    for m in RE_BRACKET_OPEN.find_iter(masked) {
+/// Brazilian-Portuguese twin of `RE_ALLCAPS`.
+static RE_ALLCAPS_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?-u:\b)(?:INSERIR|INSIRA|COLAR|COLE|ADICIONAR|ADICIONE|SUBSTITUIR|SUBSTITUA|SEU|SUA|FONTE|EXEMPLO)_[A-Z0-9_]+(?-u:\b)|(?-u:\b)[A-Z0-9]+_AQUI(?-u:\b)")
+        .unwrap()
+});
+
+/// Brazilian-Portuguese twin of `RE_DATE`. The `20\d{2}-XX-XX` stub is already language-neutral
+/// in `RE_DATE`, so this only adds the `a definir` value after a `data`/`data de acesso` key.
+/// "data" is also an ordinary English word (a plural of "datum"), so nothing looser than the
+/// literal `a definir` is accepted after it -- a bare `data = ...` would false-positive on
+/// English prose discussing data.
+static RE_DATE_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?-u:\b)data(?:[ _-]?(?:de[ _-]?)?acesso)?\s*[=:]\s*a definir(?-u:\b)")
+        .unwrap()
+});
+
+/// Brazilian-Portuguese twin of `RE_HTML_COMMENT`.
+static RE_HTML_COMMENT_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)<!--\s*(?:(?:adicionar|adicione|inserir|insira|preencher|preencha|substituir|substitua|descrever|descreva)(?-u:\b)[^>]*|(?:\w+\s+)?(?:seu|sua)\s+(?:\w+\s+){1,3}aqui[.!]?\s*)-->").unwrap()
+});
+
+/// One language panel's bracket-placeholder contribution: same close-bracket rejection as the
+/// call site in `check` below, factored out so the English and Portuguese panels share it.
+fn bracket_open_bytes(masked: &str, re: &Regex, bytes: &mut Vec<usize>) {
+    for m in re.find_iter(masked) {
         let Some(close) = find_bracket_close(masked, m.end()) else {
             continue;
         };
@@ -92,8 +116,30 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         }
         bytes.push(m.start());
     }
-    for re in [&*RE_ALLCAPS, &*RE_DATE, &*RE_HTML_COMMENT] {
-        bytes.extend(re.find_iter(masked).map(|m| m.start()));
+}
+
+/// Scope: headings in scope, frontmatter IN SCOPE (placeholder dates commonly appear as
+/// `date: 2025-XX-XX` in YAML frontmatter), URLs in scope. Only code (already blanked in
+/// `doc.masked`) is excluded. One diagnostic per matching line, first byte wins. Each language's
+/// panel only runs when `ctx.natlangs` enables it; the default enables both (union).
+fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
+    let Some(doc) = ctx.prose else { return };
+    let masked = doc.masked.as_str();
+    let mut bytes: Vec<usize> = Vec::new();
+    let en = ctx.natlangs.contains(&NatLang::En);
+    let pt = ctx.natlangs.contains(&NatLang::PtBr);
+
+    if en {
+        bracket_open_bytes(masked, &RE_BRACKET_OPEN, &mut bytes);
+        for re in [&*RE_ALLCAPS, &*RE_DATE, &*RE_HTML_COMMENT] {
+            bytes.extend(re.find_iter(masked).map(|m| m.start()));
+        }
+    }
+    if pt {
+        bracket_open_bytes(masked, &RE_BRACKET_OPEN_PT_BR, &mut bytes);
+        for re in [&*RE_ALLCAPS_PT_BR, &*RE_DATE_PT_BR, &*RE_HTML_COMMENT_PT_BR] {
+            bytes.extend(re.find_iter(masked).map(|m| m.start()));
+        }
     }
 
     let by_line = first_byte_per_line(doc, bytes.into_iter());
@@ -116,6 +162,10 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
+        diagnostics_for_natlangs(src, crate::lang::ALL_NATLANGS)
+    }
+
+    fn diagnostics_for_natlangs(src: &str, natlangs: &'static [NatLang]) -> Vec<Diagnostic> {
         let doc = ProseDoc::parse(src);
         let ctx = LintContext {
             display_path: "test.md".to_string(),
@@ -128,7 +178,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
-            natlangs: crate::lang::ALL_NATLANGS,
+            natlangs,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -214,5 +264,67 @@ mod tests {
         let diags =
             diagnostics_for("Runtime config reads DATABASE_URL and MAX_RETRIES at startup.\n");
         assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn flags_pt_br_bracketed_placeholder() {
+        let diags = diagnostics_for("Escrito por [seu nome], colaborador do blog.\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP013");
+    }
+
+    #[test]
+    fn ignores_pt_br_markdown_link_even_with_keyword_text() {
+        let diags = diagnostics_for(
+            "Veja o [link para o site](https://example.org) para mais detalhes.\n", // ai-slop-ignore
+        );
+        assert!(
+            diags.is_empty(),
+            "bracket-then-paren must be rejected as a real link"
+        );
+    }
+
+    #[test]
+    fn flags_pt_br_allcaps_insert_token() {
+        let diags = diagnostics_for("Link da fonte: INSERIR_URL_FONTE_30\n");
+        assert_eq!(diags.len(), 1);
+    }
+
+    #[test]
+    fn flags_pt_br_allcaps_aqui_token() {
+        let diags = diagnostics_for("Tocando agora: COLAR_LINK_SPOTIFY_AQUI\n");
+        assert_eq!(diags.len(), 1);
+    }
+
+    #[test]
+    fn flags_pt_br_placeholder_date() {
+        let diags = diagnostics_for("Publicado em: data de acesso = a definir\n");
+        assert_eq!(diags.len(), 1);
+    }
+
+    #[test]
+    fn ignores_pt_br_ordinary_data_sentence() {
+        // "data" alone is not a fill-in key -- only the literal "a definir" value is a stub.
+        assert!(diagnostics_for("A tabela de dados foi publicada em 2024-03-01.\n").is_empty());
+    }
+
+    #[test]
+    fn flags_pt_br_html_comment_instruction() {
+        let diags =
+            diagnostics_for("Texto introdutório.\n<!-- Adicionar citação -->\nMais texto segue.\n");
+        assert_eq!(diags.len(), 1);
+        let hint = diagnostics_for(
+            "Introdução.\n\n<!-- Seu conteúdo aqui -->\n\n<!-- coloque sua logo aqui -->\n",
+        );
+        assert_eq!(hint.len(), 2);
+    }
+
+    #[test]
+    fn pt_br_gate_silences_portuguese_panel_when_only_english_selected() {
+        let src_pt = "Escrito por [seu nome], colaborador do blog.\n";
+        assert!(diagnostics_for_natlangs(src_pt, &[NatLang::En]).is_empty());
+
+        let src_en = "Written by [Your Name], a contributor to the blog.\n";
+        assert!(diagnostics_for_natlangs(src_en, &[NatLang::PtBr]).is_empty());
     }
 }

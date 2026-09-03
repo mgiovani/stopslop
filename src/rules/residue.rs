@@ -50,12 +50,20 @@ static RE_ANYWHERE_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
 static RE_REASONING_CHAIN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!(r"(?i)(?-u:\b)(?:{REASONING_CHAIN_FRAGMENT})")).unwrap());
 
+/// Portuguese reasoning-chain leakage fragment, shared with `rules::preamble` (SLOP002, code
+/// comments) the same way `prose_words::REASONING_CHAIN_FRAGMENT` is shared for English -- a
+/// fragment string, not a compiled `Regex`, since each consumer anchors and cases it differently.
+pub(crate) const REASONING_CHAIN_FRAGMENT_PT_BR: &str = "vamos pensar (?:passo a passo|sobre isso)";
+
 /// Portuguese reasoning-chain leakage. "deixa eu pensar/verificar" and "vamos por partes" are
 /// dropped: both are ordinary human asides in runbooks and teaching material ("Antes de sair,
 /// deixa eu verificar os logs.", "Vamos por partes: primeiro o build."), not chain-of-thought
 /// residue. ASCII-only panel, so `(?-u:\b)` is safe and keeps the lazy DFA (issue #21).
 static RE_REASONING_CHAIN_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(?-u:\b)vamos pensar (passo a passo|sobre isso)(?-u:\b)").unwrap()
+    Regex::new(&format!(
+        r"(?i)(?-u:\b)(?:{REASONING_CHAIN_FRAGMENT_PT_BR})(?-u:\b)"
+    ))
+    .unwrap()
 });
 
 /// `Step N:` -- NOT line-initial. Numbered procedural headings and bold lead-ins (`## Step 1:
