@@ -157,6 +157,21 @@ fn touches_letter(masked: &str, start: usize, end: usize) -> bool {
     before.is_some_and(char::is_alphabetic) || after.is_some_and(char::is_alphabetic)
 }
 
+/// True when `byte` falls inside some block's `[first_byte, end_byte)`. `blocks` comes from
+/// `fragmentation::paragraph_blocks`, which returns blocks in ascending, non-overlapping byte
+/// order: the Markdown scan walks `line_spans` once from byte 0 forward, pushing one `Block` per
+/// contiguous non-blank line run in the order it meets them (`fragmentation.rs`, the `while i <
+/// spans.len()` loop around line 120); the HTML scan (`html_blocks`) maps `doc.paragraphs` 1:1,
+/// and those ranges come from a single forward walk over `scan.blocks`, each truncated at its
+/// first child so siblings never overlap. That lets this binary-search with `partition_point`
+/// instead of scanning every block per byte -- the same idiom as `section_of` above. Was an
+/// O(matches x blocks) linear scan, measured at ~50% of the default lint wall time on a 20 MB
+/// file (issue #21 phase-2: 3.68s -> 1.82s with this rule ignored).
+fn in_prose_blocks(blocks: &[super::fragmentation::Block], byte: usize) -> bool {
+    let idx = blocks.partition_point(|b| b.first_byte <= byte);
+    idx > 0 && byte < blocks[idx - 1].end_byte
+}
+
 /// For each closed concept set, counts occurrences per member within one SECTION's running prose.
 /// A member "qualifies" once it occurs `>= 2` times there. Fires at most one diagnostic per set,
 /// only when two or more distinct members qualify in the same section, anchored at the first
@@ -184,11 +199,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     }
     let heading_starts: Vec<usize> = doc.headings.iter().map(|h| h.byte_start).collect();
     let section_of = |byte: usize| heading_starts.partition_point(|&s| s <= byte);
-    let in_prose = |byte: usize| {
-        blocks
-            .iter()
-            .any(|b| byte >= b.first_byte && byte < b.end_byte)
-    };
+    let in_prose = |byte: usize| in_prose_blocks(&blocks, byte);
 
     let en = ctx.natlangs.contains(&NatLang::En);
     let pt_br = ctx.natlangs.contains(&NatLang::PtBr);
@@ -251,6 +262,34 @@ mod tests {
     use super::*;
     use crate::lang::Lang;
     use crate::prose::ProseDoc;
+
+    /// `in_prose_blocks` must agree with a linear scan for every byte of a fixture that mixes
+    /// headings, list items, a table, and prose paragraphs across several blocks -- the same
+    /// brute-force-comparison pattern `prose.rs` uses for `in_heading`/`url_span_at`.
+    #[test]
+    fn in_prose_blocks_matches_brute_force_scan_for_every_byte() {
+        let src = "# Heading\n\nFirst paragraph spans one line.\n\nSecond paragraph\nspans two lines.\n\n- list item one\n- list item two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nTail paragraph after the table.\n";
+        let doc = ProseDoc::parse(src);
+        let blocks = crate::rules::fragmentation::paragraph_blocks(&doc);
+        assert!(
+            blocks.len() >= 3,
+            "fixture should contain multiple prose blocks"
+        );
+
+        fn brute(blocks: &[crate::rules::fragmentation::Block], byte: usize) -> bool {
+            blocks
+                .iter()
+                .any(|b| byte >= b.first_byte && byte < b.end_byte)
+        }
+
+        for byte in 0..=src.len() {
+            assert_eq!(
+                in_prose_blocks(&blocks, byte),
+                brute(&blocks, byte),
+                "mismatch at byte {byte}"
+            );
+        }
+    }
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
         diagnostics_for_natlangs(src, crate::lang::ALL_NATLANGS)
