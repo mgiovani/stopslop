@@ -46,8 +46,22 @@ pub static RULE: RuleDef = RuleDef {
     check,
 };
 
-/// Below this, per-sentence and per-word statistics are too noisy to trust: a handful of
-/// sentences can look "uniform" or "repetitive" by pure chance.
+/// Evidence for the five constants below, measured with these values on the two human corpora
+/// used throughout this rule's development: 323 pt-BR documents (129 translated Python-docs pages
+/// and 194 featured pt.wikipedia articles) and 100 English featured-Wikipedia articles, neither
+/// corpus containing any AI-generated text. SLOP041 fired on 35/323 (10.8%) pt-BR documents and
+/// 20/100 (20%) English documents at these thresholds. That is not zero: both corpora are
+/// naturally narrow, reused-vocabulary prose (translated API reference pages, encyclopedia
+/// articles that repeat a subject's name and stock phrasing throughout), the exact shape the
+/// module doc comment above calls out as legitimately reusing the same words -- so a double-digit
+/// trip rate here is a known property of the rule at these values on this corpus, not a
+/// regression to chase in this PR. Per-signal trip rate among the diagnostics that DID fire (a
+/// signal's status is only observable in the message when the rule already tripped 2-of-3; a
+/// signal that stayed under threshold on a silent document leaves no record to count): pt-BR --
+/// burstiness 3/35, type-token ratio 32/35, trigram repetition 35/35; English -- burstiness 8/20,
+/// type-token ratio 17/20, trigram repetition 20/20. Trigram repetition is the signal every firing
+/// document shares in both corpora; type-token ratio is the frequent second signal; burstiness is
+/// the rarest.
 const MIN_DOC_WORDS: usize = 200;
 /// TTR drifts downward over any long document regardless of style (a 5000-word doc always looks
 /// less diverse than a 100-word one); capping the window keeps the measure meaningful.
@@ -58,6 +72,19 @@ const BURSTINESS_THRESHOLD: f64 = 0.45;
 const TTR_THRESHOLD: f64 = 0.45;
 /// Above this, more than 4% of word-trigrams are repeats of an earlier trigram.
 const TRIGRAM_REPETITION_THRESHOLD: f64 = 0.04;
+/// Trigram repetition is windowed for the same reason `TTR_WORD_WINDOW` windows type-token ratio:
+/// it's a sampling decision, not a threshold: the fraction of repeated trigrams is meant to read
+/// as "how repetitive is this document's prose", and an unbounded window answers a different
+/// question the more text it's handed ("how repetitive is this document's prose by the time it's
+/// this long"), because more distinct trigrams keep accumulating as any long document runs on.
+/// The largest document in either measured corpus (see the evidence block on `MIN_DOC_WORDS`
+/// above) is pydocs/library-os.md at ~26,030 masked words; 30,000 sits comfortably above every
+/// document sampled, so the window changes nothing for real documents and only samples a document
+/// that would run longer than any seen so far. This also bounds the `HashSet` the signal builds:
+/// unwindowed, that set grew with every word in the document and peaked at 432 MB RSS on a 20 MB
+/// single-file input (issue #21 phase-2) -- a useful side effect of the sampling decision, not
+/// the reason for it.
+const TRIGRAM_WORD_WINDOW: usize = 30_000;
 
 /// Word counts of every sentence in the document, sourced from `fragmentation::paragraph_blocks`
 /// so headings/lists/tables/code are excluded exactly as SLOP030 excludes them.
@@ -97,6 +124,8 @@ fn burstiness(counts: &[usize]) -> Option<f64> {
 /// token's edges (not the middle, so "team's"/"low-latency" stay one token). HTML reads its
 /// paragraphs instead: the masked stream also carries nav links, buttons, comments, and `href`
 /// values, and a footer that repeats the nav is trigram repetition by construction, not a tell.
+/// Stops at `TRIGRAM_WORD_WINDOW`, the wider of the two windows its consumers read, so a 20 MB
+/// file no longer materializes millions of lowercase copies it never looks at.
 fn masked_words(doc: &ProseDoc) -> Vec<String> {
     let fm_end = doc.frontmatter.map(|(_, e)| e).unwrap_or(0);
     let prose: String;
@@ -115,6 +144,7 @@ fn masked_words(doc: &ProseDoc) -> Vec<String> {
             let trimmed = tok.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'' && c != '-');
             (!trimmed.is_empty()).then(|| trimmed.to_lowercase())
         })
+        .take(TRIGRAM_WORD_WINDOW)
         .collect()
 }
 
@@ -131,14 +161,20 @@ fn type_token_ratio(words: &[String]) -> f64 {
 }
 
 /// (total trigrams - unique trigrams) / total trigrams: the fraction of trigram occurrences that
-/// are a repeat of one already seen earlier in the document.
+/// are a repeat of one already seen earlier in the document, over the first `TRIGRAM_WORD_WINDOW`
+/// words. Trigrams are borrowed `(&str, &str, &str)` tuples, never joined into a `String`: the
+/// prior version allocated one heap `String` per trigram just to get something `Hash`, which is
+/// most of what drove the 432 MB RSS peak `TRIGRAM_WORD_WINDOW`'s doc comment measures.
 fn trigram_repetition(words: &[String]) -> f64 {
-    if words.len() < 3 {
+    let window = &words[..words.len().min(TRIGRAM_WORD_WINDOW)];
+    if window.len() < 3 {
         return 0.0;
     }
-    let trigrams: Vec<String> = words.windows(3).map(|w| w.join(" ")).collect();
-    let total = trigrams.len();
-    let unique: HashSet<&str> = trigrams.iter().map(String::as_str).collect();
+    let total = window.len() - 2;
+    let unique: HashSet<(&str, &str, &str)> = window
+        .windows(3)
+        .map(|w| (w[0].as_str(), w[1].as_str(), w[2].as_str()))
+        .collect();
     (total - unique.len()) as f64 / total as f64
 }
 
@@ -256,6 +292,21 @@ mod tests {
     fn trigram_repetition_zero_below_three_words() {
         let words: Vec<String> = vec!["a".to_string(), "b".to_string()];
         assert_eq!(trigram_repetition(&words), 0.0);
+    }
+
+    #[test]
+    fn trigram_repetition_windowed_to_first_window_words() {
+        // Every word beyond TRIGRAM_WORD_WINDOW is fresh and unique; if it leaked into the
+        // computation it would pull the ratio down. It must not: only the first
+        // TRIGRAM_WORD_WINDOW words are counted, same idea as the TTR window test above.
+        let mut words: Vec<String> =
+            std::iter::repeat_n("same".to_string(), TRIGRAM_WORD_WINDOW).collect();
+        let without_tail = trigram_repetition(&words);
+        words.extend((0..5_000).map(|i| format!("word{i}")));
+        let with_tail = trigram_repetition(&words);
+        assert_eq!(without_tail, with_tail);
+        // Every trigram in the all-"same" window is "same same same": one unique trigram.
+        assert!(with_tail > 0.99, "got {with_tail}");
     }
 
     #[test]
