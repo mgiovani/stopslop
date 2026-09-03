@@ -4,6 +4,7 @@ use crate::lang::{NatLang, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::prose_words::{ADJACENT_HEDGE_STACK, HEDGE_PHRASES};
 use crate::registry::RuleDef;
+use crate::rules::fragmentation::earliest_qualifying;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -63,7 +64,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
     let mut total = 0usize;
     let mut first_byte: Option<usize> = None;
-    let mut per_phrase: HashMap<String, usize> = HashMap::new();
+    let mut per_phrase: HashMap<String, (usize, usize)> = HashMap::new();
 
     let en = ctx.natlangs.contains(&NatLang::En);
     let pt_br = ctx.natlangs.contains(&NatLang::PtBr);
@@ -92,7 +93,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     // The two trigger conditions need different wording: "N occurrences vs threshold N" reads as
     // a failed comparison when total < threshold and it's really the phrase-repeated branch that
     // fired (e.g. total=2, threshold=3), so branch the message on which condition actually fired.
-    let repeated_phrase = per_phrase.iter().find(|&(_, &n)| n >= 2).map(|(p, _)| p);
+    let repeated_phrase = earliest_qualifying(&per_phrase, 2);
     if total >= threshold || repeated_phrase.is_some() {
         let (line, col) = doc.line_col(first_byte.unwrap());
         let message = if total >= threshold {
@@ -125,7 +126,7 @@ fn count_hedges(
     re: &Regex,
     total: &mut usize,
     first_byte: &mut Option<usize>,
-    per_phrase: &mut HashMap<String, usize>,
+    per_phrase: &mut HashMap<String, (usize, usize)>,
 ) {
     for m in re.find_iter(&doc.masked) {
         let byte = m.start();
@@ -134,7 +135,11 @@ fn count_hedges(
         }
         *total += 1;
         *first_byte = Some(first_byte.map_or(byte, |b| b.min(byte)));
-        *per_phrase.entry(m.as_str().to_lowercase()).or_insert(0) += 1;
+        let entry = per_phrase
+            .entry(m.as_str().to_lowercase())
+            .or_insert((0, byte));
+        entry.0 += 1;
+        entry.1 = entry.1.min(byte);
     }
 }
 
@@ -325,5 +330,31 @@ mod tests {
 
         let en_positive = "This change might potentially fail under sustained load.\n";
         assert!(diagnostics_for_natlangs(en_positive, &[NatLang::PtBr]).is_empty());
+    }
+
+    /// Two DIFFERENT hedge phrases both repeat (>=2) -- exactly the shape that used to read a
+    /// `HashMap`'s iteration order non-deterministically. Padded well past the density floor
+    /// (which scales with word count) so this exercises the repeated-phrase branch, not the
+    /// density branch: the message must always name "in conclusion" (textually first), never
+    /// "it's worth noting" (textually later), regardless of `HashMap` iteration order.
+    #[test]
+    fn repeated_phrase_message_names_the_earliest_occurrence() {
+        let filler =
+            "The gardener watered the young trees every quiet morning before sunrise. ".repeat(160);
+        let src = format!(
+            "In conclusion, ship it now. {filler}It's worth noting that shipping went fine. {filler}In conclusion, ship it again. It's worth noting that we monitored it closely.\n"
+        );
+        let diags = diagnostics_for(&src);
+        assert_eq!(diags.len(), 1);
+        assert!(
+            diags[0].message.contains("repeated"),
+            "{}",
+            diags[0].message
+        );
+        assert!(
+            diags[0].message.contains("\"in conclusion\""),
+            "message was: {}",
+            diags[0].message
+        );
     }
 }

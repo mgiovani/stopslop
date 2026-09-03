@@ -3,6 +3,7 @@ use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{NatLang, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
+use crate::rules::fragmentation::earliest_qualifying;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -55,7 +56,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
     let mut total = 0usize;
     let mut first_byte: Option<usize> = None;
-    let mut per_phrase: HashMap<String, usize> = HashMap::new();
+    let mut per_phrase: HashMap<String, (usize, usize)> = HashMap::new();
 
     if ctx.natlangs.contains(&NatLang::En) {
         count_promo(
@@ -84,7 +85,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     }
 
     let threshold = (3 * doc.words).div_ceil(1000).max(3);
-    let repeated_phrase = per_phrase.iter().find(|&(_, &n)| n >= 2).map(|(p, _)| p);
+    let repeated_phrase = earliest_qualifying(&per_phrase, 2);
     if total >= threshold || repeated_phrase.is_some() {
         let (line, col) = doc.line_col(first_byte.unwrap());
         let message = if total >= threshold {
@@ -115,7 +116,7 @@ fn count_promo(
     re: &Regex,
     total: &mut usize,
     first_byte: &mut Option<usize>,
-    per_phrase: &mut HashMap<String, usize>,
+    per_phrase: &mut HashMap<String, (usize, usize)>,
 ) {
     for m in re.find_iter(&doc.masked) {
         let byte = m.start();
@@ -124,7 +125,11 @@ fn count_promo(
         }
         *total += 1;
         *first_byte = Some(first_byte.map_or(byte, |b| b.min(byte)));
-        *per_phrase.entry(m.as_str().to_lowercase()).or_insert(0) += 1;
+        let entry = per_phrase
+            .entry(m.as_str().to_lowercase())
+            .or_insert((0, byte));
+        entry.0 += 1;
+        entry.1 = entry.1.min(byte);
     }
 }
 
@@ -273,5 +278,30 @@ mod tests {
         let en_positive =
             "Our tool is state-of-the-art. Later, the API is also state-of-the-art.\n";
         assert!(diagnostics_for_natlangs(en_positive, &[NatLang::PtBr]).is_empty());
+    }
+
+    /// Two DIFFERENT promo phrases both repeat (>=2) -- exactly the shape that used to read a
+    /// `HashMap`'s iteration order non-deterministically. Padded well past the density floor so
+    /// this exercises the repeated-phrase branch: the message must always name
+    /// "state-of-the-art" (textually first), never "a hidden gem" (textually later).
+    #[test]
+    fn repeated_phrase_message_names_the_earliest_occurrence() {
+        let filler =
+            "The gardener watered the young trees every quiet morning before sunrise. ".repeat(160);
+        let src = format!(
+            "Our platform is state-of-the-art and built for scale. {filler}The new release is truly a hidden gem for power users. {filler}Our platform stays state-of-the-art after the update. The new release remains a hidden gem for power users.\n"
+        );
+        let diags = diagnostics_for(&src);
+        assert_eq!(diags.len(), 1);
+        assert!(
+            diags[0].message.contains("repeated"),
+            "{}",
+            diags[0].message
+        );
+        assert!(
+            diags[0].message.contains("\"state-of-the-art\""),
+            "message was: {}",
+            diags[0].message
+        );
     }
 }

@@ -4,6 +4,7 @@ use crate::lang::{NatLang, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::prose_words::{FILLER_ADVERBS, FILLER_PHRASES};
 use crate::registry::RuleDef;
+use crate::rules::fragmentation::earliest_qualifying;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -65,7 +66,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
     let mut weighted = 0usize;
     let mut first_byte: Option<usize> = None;
-    let mut per_phrase: HashMap<String, usize> = HashMap::new();
+    let mut per_phrase: HashMap<String, (usize, usize)> = HashMap::new();
 
     let en = ctx.natlangs.contains(&NatLang::En);
     let pt_br = ctx.natlangs.contains(&NatLang::PtBr);
@@ -98,7 +99,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     // phrases count double, so this floor is equivalent to hedging.rs's "3 hedges" floor
     // expressed in phrase-equivalents).
     let threshold = (6 * doc.words).div_ceil(1000).max(6);
-    let repeated_phrase = per_phrase.iter().find(|&(_, &n)| n >= 2).map(|(p, _)| p);
+    let repeated_phrase = earliest_qualifying(&per_phrase, 2);
     if weighted >= threshold || repeated_phrase.is_some() {
         let (line, col) = doc.line_col(first_byte.unwrap());
         let message = if weighted >= threshold {
@@ -128,7 +129,7 @@ fn count_filler_phrases(
     re: &Regex,
     weighted: &mut usize,
     first_byte: &mut Option<usize>,
-    per_phrase: &mut HashMap<String, usize>,
+    per_phrase: &mut HashMap<String, (usize, usize)>,
 ) {
     for m in re.find_iter(&doc.masked) {
         let byte = m.start();
@@ -137,7 +138,11 @@ fn count_filler_phrases(
         }
         *weighted += 2;
         *first_byte = Some(first_byte.map_or(byte, |b| b.min(byte)));
-        *per_phrase.entry(m.as_str().to_lowercase()).or_insert(0) += 1;
+        let entry = per_phrase
+            .entry(m.as_str().to_lowercase())
+            .or_insert((0, byte));
+        entry.0 += 1;
+        entry.1 = entry.1.min(byte);
     }
 }
 
@@ -330,5 +335,30 @@ mod tests {
         let en_positive =
             "In order to ship this, review it first. Later, in order to ship it again, review it twice.\n";
         assert!(diagnostics_for_natlangs(en_positive, &[NatLang::PtBr]).is_empty());
+    }
+
+    /// Two DIFFERENT filler phrases both repeat (>=2) -- exactly the shape that used to read a
+    /// `HashMap`'s iteration order non-deterministically. Padded well past the density floor so
+    /// this exercises the repeated-phrase branch: the message must always name "when it comes
+    /// to" (textually first), never "in order to" (textually later).
+    #[test]
+    fn repeated_phrase_message_names_the_earliest_occurrence() {
+        let filler =
+            "The gardener watered the young trees every quiet morning before sunrise. ".repeat(160);
+        let src = format!(
+            "When it comes to caching, defaults matter a lot. {filler}In order to reduce latency, review it first. {filler}When it comes to caching again, revisit the defaults. In order to reduce latency again, review it twice.\n"
+        );
+        let diags = diagnostics_for(&src);
+        assert_eq!(diags.len(), 1);
+        assert!(
+            diags[0].message.contains("repeated"),
+            "{}",
+            diags[0].message
+        );
+        assert!(
+            diags[0].message.contains("\"when it comes to\""),
+            "message was: {}",
+            diags[0].message
+        );
     }
 }
