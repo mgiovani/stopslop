@@ -28,6 +28,45 @@ static CONJ_OPENER: LazyLock<Regex> =
 /// Sentences whose word count difference (max - min) is at most this are "robotically uniform".
 const RHYTHM_SPREAD: usize = 2;
 
+/// Determiners and prepositions excluded from `robotic_rhythm`'s opener check: on a pt-BR human
+/// corpus (issue #30 phase 2), 1031 of this rule's messages were "three or more sentences open
+/// with X" where X is one of these words (`o` 291, `a` 294, `em` 145, `no` 40, `os` 36, `na` 22
+/// occurrences) -- three sentences opening on the same article or preposition is unremarkable in
+/// Portuguese, not anaphora. The same fix reads on English text (`the`/`a`/`an` lead an ordinary
+/// paragraph constantly): measured on this repo's own corpora with all three SLOP030 fixes
+/// applied together (`--select SLOP030`, distinct-file counts), `ptbr-human` went from 226 to 163
+/// of 323 files, `en-human` from 98 to 79 of 100 files, `ptbr-generated2` from 20 to 15 of 94, and
+/// `ptbr-generated` from 5 to 0 of 60 -- see the crate's CHANGELOG for the full table. Pronouns
+/// are deliberately NOT included (`it`, `this`, `ele`, `ela`, ...): three sentences opening on the
+/// same pronoun is exactly the anaphora this signal exists to catch.
+const OPENER_FUNCTION_WORDS: &[&str] = &[
+    // English
+    "the", "a", "an", "in", "on", "at", "of", "to", "for", "by", "with", "from", "as", "into",
+    "over", "under", // Portuguese
+    "o", "a", "os", "as", "um", "uma", "uns", "umas", "em", "no", "na", "nos", "nas", "de", "do",
+    "da", "dos", "das", "ao", "à", "aos", "às", "com", "por", "para", "pelo", "pela", "pelos",
+    "pelas", "sem", "sob", "sobre", "entre",
+];
+
+/// True when `s` (trimmed) is a lone initial -- one letter, optionally followed by a single
+/// trailing period (`"A."`, `"M"`) -- the shape `split_sentences` produces when it cuts an
+/// abbreviation like "A. M. Kuchling" into three "sentences". Measured on the pt-BR human corpus
+/// (issue #30 phase 2): 89 of the short-run messages were this shape rather than genuine dramatic
+/// fragmentation.
+fn is_lone_initial(s: &str) -> bool {
+    let t = s.trim();
+    let core = t.strip_suffix('.').unwrap_or(t);
+    let mut chars = core.chars();
+    matches!((chars.next(), chars.next()), (Some(c), None) if c.is_alphabetic())
+}
+
+/// True when `s` (trimmed) opens with an em dash or en dash -- a travessão dialogue turn, the
+/// same convention SLOP018's own travessão exemption recognizes (see `emdash.rs`). A run of short
+/// dialogue lines ("— Sim. — Não. — Talvez.") is conversation, not dramatic fragmentation.
+fn is_dialogue_turn(s: &str) -> bool {
+    s.trim_start().starts_with(['—', '–'])
+}
+
 fn is_blank(line: &str) -> bool {
     line.trim().is_empty()
 }
@@ -243,6 +282,12 @@ fn dramatic_fragmentation(sentences: &[&str]) -> Option<&'static str> {
     }
     let mut run = 0usize;
     for s in sentences {
+        // A lone initial (abbreviation splitting) or a travessão dialogue turn neither counts
+        // toward the run nor resets it: it's not a sentence in its own right, so it can't be
+        // dramatic fragmentation and can't break up a genuine run either.
+        if is_lone_initial(s) || is_dialogue_turn(s) {
+            continue;
+        }
         if word_count(s) <= 5 {
             run += 1;
             if run >= 3 {
@@ -283,7 +328,9 @@ fn robotic_rhythm(sentences: &[&str]) -> Option<String> {
             let key = w
                 .trim_matches(|c: char| !c.is_alphanumeric())
                 .to_lowercase();
-            if !key.is_empty() {
+            // A determiner or preposition opener is unremarkable repetition, not anaphora (see
+            // OPENER_FUNCTION_WORDS's doc comment); pronouns are deliberately not excluded.
+            if !key.is_empty() && !OPENER_FUNCTION_WORDS.contains(&key.as_str()) {
                 *openers.entry(key).or_insert(0) += 1;
             }
         }
@@ -451,7 +498,9 @@ mod tests {
 
     #[test]
     fn flags_same_opening_word_three_times() {
-        let src = "The service starts quickly. The service scales well. The service costs little to run every month for most teams.\n";
+        // A pronoun, not a determiner: OPENER_FUNCTION_WORDS deliberately excludes pronouns, so
+        // this is exactly the anaphora the signal exists to catch.
+        let src = "It starts quickly. It scales well. It costs little to run every month for most teams.\n";
         let diags = diagnostics_for(src);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "SLOP030");
@@ -460,6 +509,53 @@ mod tests {
     #[test]
     fn clean_varied_opening_words() {
         let src = "The service starts quickly. Most teams find it easy to run. Costs stay low for typical workloads across the board.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// Three sentences opening on the same determiner ("The") is unremarkable repetition, not
+    /// anaphora -- OPENER_FUNCTION_WORDS excludes it. Contrast with the pronoun case in
+    /// `flags_same_opening_word_three_times`, which still fires.
+    #[test]
+    fn clean_repeated_determiner_opener_is_not_robotic_rhythm() {
+        let src = "The service starts quickly. The service scales well. The service costs little to run every month for most teams.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    /// Portuguese twin of the determiner-exclusion test above: `o`/`a`/`em`/`no`/`os`/`na` are
+    /// the top hitters from the pt-BR corpus measurement (see OPENER_FUNCTION_WORDS's doc
+    /// comment) and must not fire the opener-repeat signal.
+    #[test]
+    fn clean_repeated_pt_br_preposition_opener_is_not_robotic_rhythm() {
+        let src = "Em Roma, o clima era ameno. Em Atenas, o debate seguia forte. Em Cartago, o comércio prosperava havia décadas inteiras.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn lone_initials_do_not_count_toward_or_break_a_short_sentence_run() {
+        // "A." and "M." are abbreviation splits (see `is_lone_initial`'s doc comment), not real
+        // sentences: they must neither count toward the very-short-sentence run nor reset it, so
+        // the three genuine short sentences around them still trigger the run.
+        let src = "It works. A. M. It scales. It ships. The rest of the rollout needs no further changes from anyone on the team this quarter.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP030");
+    }
+
+    #[test]
+    fn dialogue_turns_do_not_count_toward_or_break_a_short_sentence_run() {
+        // Travessão dialogue lines are conversation, not dramatic fragmentation, and must not
+        // interrupt a genuine short-sentence run either.
+        let src = "It works. — Sim. It scales. It ships. The rest of the rollout needs no further changes from anyone on the team this quarter.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP030");
+    }
+
+    #[test]
+    fn a_lone_initial_alone_does_not_manufacture_a_run() {
+        // Two short sentences plus two lone initials: still only two REAL short sentences, so
+        // this must not manufacture a fake run of three.
+        let src = "It works. A. M. It ships. The rest of the rollout needs no further changes from anyone on the team this quarter.\n";
         assert!(diagnostics_for(src).is_empty());
     }
 

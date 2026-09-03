@@ -5,6 +5,14 @@ use crate::prose_words::{VOCAB_TIER1, VOCAB_TIER2};
 use crate::registry::RuleDef;
 use std::collections::HashMap;
 
+/// `natlangs` below stays `en`-only, unlike the seven phase-2 prose rules: issue #30 phase 2
+/// measured candidate discriminating pt-BR words (`engajamento` 0 vs 140 generated hits/34 docs,
+/// `amplificar` 1 vs 47, `sinergia` 0 vs 19, `potencializar` 0 vs 20, `alavancar` 0 vs 15,
+/// `insights` 0 vs 40, `intuitivo` 1 vs 13, on a 1.3-million-word human corpus vs. 94 generated
+/// documents), but even the full candidate list fires this rule's own density-and-breadth gate
+/// on 0 of the 94 generated documents -- most of the words are business-register vocabulary the
+/// generated corpus itself barely uses at that density, so a panel here can't clear the bar this
+/// rule already holds English to.
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP016",
     name: "Overused-vocabulary density",

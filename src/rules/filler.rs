@@ -1,20 +1,55 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{NatLang, PROSE_LANGS};
+use crate::prose::ProseDoc;
 use crate::prose_words::{FILLER_ADVERBS, FILLER_PHRASES};
 use crate::registry::RuleDef;
+use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP027",
     name: "Empty filler phrase & adverb density",
     tier: Tier::B,
     langs: PROSE_LANGS,
-    natlangs: &[NatLang::En],
+    natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: false,
     check,
 };
+
+/// Brazilian-Portuguese twin of `FILLER_PHRASES`. Lives here rather than in `prose_words.rs`
+/// (AGENTS.md step 7: that file holds only the panels the prose density rules SHARE, and this
+/// panel has exactly one consumer). Measured against a 318-document, 1.3-million-word human
+/// corpus and dropped above 2 hits: `realmente` (63 human hits), `simplesmente` (55), `a fim de`
+/// (56), `em termos de` (27), `basicamente`, `essencialmente`, `claramente`, `obviamente`,
+/// `certamente`, `definitivamente`, `verdadeiramente`, `genuinamente`, `honestamente`,
+/// `literalmente`, `inevitavelmente`, `sem dúvida`, `quando se trata de`, `em sua essência`, `no
+/// mundo do`, `no que diz respeito a`, `como vimos`, `é importante lembrar` -- every one has
+/// human hits, exactly like the English panel's own dropped members. `na era d[oa]` also dropped
+/// on the final corpus measurement: 3 human hits in 3 documents vs 7 generated hits across 4
+/// documents, under the 4x bar.
+///
+/// Split into two groups instead of one `\b(?:...)\b`, same idiom as `hedging.rs`'s
+/// `HEDGE_PHRASES_PT_BR`: `[ée] desnecessário dizer` opens on the accented "é", where a leading
+/// `(?-u:\b)` never matches, so it drops the leading boundary and keeps only the trailing one
+/// (`desnecessário` ends in the ASCII `o`).
+static FILLER_PHRASES_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?:(?-u:\b)(?:a realidade [ée] que|a verdade [ée] que|no que tange a|de agora em diante|daqui para frente|neste artigo|neste post|vamos mergulhar|vamos dar uma olhada|como mencionado (?:anteriormente|acima)|nem [ée] preciso dizer|para todos os efeitos|o fato [ée] que|por tr[áa]s dos panos|sem sombra de d[úu]vida|vale lembrar que)(?-u:\b)|[ée] desnecess[áa]rio dizer(?-u:\b))")
+        .unwrap()
+});
+
+/// Brazilian-Portuguese twin of `FILLER_ADVERBS`, same position gate (line start, after
+/// sentence-ending punctuation, or right after a copula). `fundamentalmente` dropped on the final
+/// corpus measurement: 7 human hits in 7 documents. The copula alternatives (`é`, `são`, ...)
+/// start on an accented letter or lack an ASCII boundary counterpart, so unlike the English
+/// panel's leading `(?-u:\b)(?:is|are|...)`, this one has none in front of the copula group -- in
+/// real prose the copula is always preceded by whitespace anyway, and the cost of a rare mid-word
+/// match on that side is a missed adverb, never a false positive.
+static FILLER_ADVERBS_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?im)(?:^[ \t>*_#-]*|[.!?]["')\]]?[ \t]+|(?:é|s[ãa]o|est[áa]|est[ãa]o|foi|era|eram|ser)[ \t]+)(inerentemente|indiscutivelmente|inegavelmente|sinceramente)(?-u:\b)"#).unwrap()
+});
 
 /// Counts empty filler-phrase ("when it comes to", "in order to", ...) and filler-adverb
 /// ("basically", "obviously", ...) occurrences in the masked prose stream (headings in scope,
@@ -30,25 +65,31 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let mut first_byte: Option<usize> = None;
     let mut per_phrase: HashMap<String, usize> = HashMap::new();
 
-    // Two separate regexes feed the same `first_byte` anchor, so each hit must be merged in by
-    // min (not just "set once"): the earliest match overall may come from either loop.
-    for m in FILLER_PHRASES.find_iter(&doc.masked) {
-        let byte = m.start();
-        if doc.in_frontmatter(byte) || doc.in_url(byte) {
-            continue;
-        }
-        weighted += 2;
-        first_byte = Some(first_byte.map_or(byte, |b| b.min(byte)));
-        *per_phrase.entry(m.as_str().to_lowercase()).or_insert(0) += 1;
+    let en = ctx.natlangs.contains(&NatLang::En);
+    let pt_br = ctx.natlangs.contains(&NatLang::PtBr);
+
+    // Each language's phrase/adverb pass feeds the same `first_byte` anchor and `per_phrase`
+    // tally, so every hit must be merged in by min (not just "set once"): the earliest match
+    // overall may come from any of the four loops.
+    if en {
+        count_filler_phrases(
+            doc,
+            &FILLER_PHRASES,
+            &mut weighted,
+            &mut first_byte,
+            &mut per_phrase,
+        );
+        count_filler_adverbs(doc, &FILLER_ADVERBS, &mut weighted, &mut first_byte);
     }
-    for caps in FILLER_ADVERBS.captures_iter(&doc.masked) {
-        let g = caps.get(1).unwrap();
-        let byte = g.start();
-        if doc.in_frontmatter(byte) || doc.in_url(byte) {
-            continue;
-        }
-        weighted += 1;
-        first_byte = Some(first_byte.map_or(byte, |b| b.min(byte)));
+    if pt_br {
+        count_filler_phrases(
+            doc,
+            &FILLER_PHRASES_PT_BR,
+            &mut weighted,
+            &mut first_byte,
+            &mut per_phrase,
+        );
+        count_filler_adverbs(doc, &FILLER_ADVERBS_PT_BR, &mut weighted, &mut first_byte);
     }
 
     // Integer ceil of 6 * words / 1000, floored at an absolute minimum of 6 (weighted units;
@@ -77,13 +118,56 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     }
 }
 
+/// One language panel's filler-PHRASE contribution (weight 2): every match outside
+/// frontmatter/URLs bumps `weighted` by 2, tracks the earliest byte in `first_byte`, and tallies
+/// its lowercased text in `per_phrase` for the repeated-phrase branch.
+fn count_filler_phrases(
+    doc: &ProseDoc,
+    re: &Regex,
+    weighted: &mut usize,
+    first_byte: &mut Option<usize>,
+    per_phrase: &mut HashMap<String, usize>,
+) {
+    for m in re.find_iter(&doc.masked) {
+        let byte = m.start();
+        if doc.in_frontmatter(byte) || doc.in_url(byte) {
+            continue;
+        }
+        *weighted += 2;
+        *first_byte = Some(first_byte.map_or(byte, |b| b.min(byte)));
+        *per_phrase.entry(m.as_str().to_lowercase()).or_insert(0) += 1;
+    }
+}
+
+/// One language panel's filler-ADVERB contribution (weight 1, no repeated-phrase tally: a common
+/// adverb repeating twice is unremarkable, unlike a repeated empty clause).
+fn count_filler_adverbs(
+    doc: &ProseDoc,
+    re: &Regex,
+    weighted: &mut usize,
+    first_byte: &mut Option<usize>,
+) {
+    for caps in re.captures_iter(&doc.masked) {
+        let g = caps.get(1).unwrap();
+        let byte = g.start();
+        if doc.in_frontmatter(byte) || doc.in_url(byte) {
+            continue;
+        }
+        *weighted += 1;
+        *first_byte = Some(first_byte.map_or(byte, |b| b.min(byte)));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::lang::Lang;
-    use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
+        diagnostics_for_natlangs(src, crate::lang::ALL_NATLANGS)
+    }
+
+    fn diagnostics_for_natlangs(src: &str, natlangs: &[NatLang]) -> Vec<Diagnostic> {
         let doc = ProseDoc::parse(src);
         let ctx = LintContext {
             display_path: "test.md".to_string(),
@@ -96,7 +180,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
-            natlangs: crate::lang::ALL_NATLANGS,
+            natlangs,
         };
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
@@ -147,5 +231,91 @@ mod tests {
         // not filler, so it must not contribute to the weighted total at all.
         let src = "The simply typed lambda calculus is a foundational model of computation. The simply typed lambda calculus also has a sound type system that rules out a wide class of runtime errors before a program ever executes, which is part of why it remains a popular teaching tool decades after it was first introduced.\n";
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn flags_each_pt_br_filler_phrase_alternative() {
+        let phrases = [
+            "a realidade é que",
+            "a verdade é que",
+            "no que tange a",
+            "de agora em diante",
+            "daqui para frente",
+            "neste artigo",
+            "neste post",
+            "vamos mergulhar",
+            "vamos dar uma olhada",
+            "como mencionado anteriormente",
+            "é desnecessário dizer",
+            "nem é preciso dizer",
+            "para todos os efeitos",
+            "o fato é que",
+            "por trás dos panos",
+            "sem sombra de dúvida",
+            "vale lembrar que",
+        ];
+        for s in phrases {
+            assert!(FILLER_PHRASES_PT_BR.is_match(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn flags_each_pt_br_filler_adverb_alternative() {
+        let cases = [
+            "Inerentemente, o sistema é mais lento em picos de tráfego.",
+            "Indiscutivelmente, a mudança ajudou a reduzir o número de erros.",
+            "Inegavelmente, o resultado melhorou depois do ajuste.",
+            "Sinceramente, não sei se vale a pena manter esse formato.",
+        ];
+        for s in cases {
+            assert!(FILLER_ADVERBS_PT_BR.is_match(s), "{s}");
+        }
+    }
+
+    /// Every one of these has human hits in the pt-BR corpus (see `FILLER_PHRASES_PT_BR`'s doc
+    /// comment) and was dropped from both panels.
+    #[test]
+    fn clean_pt_br_dropped_filler_shapes() {
+        let dropped = [
+            "realmente",
+            "simplesmente",
+            "a fim de",
+            "em termos de",
+            "basicamente",
+            "essencialmente",
+            "claramente",
+            "obviamente",
+            "certamente",
+            "definitivamente",
+            "verdadeiramente",
+            "genuinamente",
+            "honestamente",
+            "literalmente",
+            "inevitavelmente",
+            "sem dúvida",
+            "quando se trata de",
+            "em sua essência",
+            "no mundo do",
+            "no que diz respeito a",
+            "como vimos",
+            "é importante lembrar",
+            "na era do",
+            "fundamentalmente",
+        ];
+        for phrase in dropped {
+            assert!(!FILLER_PHRASES_PT_BR.is_match(phrase), "{phrase}");
+            assert!(!FILLER_ADVERBS_PT_BR.is_match(phrase), "{phrase}");
+        }
+    }
+
+    #[test]
+    fn natlang_gate_silences_the_other_languages_panel() {
+        let pt_positive =
+            "Vale lembrar que o cache expira rápido. Depois, vale lembrar que expira de novo.\n";
+        assert!(diagnostics_for_natlangs(pt_positive, &[NatLang::En]).is_empty());
+
+        let en_positive =
+            "In order to ship this, review it first. Later, in order to ship it again, review it twice.\n";
+        assert!(diagnostics_for_natlangs(en_positive, &[NatLang::PtBr]).is_empty());
     }
 }
