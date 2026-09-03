@@ -92,6 +92,23 @@ pub enum Format {
     Markdown,
 }
 
+/// Cap on worker threads per available core, applied to `-j/--threads` before it reaches
+/// `ignore::WalkBuilder::threads`. A reviewer once ran `stopslop -j 100000`, which spawned
+/// ~12k OS threads and froze the machine; 4 per core is generous headroom over what a
+/// directory walk can ever keep busy, while still letting `-j` ask for more than one thread
+/// per core on a real multi-core box.
+const MAX_THREADS_PER_CORE: usize = 4;
+
+/// `0` keeps meaning "auto" (the walker sizes itself, same as today). A nonzero request above
+/// `available * MAX_THREADS_PER_CORE` is silently capped rather than handed to the walker
+/// unvalidated -- see `MAX_THREADS_PER_CORE`'s doc comment for the incident this guards against.
+fn effective_threads(requested: usize, available: usize) -> usize {
+    if requested == 0 {
+        return 0;
+    }
+    requested.min(available.max(1) * MAX_THREADS_PER_CORE)
+}
+
 pub fn run(cli: Cli) -> anyhow::Result<i32> {
     let started = std::time::Instant::now();
     // Config is discovered before the --list-rules early-return: custom rules need to appear in
@@ -153,6 +170,15 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         &custom_codes,
         check_imports,
     );
+    // An empty resolved set from a non-empty select would otherwise lint nothing and exit 0 with
+    // only a warning, indistinguishable from a clean run; a partial typo among patterns still
+    // just warns.
+    if !select.is_empty() && enabled.is_empty() {
+        anyhow::bail!(
+            "--select matched no rule code (patterns: {})",
+            select.join(", ")
+        );
+    }
     let deps = if check_imports {
         Some(DepIndex::discover(&paths))
     } else {
@@ -172,6 +198,17 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
     } else {
         cli.since.map(git::Scope::Since)
     };
+    let available = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1);
+    let threads = effective_threads(cli.threads, available);
+    if threads != cli.threads {
+        eprintln!(
+            "stopslop: warning: -j {} exceeds {available} cores x {MAX_THREADS_PER_CORE}; \
+             using {threads} threads instead",
+            cli.threads,
+        );
+    }
     let (diags, stats) = std::thread::scope(|warm| {
         engine::prewarm(warm, &settings);
         match scope {
@@ -186,7 +223,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
                     }
                 })
             }
-            None => walk::lint_paths(&paths, &config.exclude, &settings, cli.threads),
+            None => walk::lint_paths(&paths, &config.exclude, &settings, threads),
         }
     })?;
     // Applied before baseline so a path-scoped ignore composes with it instead of the two
@@ -417,5 +454,143 @@ mod tests {
         ignores.insert("[".to_string(), vec!["SLOP036".to_string()]);
         let err = apply_per_file_ignores(vec![], &ignores).unwrap_err();
         assert!(err.to_string().contains("invalid glob"));
+    }
+
+    #[test]
+    fn effective_threads_zero_stays_auto() {
+        assert_eq!(effective_threads(0, 8), 0);
+        assert_eq!(effective_threads(0, 1), 0);
+    }
+
+    #[test]
+    fn effective_threads_passes_through_a_request_at_or_under_the_cap() {
+        assert_eq!(effective_threads(2, 8), 2);
+        assert_eq!(effective_threads(32, 8), 32); // exactly at the cap (8 * 4)
+    }
+
+    /// The incident this guards against: `-j 100000` on an 8-core machine must not reach
+    /// `WalkBuilder::threads` unclamped.
+    #[test]
+    fn effective_threads_clamps_an_absurd_request() {
+        assert_eq!(effective_threads(100_000, 8), 32);
+    }
+
+    #[test]
+    fn effective_threads_clamps_relative_to_a_single_core() {
+        assert_eq!(effective_threads(4, 1), 4);
+        assert_eq!(effective_threads(5, 1), 4);
+    }
+
+    // --- cli::run integration tests ---
+    //
+    // `default_cli` sets `no_config: true` so a run is isolated from this repo's own
+    // `stopslop.toml`. `fixture_dir` holds one Tier A finding (SLOP012) and one clean file.
+
+    fn default_cli(paths: Vec<PathBuf>) -> Cli {
+        Cli {
+            paths,
+            staged: false,
+            changed: false,
+            since: None,
+            format: Format::Text,
+            select: Vec::new(),
+            extend_select: Vec::new(),
+            ignore: Vec::new(),
+            extend_ignore: Vec::new(),
+            list_rules: false,
+            baseline: None,
+            write_baseline: None,
+            check_imports: false,
+            config: None,
+            no_config: true,
+            fail_on_tier: None,
+            stats: false,
+            threads: 0,
+        }
+    }
+
+    fn fixture_dir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("slop.md"),
+            "The figures were pulled from turn0search0 directly.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("clean.md"),
+            "This release requires v2+1 of the client SDK or newer.\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    #[test]
+    fn run_default_exits_1_on_a_tier_a_finding() {
+        let dir = fixture_dir();
+        let cli = default_cli(vec![dir.path().to_path_buf()]);
+        assert_eq!(run(cli).unwrap(), 1);
+    }
+
+    /// SLOP004 is a real code, so it doesn't trip the "matched no rule code" path, but it's
+    /// `CODE_LANGS`-only and so can never fire on these `.md` fixtures.
+    #[test]
+    fn run_select_of_a_rule_that_does_not_fire_exits_0() {
+        let dir = fixture_dir();
+        let mut cli = default_cli(vec![dir.path().to_path_buf()]);
+        cli.select = vec!["SLOP004".to_string()];
+        assert_eq!(run(cli).unwrap(), 0);
+    }
+
+    #[test]
+    fn run_ignore_of_the_firing_rule_exits_0() {
+        let dir = fixture_dir();
+        let mut cli = default_cli(vec![dir.path().to_path_buf()]);
+        cli.ignore = vec!["SLOP012".to_string()];
+        assert_eq!(run(cli).unwrap(), 0);
+    }
+
+    #[test]
+    fn run_write_baseline_then_baseline_filters_the_recorded_finding() {
+        let dir = fixture_dir();
+        let baseline_path = dir.path().join("baseline.json");
+
+        let mut write_cli = default_cli(vec![dir.path().to_path_buf()]);
+        write_cli.write_baseline = Some(baseline_path.clone());
+        assert_eq!(run(write_cli).unwrap(), 0);
+
+        let mut second_cli = default_cli(vec![dir.path().to_path_buf()]);
+        second_cli.baseline = Some(baseline_path);
+        assert_eq!(run(second_cli).unwrap(), 0);
+    }
+
+    #[test]
+    fn run_format_json_exit_code_matches_text() {
+        let dir = fixture_dir();
+        let mut cli = default_cli(vec![dir.path().to_path_buf()]);
+        cli.format = Format::Json;
+        assert_eq!(run(cli).unwrap(), 1);
+    }
+
+    /// `no_config` wins over an explicit `--config` path (see `Config::discover`), so an
+    /// `ignore = ["SLOP012"]` file placed there never applies and the Tier A finding still
+    /// fails the run.
+    #[test]
+    fn run_no_config_bypasses_an_explicit_config_file() {
+        let dir = fixture_dir();
+        let config_path = dir.path().join("stopslop.toml");
+        std::fs::write(&config_path, "ignore = [\"SLOP012\"]\n").unwrap();
+
+        let mut cli = default_cli(vec![dir.path().to_path_buf()]);
+        cli.config = Some(config_path);
+        cli.no_config = true;
+        assert_eq!(run(cli).unwrap(), 1);
+    }
+
+    #[test]
+    fn run_select_matching_no_rule_code_is_an_error() {
+        let dir = fixture_dir();
+        let mut cli = default_cli(vec![dir.path().to_path_buf()]);
+        cli.select = vec!["SLOP999".to_string()];
+        assert!(run(cli).is_err());
     }
 }
