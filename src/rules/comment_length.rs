@@ -1,4 +1,4 @@
-use crate::context::{LintContext, TextNode};
+use crate::context::{self, LintContext, TextNode};
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{self, Lang};
 use crate::registry::RuleDef;
@@ -115,8 +115,7 @@ fn end_line(c: &TextNode) -> usize {
 }
 
 fn is_leading(ctx: &LintContext, c: &TextNode) -> bool {
-    let line_start = c.start_byte - (c.col - 1);
-    ctx.source[line_start..c.start_byte].trim().is_empty()
+    context::is_leading(ctx.source, c.start_byte, c.col - 1)
 }
 
 /// A license header is boilerplate nobody wrote for this file, and commented-out code isn't

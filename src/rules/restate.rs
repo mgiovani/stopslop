@@ -608,10 +608,7 @@ fn is_comment_kind(lang: Lang, kind: &str) -> bool {
 /// trailing comment glued to code). `start_position().column` is a byte offset within the row
 /// for UTF-8 input, so the line start is O(1) arithmetic -- no backward scan over the row.
 fn is_leading(ctx: &LintContext, node: Node) -> bool {
-    let line_start = node.start_byte() - node.start_position().column;
-    ctx.source[line_start..node.start_byte()]
-        .chars()
-        .all(char::is_whitespace)
+    context::is_leading(ctx.source, node.start_byte(), node.start_position().column)
 }
 
 fn is_symbol_dense(line: &str) -> bool {
