@@ -64,6 +64,17 @@ impl<'a> LintContext<'a> {
     }
 }
 
+/// True when nothing but whitespace precedes `start_byte` on its own source line -- i.e. the
+/// comment starting there is a leading comment, not one trailing code on the same line.
+/// `comment_length.rs` and `restate.rs` each computed this identically over a different node
+/// representation (tree-sitter `Node`'s column is 0-based, `TextNode`'s is 1-based), so `col`
+/// here is 0-based and each call site normalizes its own column before calling in, rather than
+/// this helper guessing which convention it was handed.
+pub(crate) fn is_leading(source: &str, start_byte: usize, col: usize) -> bool {
+    let line_start = start_byte - col;
+    source[line_start..start_byte].trim().is_empty()
+}
+
 /// Every named node of a tree in pre-order, plus each kind's positions in that order. Built
 /// once per file by `extract`; AST rules query it through `LintContext::nodes` instead of
 /// re-walking the tree, so a file costs one traversal however many rules run (issue #8: a
