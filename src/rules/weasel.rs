@@ -28,11 +28,11 @@ static WEASEL_ATTRIBUTION_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// Brazilian-Portuguese twin of `WEASEL_ATTRIBUTION_RE`. `NOTABILITY_NAME_DROP_RE` has no pt-BR
 /// twin -- not measured for phase 2, stays English-only. Measured against a 318-document,
 /// 1.3-million-word human corpus and dropped above 2 hits: the impersonal `-se que` construction (`acredita-se que` 24
-/// human hits, `estima-se que` 9, `sabe-se que` 5, `diz-se que` 4, `considera-se que`) is standard
-/// encyclopedic Portuguese, not a weasel; likewise `estudos mostram` (5), `alguns dizem` (2),
-/// `críticos argumentam` (1), `segundo especialistas` -- every one has human hits, exactly as
-/// issue #30 predicted for the impersonal `-se` form. `de acordo com especialistas` is the one
-/// entry that ships (1 human hit).
+/// human hits, `estima-se que` 9, `sabe-se que` 5, `diz-se que` 4, `considera-se que` 5) is
+/// standard encyclopedic Portuguese, not a weasel; likewise `estudos mostram` (5), `alguns dizem`
+/// (2), `críticos argumentam` (1), `segundo especialistas` (3) -- every one has human hits,
+/// exactly as issue #30 predicted for the impersonal `-se` form. `de acordo com especialistas` is
+/// the one entry that ships (1 human hit).
 ///
 /// Split into two groups instead of one `\b(?:...)\b`, same idiom as `hedging.rs`'s
 /// `HEDGE_PHRASES_PT_BR`: the ASCII-initial alternatives sit under a leading+trailing

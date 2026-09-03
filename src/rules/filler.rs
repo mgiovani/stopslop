@@ -23,13 +23,15 @@ pub static RULE: RuleDef = RuleDef {
 /// (AGENTS.md step 7: that file holds only the panels the prose density rules SHARE, and this
 /// panel has exactly one consumer). Measured against a 318-document, 1.3-million-word human
 /// corpus and dropped above 2 hits: `realmente` (63 human hits), `simplesmente` (55), `a fim de`
-/// (56), `em termos de` (27), `basicamente`, `essencialmente`, `claramente`, `obviamente`,
-/// `certamente`, `definitivamente`, `verdadeiramente`, `genuinamente`, `honestamente`,
-/// `literalmente`, `inevitavelmente`, `sem dúvida`, `quando se trata de`, `em sua essência`, `no
-/// mundo do`, `no que diz respeito a`, `como vimos`, `é importante lembrar` -- every one has
-/// human hits, exactly like the English panel's own dropped members. `na era d[oa]` also dropped
-/// on the final corpus measurement: 3 human hits in 3 documents vs 7 generated hits across 4
-/// documents, under the 4x bar.
+/// (56), `em termos de` (27), `basicamente` (18), `essencialmente` (25), `claramente` (33),
+/// `obviamente` (12), `certamente` (30), `definitivamente` (24), `verdadeiramente` (16),
+/// `genuinamente` (6), `honestamente` (3), `literalmente` (9), `inevitavelmente` (3), `sem dúvida`
+/// (12), `quando se trata de` (4), `em sua essência` (2), `no mundo do` (5), `no que diz respeito
+/// a` (1, dropped as a plain connective), `como vimos` (2, plain connective), `é importante
+/// lembrar` (1, plain connective), `com relação a` (3) -- every one has human hits, exactly like
+/// the English panel's own dropped members. `na era d[oa]` also dropped on the final corpus
+/// measurement: 3 human hits in 3 documents vs 7 generated hits across 4 documents, under the 4x
+/// bar.
 ///
 /// Split into two groups instead of one `\b(?:...)\b`, same idiom as `hedging.rs`'s
 /// `HEDGE_PHRASES_PT_BR`: `[ée] desnecessário dizer` opens on the accented "é", where a leading
@@ -270,6 +272,17 @@ mod tests {
         for s in cases {
             assert!(FILLER_ADVERBS_PT_BR.is_match(s), "{s}");
         }
+    }
+
+    #[test]
+    fn flags_dense_short_doc_pt_br() {
+        // 2 distinct pt-BR phrases (weight 2 each = 4) + 2 distinct pt-BR adverbs (weight 1
+        // each = 2) = weighted 6, at/above the absolute floor of 6.
+        let src = "Neste artigo, vamos explorar o assunto com calma. Vamos dar uma olhada nos detalhes técnicos. Inerentemente, o sistema é mais lento em picos de tráfego. Sinceramente, não sei se vale a pena manter esse formato.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP027");
+        assert!(diags[0].message.contains("vs threshold"));
     }
 
     /// Every one of these has human hits in the pt-BR corpus (see `FILLER_PHRASES_PT_BR`'s doc

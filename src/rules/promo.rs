@@ -28,10 +28,11 @@ static PROMO_PHRASES: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Brazilian-Portuguese twin of `PROMO_PHRASES`. Measured against a 318-document,
 /// 1.3-million-word human corpus and dropped above 2 hits: `premiado` (5 human hits), `no coração
-/// de` (3), `de última geração` (2), `incomparável` (2), `inigualável`, `imperdível`, `rica
-/// história/tradição`, `aninhad[oa] (?:em|entre|no|na)` (3 human hits -- "aninhado em" is "nested
-/// in", a technical term in the translated Python docs) -- every one is ordinary Portuguese
-/// description, not brochure register. Same threshold and merged tally as English.
+/// de` (3), `de última geração` (2), `incomparável` (2), `inigualável` (1, kept out with
+/// `incomparável`), `imperdível` (1), `rica história/tradição/herança` (3), `aninhad[oa]
+/// (?:em|entre|no|na)` (3 human hits -- "aninhado em" is "nested in", a technical term in the
+/// translated Python docs) -- every one is ordinary Portuguese description, not brochure
+/// register. Same threshold and merged tally as English.
 static PROMO_PHRASES_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?-u:\b)(?:renomad[oa] p(?:or|elo|ela)|mundialmente (?:renomad|conhecid|famos)[oa]s?|de tirar o f[ôo]lego|deslumbrante|o melhor da categoria|l[íi]der (?:do|no|de) (?:setor|mercado|segmento)|sem igual|compromisso com a excel[êe]ncia|beleza natural|uma j[óo]ia escondida|solu[çc][ãa]o completa|pr[óo]xima gera[çc][ãa]o|pronto para uso|experi[êe]ncia [úu]nica|transforme (?:sua|seu|a sua|o seu)|para o pr[óo]ximo n[íi]vel|n[ãa]o perca|garanta (?:sua|seu|o seu|a sua)|vagas limitadas|resultados (?:reais|comprovados|garantidos))(?-u:\b)")
         .unwrap()
@@ -232,6 +233,16 @@ mod tests {
     #[test]
     fn flags_pt_br_garanta_ja() {
         assert!(PROMO_GARANTA_JA_PT_BR.is_match("Garanta já o seu ingresso para o show."));
+    }
+
+    #[test]
+    fn flags_three_distinct_pt_br_promo_hits_at_threshold() {
+        // 3 distinct pt-BR promo phrases, matching the density floor of 3 exactly.
+        let src = "O restaurante é renomado por sua culinária local.\n\nA vista é de tirar o fôlego ao amanhecer.\n\nA decoração é deslumbrante em todos os detalhes.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP031");
+        assert!(diags[0].message.contains("vs threshold"));
     }
 
     /// Every one of these has human hits in the pt-BR corpus (see `PROMO_PHRASES_PT_BR`'s doc

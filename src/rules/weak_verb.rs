@@ -39,13 +39,15 @@ static VAGUE_QUANTIFIER_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Brazilian-Portuguese twin of `WEAK_VERB_PHRASE_RE`. Measured against a 318-document,
 /// 1.3-million-word human corpus and dropped above 2 hits: `uma série de` (59 human hits), `inúmeros` (29), `uma variedade de`
-/// (20), `oferece suporte a` (21), `com o objetivo de` (18), `é capaz de`, `são capazes de`,
-/// `possui a capacidade de`, `fornece suporte`, `realizar uma análise`, `levar em consideração`,
-/// `neste momento`, `devido ao fato de que`, `com a finalidade de`, `no sentido de`, `dá a
-/// possibilidade de`, the forward-order vague quantifier (verb-then-adverb), `uma ampla gama de`,
-/// `uma grande variedade de`, `incontáveis` -- every one has human hits, the Portuguese counterpart
-/// of the English panel's own dropped nominalizations. `tem a capacidade de` starts on the ASCII
-/// `t`, so the leading `(?-u:\b)` is fine throughout.
+/// (20), `oferece suporte a` (21), `com o objetivo de` (18), `é capaz de` (30, 24 docs), `são
+/// capazes de` (7), `possui a capacidade de` (1), `fornece suporte a/para` (3), `realizar uma
+/// análise` (1), `levar em consideração` (4), `neste momento` (13), `devido ao fato de que` (1),
+/// `com a finalidade de` (2), `no sentido de` (11), `dá a possibilidade de` (4), the forward-order
+/// vague quantifier (verb-then-adverb), `uma ampla gama de` (6), `uma grande variedade de` (18),
+/// `incontáveis` (2), `tomar uma decisão` (2, one of them generated; dropped as a plain
+/// connective) -- every one has human hits, the Portuguese counterpart of the English panel's own
+/// dropped nominalizations. `tem a capacidade de` starts on the ASCII `t`, so the leading
+/// `(?-u:\b)` is fine throughout.
 static WEAK_VERB_PHRASE_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?-u:\b)(?:t[êe]m? a capacidade de|efetu(?:ar|ou|am) uma avalia[çc][ãa]o|faz(?:er|em)? uma avalia[çc][ãa]o|em tempo h[áa]bil|de forma regular)(?-u:\b)")
         .unwrap()
@@ -453,6 +455,16 @@ mod tests {
                 "wrong fix for phrase: {phrase}"
             );
         }
+    }
+
+    #[test]
+    fn flags_three_distinct_pt_br_weak_verb_hits_at_threshold() {
+        // 3 distinct pt-BR weak-verb phrases, matching the density floor of 3 exactly.
+        let src = "O sistema tem a capacidade de escalar sob carga.\n\nA equipe vai efetuar uma avaliação completa no próximo sprint.\n\nEntregamos o relatório em tempo hábil.\n";
+        let diags = diagnostics_for(src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP028");
+        assert!(diags[0].message.contains("vs threshold"));
     }
 
     /// Every one of these has human hits in the pt-BR corpus (see `WEAK_VERB_PHRASE_PT_BR`'s doc
