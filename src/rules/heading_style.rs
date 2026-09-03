@@ -9,7 +9,7 @@ pub static RULE: RuleDef = RuleDef {
     code: "SLOP021",
     name: "Heading & marker formatting affectations",
     tier: Tier::B,
-    langs: &[Lang::Md, Lang::Mdx],
+    langs: &[Lang::Md, Lang::Mdx, Lang::Html],
     natlangs: &[NatLang::En],
     default_on: true,
     path_gated: false,
@@ -198,7 +198,10 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 
     // Checked against ctx.source, not masked: masking blanks fence markers to spaces, which
     // would hide a code-fenced body. Fires only at 2+ thin candidates -- a single short section
-    // is normal.
+    // is normal. Never on HTML, where one-sentence feature cards are the page's design.
+    if doc.paragraphs.is_some() {
+        return;
+    }
     let first_h1 = doc.headings.iter().position(|hd| hd.level == 1);
     let mut thin_count = 0usize;
     let mut first_thin_byte = None;
@@ -257,12 +260,19 @@ mod tests {
     use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
-        let doc = ProseDoc::parse(src);
+        diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
+    }
+
+    fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
+        diagnostics_in(ProseDoc::parse_html(src), src, Lang::Html)
+    }
+
+    fn diagnostics_in<'a>(doc: ProseDoc<'a>, src: &'a str, lang: Lang) -> Vec<Diagnostic> {
         let ctx = LintContext {
             display_path: "test.md".to_string(),
             source: src,
             index: None,
-            lang: Lang::Md,
+            lang,
             comments: &doc.ignore_comments,
             strings: &[],
             is_test_path: false,
@@ -274,6 +284,20 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    #[test]
+    fn html_feature_cards_are_not_thin_sections() {
+        let cards = "<h2>Features</h2>\n<h3>Search</h3>\n<p>Finds any note.</p>\n<h3>History</h3>\n<p>Keeps every version.</p>\n<h3>Comments</h3>\n<p>Reply by email.</p>\n";
+        assert!(diagnostics_for_html(cards).is_empty());
+    }
+
+    #[test]
+    fn html_title_case_headings_still_count() {
+        let src = "<h2>Write Notes Your Team Finds</h2>\n<h2>Search Every Past Decision</h2>\n<h2>Invite The Whole Company</h2>\n<p>plain lowercase words sit here.</p>\n";
+        let diags = diagnostics_for_html(src);
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("title-case"));
     }
 
     #[test]

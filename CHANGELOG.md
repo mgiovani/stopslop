@@ -77,13 +77,19 @@ migration notes live here.
   text plus HTML comments and `href`/`src` attribute values; `<script>`,
   `<style>`, `<pre>`, `<code>`, `<textarea>`, `<template>`, `<svg>`,
   `<math>`, and `<noscript>` subtrees are skipped, and Django/Jinja
-  `{{ … }}`/`{% … %}`/`{# … #}` are blanked before the parse. Named/numeric
-  entities stay blank rather than decoded, a miss on an entity-encoded dash
-  rather than a false positive. `<h1>`-`<h6>` map to headings, and the
-  suppression comments work unchanged. 21 rules (SLOP011-018, 020, 022-028,
-  031-033, 035, 036) run on HTML unchanged; SLOP029, SLOP030, SLOP034, and
-  SLOP041 stay off HTML behind the new `lang::PARAGRAPH_LANGS` until it has a
-  paragraph model. New dependency: `tree-sitter-html`, because neither std
+  `{{ … }}`/`{% … %}`/`{# … #}` are blanked before the parse. `<h1>`-`<h6>`
+  map to headings, and the suppression comments work unchanged. Each leaf
+  block element (`<p>`, `<div>`, `<blockquote>`, `<td>`) is one paragraph, so
+  SLOP029, SLOP030, SLOP034, and SLOP041 run on HTML as they do on Markdown.
+  List items, table cells, headings, and form controls are never paragraphs.
+  A paragraph inside `<footer>`, `<aside>`, or `<nav>` is never the ending
+  SLOP029 reads.
+  `<strong>`/`<b>` count toward SLOP019, inline `<code>` counts as words the
+  way a backtick span does, SLOP021 checks heading case, and `&mdash;`,
+  `&#8212;`, and the curly-quote entities feed SLOP018 and SLOP020 as if
+  typed. `&ndash;` stays undecoded: a numeric range is its common use, and
+  the range exemption needs the raw neighbours. Every prose rule now runs on
+  HTML. New dependency: `tree-sitter-html`, because neither std
   nor regex can express "blank everything that is not a text node" (a `>`
   inside an attribute value or a `</script>` inside a JS string defeats a
   regex strip). See
@@ -125,6 +131,13 @@ migration notes live here.
 
 ### Fixed
 
+- **SLOP009** matched `YOUR_` case-insensitively anywhere in a string, so a
+  real image path such as `Leave_Your_Dog_at_Home.png` in an HTML `src` was a
+  Tier A finding. The placeholder shape now has to start a token.
+- **SLOP022** read a FAQ accordion on a minified one-line page
+  (`<button>Question?</button><div><p>Yes.</p>`) as a self-answered question.
+  The answer now has to sit in the question's own block. Found on a corpus of
+  generated landing pages, where it was 236 of 246 findings.
 - **SLOP018** treated every line-initial dash as attribution only when the
   line above it was blank or a blockquote marker, so the second and later
   lines of a multi-line dialogue run (each opening with its own attribution

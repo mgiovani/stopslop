@@ -33,7 +33,7 @@ const MESSAGE: &str = "hardcoded sample/credential value";
 // dogfooding stopslop against its own src/ would self-flag it.
 static RE_CI: LazyLock<Regex> = LazyLock::new(|| {
     // ai-slop-ignore
-    Regex::new(r"(?i)YOUR_[A-Z0-9_]+|<your[ -][^>]*>|example\.(com|org|net)|123[- ]?456[- ]?7890|John Doe|Jane Doe|foo@bar\.|user@example\.|change[_ ]?me").unwrap()
+    Regex::new(r"(?i)(?-u:\b)YOUR_[A-Z0-9_]+|<your[ -][^>]*>|example\.(com|org|net)|123[- ]?456[- ]?7890|John Doe|Jane Doe|foo@bar\.|user@example\.|change[_ ]?me").unwrap()
 });
 // The credential patterns are prefixes and character classes, never a literal sample value, so
 // this one needs no suppression -- SLOP009 has nothing to match here.
@@ -67,6 +67,12 @@ mod tests {
     #[test]
     fn flags_your_api_key() {
         assert!(RE_CI.is_match("YOUR_API_KEY")); // ai-slop-ignore
+    }
+
+    #[test]
+    fn your_inside_a_filename_token_is_not_a_placeholder() {
+        assert!(!RE_CI.is_match("/files/Leave_Your_Dog_at_Home_600x.png"));
+        assert!(RE_CI.is_match("/files/YOUR_LOGO_HERE.png")); // ai-slop-ignore
     }
 
     #[test]

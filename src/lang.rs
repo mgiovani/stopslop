@@ -17,13 +17,6 @@ pub enum Lang {
 
 pub const CODE_LANGS: &[Lang] = &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust];
 pub const PROSE_LANGS: &[Lang] = &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst, Lang::Html];
-/// The prose langs whose paragraphs are blank-line delimited. Rules that reason about a
-/// paragraph block (`fragmentation::paragraph_blocks` builds blocks from runs of non-blank
-/// lines and recognizes `#` headings) declare this set: in a masked HTML stream tags are runs of
-/// spaces, so an `<h2>` glues onto the section under it and `<p>Fast.</p><p>Simple.</p>` reads
-/// as stacked fragments. Fold `Html` back into these rules once `ProseDoc` carries a paragraph
-/// model for HTML (issue #29, PR3).
-pub const PARAGRAPH_LANGS: &[Lang] = &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst];
 
 impl Lang {
     pub fn from_path(p: &Path) -> Option<Lang> {

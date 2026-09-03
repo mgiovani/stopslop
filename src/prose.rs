@@ -81,6 +81,21 @@ pub struct ProseDoc<'a> {
     /// `ctx.strings` (SLOP009 reads `alt="image"` and a placeholder-image host here). Empty for the
     /// Markdown family.
     pub attr_values: Vec<TextNode<'a>>,
+    /// HTML paragraphs as element byte ranges: every block element that holds no other block
+    /// and is not a list item, table cell, form control, or heading, so `<p>Fast.</p>
+    /// <p>Simple.</p>` is two paragraphs and a nav of `<li>`s is none. `None` for the Markdown
+    /// family, whose paragraphs `fragmentation::paragraph_blocks` derives from blank lines.
+    pub paragraphs: Option<Vec<(usize, usize)>>,
+    /// Decoded HTML entities the punctuation rules care about, as (byte of the `&`, char):
+    /// `&mdash;` and `&#8212;` are dashes to SLOP018 and `&ldquo;` a smart quote to SLOP020,
+    /// but decoding them into `masked` would change byte offsets. Empty for Markdown.
+    pub entities: Vec<(usize, char)>,
+    /// Start byte of every `<strong>`/`<b>` element, for SLOP019; Markdown bold is a `**` pair
+    /// the rule finds in the masked stream itself, and HTML tags are blank there.
+    pub bold_spans: Vec<usize>,
+    /// `<footer>`, `<aside>`, and `<nav>` element ranges. Their paragraphs are prose to the
+    /// density rules but never the document's ending, which SLOP029 reads. Empty for Markdown.
+    pub footers: Vec<(usize, usize)>,
     line_starts: Vec<usize>, // byte offset of each line start; for line_col
     /// (byte, col) of the last `line_col` answer. Rules ask in byte order, so the next answer on
     /// the same line counts chars from here rather than from the line start -- a 1.8 MB
@@ -148,6 +163,10 @@ impl<'a> ProseDoc<'a> {
             line_spans,
             block_starts: Vec::new(),
             attr_values: Vec::new(),
+            paragraphs: None,
+            entities: Vec::new(),
+            bold_spans: Vec::new(),
+            footers: Vec::new(),
             line_starts,
             col_memo: Cell::new((0, 1)),
             source,
@@ -206,18 +225,38 @@ impl<'a> ProseDoc<'a> {
             })
             .collect();
 
+        // A leaf block is one paragraph. A block holding another block keeps the text before
+        // that child, because tree-sitter-html leaves an unclosed `<p>` open across the list
+        // that follows it.
+        let paragraphs = scan
+            .blocks
+            .iter()
+            .enumerate()
+            .filter(|&(_, &(_, _, is_para))| is_para)
+            .filter_map(|(i, &(start, end, _))| match scan.blocks.get(i + 1) {
+                Some(&(child, _, _)) if child < end => {
+                    (!masked[start..child].trim().is_empty()).then_some((start, child))
+                }
+                _ => Some((start, end)),
+            })
+            .collect();
+
         ProseDoc {
             masked,
             frontmatter: None,
             headings,
             list_blocks: Vec::new(),
             url_spans,
-            code_spans: Vec::new(),
+            code_spans: scan.code_spans,
             words,
             ignore_comments,
             line_spans,
-            block_starts: scan.block_starts,
+            block_starts: scan.blocks.iter().map(|b| b.0).collect(),
             attr_values,
+            paragraphs: Some(paragraphs),
+            entities: scan.entities,
+            bold_spans: scan.bold_spans,
+            footers: scan.footers,
             line_starts,
             col_memo: Cell::new((0, 1)),
             source,
@@ -285,6 +324,10 @@ impl<'a> ProseDoc<'a> {
     }
 
     /// True if `byte` falls inside any URL / link-target span.
+    pub fn in_footer(&self, byte: usize) -> bool {
+        self.footers.iter().any(|&(s, e)| s <= byte && byte < e)
+    }
+
     pub fn in_url(&self, byte: usize) -> bool {
         self.url_span_at(byte).is_some()
     }
@@ -808,12 +851,68 @@ fn blank_template_syntax(source: &str) -> String {
     String::from_utf8(bytes).expect("matches start and end on ASCII delimiters")
 }
 
+/// Block elements that are never a paragraph: list and table structure, form controls, and
+/// headings, mirroring what `fragmentation::paragraph_blocks` drops in Markdown.
+const NON_PARAGRAPH_TAGS: &[&str] = &[
+    "li", "ul", "ol", "dl", "dt", "menu", "table", "thead", "tbody", "tfoot", "tr", "td", "th",
+    "caption", "option", "optgroup", "select", "button", "label", "legend", "nav", "title", "h1",
+    "h2", "h3", "h4", "h5", "h6",
+];
+
+/// Page furniture around the content. Its text is linted, but the last paragraph inside it is
+/// never the piece's ending.
+const FOOTER_TAGS: &[&str] = &["footer", "aside", "nav"];
+
 #[derive(Default)]
 struct HtmlScan {
     headings: Vec<(usize, usize, usize)>, // (level, element start, element end)
     url_spans: Vec<(usize, usize)>,
-    block_starts: Vec<usize>,
-    attrs: Vec<(usize, usize)>, // whole `name="value"` spans
+    blocks: Vec<(usize, usize, bool)>, // (start, end, may be a paragraph), pre-order
+    attrs: Vec<(usize, usize)>,        // whole `name="value"` spans
+    code_spans: Vec<CodeSpan>,
+    entities: Vec<(usize, char)>,
+    bold_spans: Vec<usize>,
+    footers: Vec<(usize, usize)>,
+}
+
+/// The chars the punctuation rules read: the em dash and curly quotes, named or numeric.
+/// Everything else stays blank; `&amp;` and `&nbsp;` carry no tell, and `&ndash;` is left out
+/// because SLOP018 exempts an en dash between digits by looking at its neighbors in the masked
+/// stream, which an entity does not have.
+fn decode_entity(entity: &str) -> Option<char> {
+    let body = entity.strip_prefix('&')?.trim_end_matches(';');
+    if let Some(num) = body.strip_prefix('#') {
+        let (digits, radix) = match num.strip_prefix(['x', 'X']) {
+            Some(hex) => (hex, 16),
+            None => (num, 10),
+        };
+        return u32::from_str_radix(digits, radix)
+            .ok()
+            .and_then(char::from_u32)
+            .filter(|c| matches!(c, '\u{2014}' | '\u{2018}'..='\u{201D}'));
+    }
+    Some(match body {
+        "mdash" => '\u{2014}',
+        "lsquo" => '\u{2018}',
+        "rsquo" => '\u{2019}',
+        "ldquo" => '\u{201C}',
+        "rdquo" => '\u{201D}',
+        _ => return None,
+    })
+}
+
+/// Word count of an inline `<code>` element's content, so `with_code_placeholders` can stand a
+/// word in for each token the reader sees, the way Markdown's inline code spans do.
+fn code_words(element: Node, src: &str) -> usize {
+    let mut cursor = element.walk();
+    let kids: Vec<Node> = element.children(&mut cursor).collect();
+    match (kids.first(), kids.last()) {
+        (Some(open), Some(close)) if kids.len() >= 2 && close.kind() == "end_tag" => src
+            [open.end_byte()..close.start_byte()]
+            .split_whitespace()
+            .count(),
+        _ => 0,
+    }
 }
 
 /// One pre-order pass restoring the visible bytes of `prepared` into `masked` and collecting
@@ -831,9 +930,32 @@ fn restore_html(root: Node, prepared: &str, masked: &mut [u8], scan: &mut HtmlSc
                     .push((level, node.start_byte(), node.end_byte()));
             }
             if !has_tag(INLINE_TAGS, tag) {
-                scan.block_starts.push(node.start_byte());
+                scan.blocks.push((
+                    node.start_byte(),
+                    node.end_byte(),
+                    !has_tag(NON_PARAGRAPH_TAGS, tag),
+                ));
+            }
+            if tag.eq_ignore_ascii_case("strong") || tag.eq_ignore_ascii_case("b") {
+                scan.bold_spans.push(node.start_byte());
+            }
+            if has_tag(FOOTER_TAGS, tag) {
+                scan.footers.push((node.start_byte(), node.end_byte()));
+            }
+            if tag.eq_ignore_ascii_case("code") {
+                scan.code_spans.push(CodeSpan {
+                    start: node.start_byte(),
+                    end: node.end_byte(),
+                    words: code_words(node, prepared),
+                });
             }
             !has_tag(SKIP_TAGS, tag)
+        }
+        "entity" => {
+            if let Some(ch) = decode_entity(&prepared[node.byte_range()]) {
+                scan.entities.push((node.start_byte(), ch));
+            }
+            true
         }
         "text" => {
             if !node.parent().is_some_and(|p| p.is_error()) {
@@ -1152,6 +1274,77 @@ mod tests {
             ProseDoc::parse_html(html).line_col(html.find('x').unwrap()),
             (1, 17)
         );
+    }
+
+    #[test]
+    fn html_unclosed_p_keeps_the_text_before_the_list_it_swallows() {
+        let src =
+            "<p>Fast. Simple. Free.\n<ul><li>one</li></ul>\n<p>Tail.</p>\n<div><h2>T</h2></div>\n";
+        let doc = ProseDoc::parse_html(src);
+        let paragraphs: Vec<&str> = doc
+            .paragraphs
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|&(s, e)| &src[s..e])
+            .collect();
+        assert_eq!(paragraphs, ["<p>Fast. Simple. Free.\n", "<p>Tail.</p>"]);
+    }
+
+    #[test]
+    fn html_footer_aside_and_nav_ranges_are_recorded() {
+        let src = "<main><p>Body.</p></main>\n<footer><p>Rights.</p></footer>\n<aside><p>Note.</p></aside>\n";
+        let doc = ProseDoc::parse_html(src);
+        assert!(!doc.in_footer(src.find("Body").unwrap()));
+        assert!(doc.in_footer(src.find("Rights").unwrap()));
+        assert!(doc.in_footer(src.find("Note").unwrap()));
+        assert_eq!(doc.paragraphs.as_ref().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn html_paragraphs_are_leaf_blocks_without_list_table_or_ui_tags() {
+        let src =
+            "<div class=\"hero\">Lead text</div>\n<div><h2>T</h2><p>One <em>two</em>.</p></div>\n\
+                   <ul><li>item</li></ul>\n<table><tr><td>cell</td></tr></table>\n\
+                   <select><option>a</option></select>\n<blockquote><p>q</p></blockquote>\n";
+        let doc = ProseDoc::parse_html(src);
+        let paragraphs: Vec<&str> = doc
+            .paragraphs
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|&(s, e)| &src[s..e])
+            .collect();
+        assert_eq!(
+            paragraphs,
+            [
+                "<div class=\"hero\">Lead text</div>",
+                "<p>One <em>two</em>.</p>",
+                "<p>q</p>"
+            ]
+        );
+        assert!(ProseDoc::parse("a\n\nb\n").paragraphs.is_none());
+    }
+
+    #[test]
+    fn html_inline_code_becomes_a_code_span_and_pre_does_not() {
+        let src = "<p>Run <code>stopslop --fix .</code> now.</p>\n<pre><code>x y</code></pre>\n";
+        let doc = ProseDoc::parse_html(src);
+        assert_eq!(doc.code_spans.len(), 1);
+        let span = doc.code_spans[0];
+        assert_eq!(&src[span.start..span.end], "<code>stopslop --fix .</code>");
+        assert_eq!(span.words, 3);
+        assert!(!doc.masked.contains("stopslop"));
+    }
+
+    #[test]
+    fn html_dash_and_quote_entities_are_decoded_into_the_side_table() {
+        let src = "<p>a &mdash; b &ndash; c &#8212; d &#x201C;e&#x201D; &ldquo;f&rdquo; &amp; &nbsp; &#65;</p>\n";
+        let doc = ProseDoc::parse_html(src);
+        let chars: String = doc.entities.iter().map(|&(_, c)| c).collect();
+        assert_eq!(chars, "\u{2014}\u{2014}\u{201C}\u{201D}\u{201C}\u{201D}");
+        assert_eq!(doc.entities[0].0, src.find("&mdash;").unwrap());
+        assert!(doc.entities.windows(2).all(|w| w[0].0 < w[1].0));
     }
 
     #[test]
