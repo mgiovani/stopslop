@@ -7,6 +7,11 @@ migration notes live here.
 
 ### Added
 
+- **pt-BR witnesses for code-language rules.** `tests/natlang_witness.rs`
+  now requires a `slop_*_pt_br` fixture per language family for the code
+  rules whose comment panels carry Portuguese (SLOP001, 002, 004, 009, 042);
+  eleven fixture pairs fill the gaps it found. SLOP043 gains its missing
+  `clean_comment_length` twins, and `cli::run` gains its first tests.
 - **SLOP042** (`verbosity`, Tier B, on, path-gated): flags a plain source
   comment of 2 to 12 words whose content words all already appear in the
   single statement it annotates, or only name that statement's construct
@@ -212,6 +217,19 @@ migration notes live here.
 
 ### Changed
 
+- **SLOP034** binary-searches its prose scope. The per-match check against
+  every paragraph block was O(matches x blocks) and half the wall time on the
+  20 MB stress file; `partition_point` over the sorted blocks takes the rule
+  from 1.90 s to 0.20 s there.
+- **SLOP041** stops copying the whole document. Trigrams are borrowed tuples
+  and the word vector stops at 30,000 words (above the largest document in
+  the measured corpora), a sampling decision like the TTR window. The set of
+  firing documents is unchanged on 323 Portuguese and 100 English documents,
+  and peak RSS on the stress file drops from 488 MB to 154 MB for the default
+  run.
+- **`-j` is clamped** to four threads per available core, with a warning. The
+  raw value used to reach the walker unchecked, and `-j 100000` spawned twelve
+  thousand threads.
 - Config discovery walks from the current directory up to the filesystem root
   for `stopslop.toml` and takes the nearest one, so a run from a nested cwd no
   longer silently lints with defaults. When no project file exists it falls
@@ -246,6 +264,21 @@ migration notes live here.
 
 ### Fixed
 
+- **Deterministic messages.** SLOP015, 027, 028, 030, 031, and 032 tallied
+  phrases in a `HashMap` and named whichever qualifying entry came out first,
+  so the message changed between identical runs and a `--baseline`
+  fingerprint written by one run failed the next. Each now names the phrase
+  whose first occurrence comes earliest in the document.
+- **Abbreviations end no sentence.** `split_sentences` (SLOP030, SLOP033,
+  SLOP041) no longer treats the period after `Inc.`, `vs.`, `Dr.`, `e.g.`,
+  `Sr.`, `séc.` and the rest of a small English and Portuguese list as a
+  sentence boundary; `Acme Inc. vs. Beta Corp.` tripped SLOP030's short-run
+  check before. Files with a SLOP030 finding: 163 -> 157 of 323 human
+  Portuguese documents, 79 -> 77 of 100 English ones.
+- **`lint_paths` on an empty slice** returns an empty result instead of
+  panicking through the public API.
+- **A `select` that matches no rule is an error** (exit 2) instead of a
+  silent exit-0 run with every rule off.
 - **SLOP023**'s English negative-listing shape matched the Portuguese
   contraction `no` ("in the"), so `No começo, tudo funcionava. No fim, nada
   funcionava.` was flagged. A `no` fragment is now capped at 25 characters
