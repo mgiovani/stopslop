@@ -67,11 +67,15 @@ fn is_dialogue_turn(s: &str) -> bool {
     s.trim_start().starts_with(['—', '–'])
 }
 
-fn is_blank(line: &str) -> bool {
+/// Shared with recap.rs (SLOP029), which scans the document from the opposite end for the same
+/// notion of "a blank line".
+pub(crate) fn is_blank(line: &str) -> bool {
     line.trim().is_empty()
 }
 
-fn is_horizontal_rule(line: &str) -> bool {
+/// Shared with recap.rs (SLOP029): a line consisting only of `-`/`*`/`_` repeated (optionally
+/// spaced), e.g. `---`, `* * *`.
+pub(crate) fn is_horizontal_rule(line: &str) -> bool {
     let stripped: String = line.chars().filter(|c| !c.is_whitespace()).collect();
     stripped.len() >= 3
         && (stripped.bytes().all(|b| b == b'-')
@@ -79,10 +83,14 @@ fn is_horizontal_rule(line: &str) -> bool {
             || stripped.bytes().all(|b| b == b'_'))
 }
 
-static REF_DEF_LINE: LazyLock<Regex> =
+/// Shared with recap.rs (SLOP029).
+pub(crate) static REF_DEF_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s{0,3}\[[^\]]+\]:\s*\S").unwrap());
-static COMMENT_LINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*<!--.*-->\s*$").unwrap());
-static HEADING_LINE: LazyLock<Regex> =
+/// Shared with recap.rs (SLOP029).
+pub(crate) static COMMENT_LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*<!--.*-->\s*$").unwrap());
+/// Shared with recap.rs (SLOP029).
+pub(crate) static HEADING_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s{0,3}#{1,6}\s+\S").unwrap());
 static LIST_ITEM_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s{0,3}(?:[-*+]|\d{1,9}[.)])\s+\S").unwrap());
@@ -131,7 +139,7 @@ pub(crate) fn paragraph_blocks(doc: &ProseDoc) -> Vec<Block> {
             .map(|j| &masked[spans[j].0..spans[j].1])
             .collect();
         let disqualified = lines.iter().enumerate().any(|(k, l)| {
-            HEADING_LINE.is_match(l)
+            doc.in_heading(spans[start + k].0)
                 || LIST_ITEM_LINE.is_match(l)
                 || is_table_line(l)
                 || is_horizontal_rule(l)
@@ -234,10 +242,50 @@ fn with_code_placeholders(masked: &str, ls: usize, le: usize, code_spans: &[Code
     out
 }
 
+/// Tokens whose trailing period never ends a sentence, matched case-insensitively against the
+/// token immediately before the period `split_sentences` is about to treat as a boundary
+/// ("Inc.", "vs.", "Dr.", ...). Without this, "We compared Acme Inc. vs. Beta Corp. and found
+/// ..." split into four "sentences" and could trip SLOP030's short-sentence-run check on
+/// ordinary prose.
+///
+/// Language-neutral rather than natlang-gated: an abbreviation's period is a word-internal mark
+/// no matter which language surrounds it, both lists together are two dozen short tokens, and a
+/// missed abbreviation only produces the SAME over-splitting this const exists to fix -- there is
+/// no false-negative cost to checking both unconditionally. `e.g`/`i.e` cover what this module's
+/// own scan actually extracts: the FIRST period of "e.g." is never a boundary candidate (nothing
+/// follows it but "g", not whitespace), so the token in front of the real candidate -- the
+/// SECOND period -- is "e.g" with its own first period already inside it. `e.g.`/`i.e.` are kept
+/// too so the check also matches if a caller ever compares the token as written in running prose,
+/// trailing period included.
+const ABBREVIATIONS: &[&str] = &[
+    // English
+    // "no" (as in "No. 5") stays out: it ends ordinary sentences ("The answer was no.").
+    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc", "approx", "inc", "corp", "ltd",
+    "co", "fig", "e.g", "e.g.", "i.e", "i.e.", "cf", "al",
+    // Portuguese additions not already covered above ("dr", "sr", "prof" are shared with English)
+    "sra", "srta", "dra", "profa", "eng", "séc", "sec", "a.c", "d.c", "p.ex", "pág", "ed", "ex",
+    "nº",
+];
+
+/// The whitespace-delimited token immediately before byte offset `i` in `text`, with any leading
+/// non-alphanumeric characters (an opening quote or paren) trimmed off. `is_abbreviation`'s only
+/// caller.
+fn preceding_token(text: &str, i: usize) -> &str {
+    let start = text[..i].rfind(char::is_whitespace).map_or(0, |p| {
+        p + text[p..].chars().next().map_or(1, char::len_utf8)
+    });
+    text[start..i].trim_start_matches(|c: char| !c.is_alphanumeric())
+}
+
+fn is_abbreviation(token: &str) -> bool {
+    !token.is_empty() && ABBREVIATIONS.contains(&token.to_lowercase().as_str())
+}
+
 /// Splits paragraph text into sentences on runs of `.`/`!`/`?` followed by whitespace or
 /// end-of-string (so "3.14" and other mid-token punctuation, never followed by whitespace right
-/// there, is not a boundary). Each returned slice keeps its own trailing punctuation.
-/// ponytail: no abbreviation list (e.g. "e.g."); a real fixture would need it to upgrade.
+/// there, is not a boundary), except a single `.` directly after an `ABBREVIATIONS` token, which
+/// never ends a sentence regardless of what follows. Each returned slice keeps its own trailing
+/// punctuation.
 pub(crate) fn split_sentences(text: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let bytes = text.as_bytes();
@@ -249,7 +297,10 @@ pub(crate) fn split_sentences(text: &str) -> Vec<&str> {
             while j < bytes.len() && matches!(bytes[j], b'.' | b'!' | b'?') {
                 j += 1;
             }
-            if j >= bytes.len() || bytes[j] == b' ' || bytes[j] == b'\t' {
+            let at_boundary = j >= bytes.len() || bytes[j] == b' ' || bytes[j] == b'\t';
+            let after_abbreviation =
+                bytes[i] == b'.' && j == i + 1 && is_abbreviation(preceding_token(text, i));
+            if at_boundary && !after_abbreviation {
                 let sentence = text[start..j].trim();
                 if !sentence.is_empty() {
                     out.push(sentence);
@@ -315,6 +366,27 @@ fn dramatic_fragmentation(sentences: &[&str]) -> Option<&'static str> {
     None
 }
 
+/// Deterministic replacement for `tally.iter().find(|&(_, &n)| n >= min_count)`: a `HashMap`'s
+/// iteration order is unspecified, so scanning it directly for "any entry past the threshold"
+/// made the reported phrase change between runs on identical input, which breaks `--baseline`
+/// fingerprints. Instead, among the entries meeting `min_count`, picks the one whose FIRST
+/// occurrence (`tally`'s `usize` value: a byte offset or, for `robotic_rhythm`, a sentence index
+/// -- any monotonically increasing position marker works) comes earliest, matching this crate's
+/// own "anchored at the first occurrence" framing for these density diagnostics. Shared by
+/// fragmentation.rs (SLOP030), hedging.rs (SLOP015), filler.rs (SLOP027), weak_verb.rs (SLOP028),
+/// promo.rs (SLOP031), and hyphen.rs (SLOP032), which all pick a repeated phrase to name in their
+/// message out of a `HashMap<String, usize>` tally the same way.
+pub(crate) fn earliest_qualifying(
+    tally: &HashMap<String, (usize, usize)>,
+    min_count: usize,
+) -> Option<&str> {
+    tally
+        .iter()
+        .filter(|&(_, &(count, _))| count >= min_count)
+        .min_by_key(|&(_, &(_, first))| first)
+        .map(|(phrase, _)| phrase.as_str())
+}
+
 /// (b) robotic rhythm: 3+ sentences (anywhere in the paragraph, not necessarily consecutive)
 /// sharing the same opening word, OR 4+ sentences whose word counts are all within
 /// `RHYTHM_SPREAD` of each other. Evaluated over the WHOLE paragraph's sentence set (not a
@@ -322,8 +394,8 @@ fn dramatic_fragmentation(sentences: &[&str]) -> Option<&'static str> {
 /// paragraph silent, which is the conservative choice that also matches ordinary prose (a real
 /// paragraph is rarely uniform end to end).
 fn robotic_rhythm(sentences: &[&str]) -> Option<String> {
-    let mut openers: HashMap<String, usize> = HashMap::new();
-    for s in sentences {
+    let mut openers: HashMap<String, (usize, usize)> = HashMap::new();
+    for (idx, s) in sentences.iter().enumerate() {
         if let Some(w) = s.split_whitespace().next() {
             let key = w
                 .trim_matches(|c: char| !c.is_alphanumeric())
@@ -331,11 +403,11 @@ fn robotic_rhythm(sentences: &[&str]) -> Option<String> {
             // A determiner or preposition opener is unremarkable repetition, not anaphora (see
             // OPENER_FUNCTION_WORDS's doc comment); pronouns are deliberately not excluded.
             if !key.is_empty() && !OPENER_FUNCTION_WORDS.contains(&key.as_str()) {
-                *openers.entry(key).or_insert(0) += 1;
+                openers.entry(key).or_insert((0, idx)).0 += 1;
             }
         }
     }
-    if let Some(word) = openers.iter().find(|&(_, &n)| n >= 3).map(|(w, _)| w) {
+    if let Some(word) = earliest_qualifying(&openers, 3) {
         return Some(format!(
             "robotic rhythm: three or more sentences open with \"{word}\""
         ));
@@ -594,5 +666,74 @@ mod tests {
     fn headings_are_not_treated_as_sentences() {
         let src = "# Ship it. Test it. Tag it.\n";
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn split_sentences_keeps_abbreviation_periods_inside_the_sentence() {
+        let text = "We compared Acme Inc. vs. Beta Corp. and found the results close.";
+        assert_eq!(split_sentences(text), vec![text]);
+    }
+
+    #[test]
+    fn split_sentences_splits_after_a_sentence_ending_in_no() {
+        let text = "The answer was no. We moved on.";
+        assert_eq!(
+            split_sentences(text),
+            vec!["The answer was no.", "We moved on."]
+        );
+    }
+
+    #[test]
+    fn split_sentences_still_splits_after_a_sentence_that_contains_an_abbreviation() {
+        let text =
+            "We compared Acme Inc. and Beta Corp. before choosing a vendor. It works. It scales. It ships.";
+        assert_eq!(
+            split_sentences(text),
+            vec![
+                "We compared Acme Inc. and Beta Corp. before choosing a vendor.",
+                "It works.",
+                "It scales.",
+                "It ships.",
+            ]
+        );
+    }
+
+    /// "Firstly" opens the paragraph first (sentence index 0) and repeats 3x; "Meanwhile" also
+    /// repeats 3x but first opens a sentence later (index 1). Before the fix,
+    /// `openers.iter().find(|&(_, &n)| n >= 3)` scanned a `HashMap` in unspecified order, so this
+    /// exact input could name either opener depending on the map's hash seed for that call.
+    #[test]
+    fn robotic_rhythm_names_the_earliest_qualifying_opener() {
+        let sentences = [
+            "Firstly the team reviewed the design document together.",
+            "Meanwhile the client tested the staging build overnight.",
+            "Firstly the team scheduled a follow-up review for Monday.",
+            "Meanwhile the client reported no new issues since then.",
+            "Firstly the team merged the change after final approval.",
+            "Meanwhile the client confirmed the rollout plan for release.",
+        ];
+        let msg = robotic_rhythm(&sentences).unwrap();
+        assert!(msg.contains("\"firstly\""), "message was: {msg}");
+    }
+
+    /// Same input as above, called 50 times: pre-fix, a fresh `HashMap` (a new, independently
+    /// randomized hash state per call) made the reported opener flip between runs on identical
+    /// input, which breaks `--baseline` fingerprints. This test must fail against the unfixed
+    /// `openers.iter().find(...)` selection (confirmed by running it against that code before
+    /// applying `earliest_qualifying`) and pass once the selection is deterministic.
+    #[test]
+    fn robotic_rhythm_opener_selection_is_deterministic_across_runs() {
+        let sentences = [
+            "Firstly the team reviewed the design document together.",
+            "Meanwhile the client tested the staging build overnight.",
+            "Firstly the team scheduled a follow-up review for Monday.",
+            "Meanwhile the client reported no new issues since then.",
+            "Firstly the team merged the change after final approval.",
+            "Meanwhile the client confirmed the rollout plan for release.",
+        ];
+        let first = robotic_rhythm(&sentences);
+        for _ in 0..50 {
+            assert_eq!(robotic_rhythm(&sentences), first);
+        }
     }
 }

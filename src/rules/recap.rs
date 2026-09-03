@@ -3,6 +3,9 @@ use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{NatLang, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
+use crate::rules::fragmentation::{
+    is_blank, is_horizontal_rule, COMMENT_LINE, HEADING_LINE, REF_DEF_LINE,
+};
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -118,25 +121,6 @@ struct Block {
     text: String,
     first_byte: usize,
 }
-
-fn is_blank(line: &str) -> bool {
-    line.trim().is_empty()
-}
-
-/// A line consisting only of `-`/`*`/`_` repeated (optionally spaced), e.g. `---`, `* * *`.
-fn is_horizontal_rule(line: &str) -> bool {
-    let stripped: String = line.chars().filter(|c| !c.is_whitespace()).collect();
-    stripped.len() >= 3
-        && (stripped.bytes().all(|b| b == b'-')
-            || stripped.bytes().all(|b| b == b'*')
-            || stripped.bytes().all(|b| b == b'_'))
-}
-
-static REF_DEF_LINE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s{0,3}\[[^\]]+\]:\s*\S").unwrap());
-static COMMENT_LINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*<!--.*-->\s*$").unwrap());
-static HEADING_LINE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s{0,3}#{1,6}\s+\S").unwrap());
 
 /// Scans backward from the end of the document for the final real prose block, skipping
 /// trailing code fences (already blanked to whitespace-only lines in `doc.masked`, so they

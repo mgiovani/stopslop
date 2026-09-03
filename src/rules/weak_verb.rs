@@ -3,6 +3,7 @@ use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{NatLang, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
+use crate::rules::fragmentation::earliest_qualifying;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -153,7 +154,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let mut total = 0usize;
     let mut first_byte: Option<usize> = None;
     let mut first_phrase: Option<String> = None;
-    let mut per_phrase: HashMap<String, usize> = HashMap::new();
+    let mut per_phrase: HashMap<String, (usize, usize)> = HashMap::new();
 
     let en = ctx.natlangs.contains(&NatLang::En);
     let pt_br = ctx.natlangs.contains(&NatLang::PtBr);
@@ -203,7 +204,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     }
 
     let threshold = (3 * doc.words).div_ceil(1000).max(3);
-    let repeated_phrase = per_phrase.iter().find(|&(_, &n)| n >= 2).map(|(p, _)| p);
+    let repeated_phrase = earliest_qualifying(&per_phrase, 2);
     if total >= threshold || repeated_phrase.is_some() {
         let (line, col) = doc.line_col(first_byte.unwrap());
         let message = if total >= threshold {
@@ -219,9 +220,8 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         // `weak_verb_phrase_fix`/`weak_verb_phrase_fix_pt_br` only recognize family (a) phrases,
         // so any family (b) (vague-quantifier) anchor, in either language, falls through to the
         // shared fallback fix.
-        let anchor_phrase: &str = repeated_phrase
-            .map(String::as_str)
-            .unwrap_or_else(|| first_phrase.as_deref().unwrap());
+        let anchor_phrase: &str =
+            repeated_phrase.unwrap_or_else(|| first_phrase.as_deref().unwrap());
         let fix = weak_verb_phrase_fix(anchor_phrase)
             .or_else(|| weak_verb_phrase_fix_pt_br(anchor_phrase))
             .unwrap_or("give the measured number");
@@ -255,7 +255,7 @@ fn count_phrases(
     total: &mut usize,
     first_byte: &mut Option<usize>,
     first_phrase: &mut Option<String>,
-    per_phrase: &mut HashMap<String, usize>,
+    per_phrase: &mut HashMap<String, (usize, usize)>,
 ) {
     for m in re.find_iter(&doc.masked) {
         let byte = m.start();
@@ -265,7 +265,9 @@ fn count_phrases(
         *total += 1;
         let phrase = m.as_str().to_lowercase();
         track_first(byte, &phrase, first_byte, first_phrase);
-        *per_phrase.entry(phrase).or_insert(0) += 1;
+        let entry = per_phrase.entry(phrase).or_insert((0, byte));
+        entry.0 += 1;
+        entry.1 = entry.1.min(byte);
     }
 }
 
@@ -278,7 +280,7 @@ fn count_quantifiers(
     total: &mut usize,
     first_byte: &mut Option<usize>,
     first_phrase: &mut Option<String>,
-    per_phrase: &mut HashMap<String, usize>,
+    per_phrase: &mut HashMap<String, (usize, usize)>,
 ) {
     for m in re.find_iter(&doc.masked) {
         let byte = m.start();
@@ -288,7 +290,9 @@ fn count_quantifiers(
         *total += 1;
         let phrase = m.as_str().to_lowercase();
         track_first(byte, &phrase, first_byte, first_phrase);
-        *per_phrase.entry(phrase).or_insert(0) += 1;
+        let entry = per_phrase.entry(phrase).or_insert((0, byte));
+        entry.0 += 1;
+        entry.1 = entry.1.min(byte);
     }
 }
 
@@ -508,5 +512,30 @@ mod tests {
 
         let en_positive = "We take into consideration every request. Later, we take into consideration the edge cases too.\n";
         assert!(diagnostics_for_natlangs(en_positive, &[NatLang::PtBr]).is_empty());
+    }
+
+    /// Two DIFFERENT weak-verb phrases both repeat (>=2) -- exactly the shape that used to read a
+    /// `HashMap`'s iteration order non-deterministically. Padded well past the density floor so
+    /// this exercises the repeated-phrase branch: the message must always name "made a decision"
+    /// (textually first), never "for the purpose of" (textually later).
+    #[test]
+    fn repeated_phrase_message_names_the_earliest_occurrence() {
+        let filler =
+            "The gardener watered the young trees every quiet morning before sunrise. ".repeat(160);
+        let src = format!(
+            "The team made a decision on Monday. {filler}This change was done for the purpose of reducing latency. {filler}The team made a decision again on Tuesday. This change was done for the purpose of testing it again.\n"
+        );
+        let diags = diagnostics_for(&src);
+        assert_eq!(diags.len(), 1);
+        assert!(
+            diags[0].message.contains("repeated"),
+            "{}",
+            diags[0].message
+        );
+        assert!(
+            diags[0].message.contains("\"made a decision\""),
+            "message was: {}",
+            diags[0].message
+        );
     }
 }
