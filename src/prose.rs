@@ -366,7 +366,7 @@ impl<'a> ProseDoc<'a> {
 
 /// True if `byte` falls in `[s, e)` for some span in `spans`, which must be sorted by start and
 /// non-overlapping (so at most one candidate exists: the last span whose start is <= byte).
-fn span_contains(spans: &[(usize, usize)], byte: usize) -> bool {
+pub(crate) fn span_contains(spans: &[(usize, usize)], byte: usize) -> bool {
     let idx = spans.partition_point(|&(s, _)| s <= byte);
     idx > 0 && byte < spans[idx - 1].1
 }
@@ -826,7 +826,7 @@ fn scan_url_spans(masked: &str) -> Vec<(usize, usize)> {
 }
 
 /// Merges a start-sorted list of possibly-overlapping spans into a disjoint, start-sorted list.
-fn merge_overlapping(spans: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+pub(crate) fn merge_overlapping(spans: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
     let mut out: Vec<(usize, usize)> = Vec::with_capacity(spans.len());
     for (s, e) in spans {
         match out.last_mut() {
