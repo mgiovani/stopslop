@@ -1,6 +1,6 @@
 """Per-rule hit rate for the Python rules on a labelled human-vs-machine corpus.
 
-usage: python3 bench/score_corpus.py [--bin PATH] [--dir DIR] [--limit N] [--out PATH]
+usage: python3 bench/score_corpus.py [--bin PATH] [--dir DIR] [--limit N] > report.md
        python3 bench/score_corpus.py --self-check
 
 Downloads AIGCodeSet (arXiv 2412.16594, CDLA-Permissive-2.0), writes every `code`
@@ -27,6 +27,7 @@ import argparse
 import csv
 import json
 import os
+import shutil
 import subprocess
 import sys
 import urllib.request
@@ -55,15 +56,25 @@ APPLICABLE = (
     "SLOP043",
 )
 UNSCOREABLE = (
-    "SLOP010 declares Python but needs a dependency manifest the corpus has no reason "
-    "to carry, so it is applicable and permanently silent here."
+    "SLOP010 names `Lang::Python` too, but its check needs a dependency manifest the "
+    "corpus has no reason to carry, so it can never fire and the table leaves it out."
 )
+# One more finding moves a ratio built from single-digit counts a long way, so rows
+# under this many hits are marked and read off their raw counts instead.
+LOW_SUPPORT = 20
 
 
 def fetch(url, dest):
+    """Download once, and land the file atomically.
+
+    A download killed halfway leaves a truncated CSV that the next run would treat as
+    cached, then report a smaller corpus with nothing to say why.
+    """
     if not os.path.exists(dest):
-        with urllib.request.urlopen(url) as resp, open(dest, "wb") as out:
+        part = f"{dest}.part"
+        with urllib.request.urlopen(url, timeout=60) as resp, open(part, "wb") as out:
             out.write(resp.read())
+        os.replace(part, dest)
     return dest
 
 
@@ -75,11 +86,9 @@ def materialize(csv_path, out_dir, label, limit):
     across several rows. Filenames come from the enumerate index because
     `submission_id` repeats 1,260 times on the machine side, once per generator.
     """
-    os.makedirs(out_dir, exist_ok=True)
-    # A shorter --limit than the previous run would otherwise leave stale files behind
-    # and the walk would count them.
-    for stale in os.listdir(out_dir):
-        os.remove(os.path.join(out_dir, stale))
+    # Files a longer previous run left behind would be walked and counted.
+    shutil.rmtree(out_dir, ignore_errors=True)
+    os.makedirs(out_dir)
     written, empty, outcomes, models = 0, 0, {}, {}
     with open(csv_path, encoding="utf-8", newline="") as fh:
         for row in csv.DictReader(fh):
@@ -146,11 +155,15 @@ def pct(n, total):
     return 100.0 * n / total if total else 0.0
 
 
+def per_kloc(findings, lines):
+    return 1000.0 * findings / lines if lines else 0.0
+
+
 def dist(counts):
     return ", ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda kv: -kv[1]))
 
 
-def report(meta, binary):
+def report(meta, binary, limit):
     human, machine = meta["human"], meta["machine"]
     n_h, n_m = human["files"], machine["files"]
     hits_h, total_h = tally(human["findings"])
@@ -160,18 +173,21 @@ def report(meta, binary):
         raise SystemExit(f"{strays} fired but is not in APPLICABLE; update bench/score_corpus.py")
     version = subprocess.run([binary, "--version"], capture_output=True, text=True).stdout.strip()
 
+    limited = [f"- **--limit {limit}: a biased head slice, not a reported number**"] if limit else []
     lines = [
         "## Per-rule hit rate on AIGCodeSet",
         "",
+        *limited,
         f"- Corpus: AIGCodeSet, arXiv 2412.16594, CDLA-Permissive-2.0, {BASE}",
         f"- Files: {n_h} human (AtCoder submissions), {n_m} machine (LLM answers to the same problems)",
+        f"- Blank `code` cells dropped: {human['empty']} human, {machine['empty']} machine",
         f"- Lines: {human['stats']['lines']} human, {machine['stats']['lines']} machine",
         f"- Human outcomes: {dist(human['outcomes'])}",
         f"- Machine outcomes: {dist(machine['outcomes'])}",
         f"- Generators: {dist(machine['models'])}",
         f"- Binary: {version}, run as `stopslop <dir> --format json --stats --no-config --select ALL`",
         "",
-        "| rule | human hits (= FPR) | machine hits | precision @1:1 | human /KLoC | machine /KLoC |",
+        "| rule | human hits (= FPR, see below) | machine hits | precision @1:1 | human /KLoC | machine /KLoC |",
         "|---|---|---|---|---|---|",
     ]
     rows = []
@@ -184,15 +200,15 @@ def report(meta, binary):
                 rate_m,
                 code,
                 f"| {code} | {h} ({rate_h:.2f}%) | {m} ({rate_m:.2f}%) "
-                f"| {'--' if p is None else f'{p:.2f}'} "
-                f"| {1000 * total_h.get(code, 0) / human['stats']['lines']:.2f} "
-                f"| {1000 * total_m.get(code, 0) / machine['stats']['lines']:.2f} |",
+                f"| {'--' if p is None else f'{p:.2f}'}{'*' if 0 < h + m < LOW_SUPPORT else ''} "
+                f"| {per_kloc(total_h.get(code, 0), human['stats']['lines']):.2f} "
+                f"| {per_kloc(total_m.get(code, 0), machine['stats']['lines']):.2f} |",
             )
         )
     lines += [row for _, _, row in sorted(rows, key=lambda r: (-r[0], r[1]))]
 
-    any_h = len(set().union(*hits_h.values())) if hits_h else 0
-    any_m = len(set().union(*hits_m.values())) if hits_m else 0
+    any_h = len(set().union(*hits_h.values()))
+    any_m = len(set().union(*hits_m.values()))
     any_p = precision(pct(any_h, n_h), pct(any_m, n_m))
     lines.append(
         f"| **any rule** | {any_h} ({pct(any_h, n_h):.2f}%) | {any_m} ({pct(any_m, n_m):.2f}%) "
@@ -208,8 +224,14 @@ def report(meta, binary):
         "this table and not of any repository. It is a re-expression of the two hit rates and "
         "carries no information they do not; the raw counts are there so a one-versus-zero "
         "result is not mistaken for a perfect rule. `--` means neither side fired.",
-        "- Findings per KLoC separate a rule that is weakly present everywhere from one that "
-        "fires hard in a few files.",
+        "- Findings per KLoC only mean something read against the hit rate: a high hit rate "
+        "next to a modest KLoC is a rule that is weakly present everywhere, and a low hit rate "
+        "next to a high KLoC is a rule that fires hard in a few files. KLoC alone cannot tell "
+        "those apart.",
+        "- A `*` marks a precision built from fewer than "
+        f"{LOW_SUPPORT} hits in total. Read those off the counts, not the ratio.",
+        "- The `any rule` row is the OR of the twelve, so its precision tracks the noisiest "
+        "member rather than the best one.",
         "",
         "### What this does not show",
         "",
@@ -226,7 +248,8 @@ def report(meta, binary):
         "English lexicon cannot match those, which lowers the human hit rate and raises precision "
         "for exactly those rules.",
         "- The machine side is entirely code that failed; the human side is one third accepted. "
-        "The dataset authors matched the outcome buckets deliberately, so nothing is filtered here.",
+        "The dataset authors matched the outcome buckets deliberately, and nothing is filtered "
+        "here beyond blank `code` cells, counted above.",
         "- The generators are three 2024-era models under one prompt style, and a small share of "
         "the human side is Python 2, which parses with error nodes.",
         "- A hit rate is evidence that the tells appear in that corpus. It is not a claim that any "
@@ -247,8 +270,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--bin", default="target/release/stopslop")
     ap.add_argument("--dir", default="target/corpus")
-    ap.add_argument("--limit", type=int, default=0, help="first N rows per class; a biased smoke test, never a reported number")
-    ap.add_argument("--out", help="write the report here instead of stdout")
+    ap.add_argument("--limit", type=int, default=0, help="first N rows per class, 0 for all; a biased smoke test, never a reported number")
     ap.add_argument("--self-check", action="store_true", help="assert the metric math and exit")
     args = ap.parse_args()
     if args.self_check:
@@ -261,15 +283,12 @@ def main():
         csv_path = fetch(url, os.path.join(cache, os.path.basename(url)))
         root = os.path.join(args.dir, name)
         meta[name] = materialize(csv_path, root, label, args.limit)
+        if not meta[name]["files"]:
+            raise SystemExit(f"{csv_path}: no usable rows, so there is nothing to score")
         findings, stats = run_lint(args.bin, root, meta[name]["files"])
         meta[name].update(findings=findings, stats=stats)
 
-    text = report(meta, args.bin)
-    if args.out:
-        with open(args.out, "w", encoding="utf-8") as fh:
-            fh.write(text)
-    else:
-        sys.stdout.write(text)
+    sys.stdout.write(report(meta, args.bin, args.limit))
 
 
 if __name__ == "__main__":
