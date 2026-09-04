@@ -7,6 +7,47 @@ migration notes live here.
 
 ### Added
 
+- **Image linting.** `Lang::Image` covers PNG, JPEG, and WebP, resolved from
+  a file's magic bytes rather than its extension (a `.png` whose bytes are
+  really a JPEG lints as a JPEG). `image::ImageDoc::parse` walks each
+  container's chunk/segment structure (PNG `tEXt`/`zTXt`/`iTXt`/`caBX`/
+  `eXIf`, JPEG APP1/APP11/APP13, WebP `EXIF`/`XMP `) into a bounded
+  `Vec<MetaField>` (key, value, byte offset, a `compressed` flag for zTXt and
+  compressed iTXt), with every bound guarded against a hostile length rather
+  than trusting it. `engine::lint_image` is the byte-oriented dispatch entry
+  point image rules run through; `walk.rs` reads every file as bytes now and
+  routes images there directly instead of through the text-oriented
+  `lint_file`/`ProseDoc` path, since an image has no text stream and no
+  lines to count.
+- **SLOP045** (`provenance`, Tier A, on): flags a metadata field keyed
+  exactly `parameters` (A1111), `prompt`, `workflow` (ComfyUI),
+  `sd-metadata`, `invokeai_metadata`, or `invokeai_workflow` (InvokeAI) --
+  the image ships its full generation prompt or workflow graph. Exact key
+  equality only, never a substring match, so an ICC profile chunk keyed `Raw
+  profile type icc` or an `author` field never trips it. Fires on the
+  keyword alone even when the value is zlib-compressed, since the keyword is
+  plaintext ahead of the null separator either way.
+- **SLOP046** (`provenance`, Tier A, on): flags a metadata value naming the
+  IPTC digital-source-type vocabulary term `trainedAlgorithmicMedia` (fully
+  AI-generated) or `compositeWithTrainedAlgorithmicMedia` (an AI-assisted
+  edit of a real photograph), case-insensitively, in an XMP packet or a
+  legacy IPTC block, and equally inside a C2PA manifest's CBOR assertion.
+  One rule covers both terms and every container, since a real file can
+  repeat the same value across more than one of them at once. A C2PA
+  manifest's mere presence is never the signal: camera bodies like the
+  Leica M11-P and Sony Alpha sign every frame they take, so only this
+  vocabulary value distinguishes an AI-authored manifest from a
+  camera-authored one.
+- **SLOP047** (`provenance`, Tier B, on): flags a metadata value naming a
+  known image generator (`Midjourney`, `Stable Diffusion`, `ComfyUI`, `Adobe
+  Firefly`, and others from a fixed panel), case-insensitively. Skips any
+  field SLOP045 already owns, since a real ComfyUI file's own `prompt`/
+  `workflow` JSON contains the literal string "ComfyUI" and would otherwise
+  double-report one fact as two findings. Deliberately excludes bare `Adobe`,
+  `Photoshop`, `Canon`, `Nikon`, `Sony` (every camera-original or
+  Photoshop-touched JPEG carries these in EXIF) and bare `Firefly`, `Imagen`,
+  `Flux`, `Grok`, `Aurora`, `Gemini` (ordinary words; `Imagen` is Portuguese
+  for "image").
 - **pt-BR witnesses for code-language rules.** `tests/natlang_witness.rs`
   now requires a `slop_*_pt_br` fixture per language family for the code
   rules whose comment panels carry Portuguese (SLOP001, 002, 004, 009, 042);
