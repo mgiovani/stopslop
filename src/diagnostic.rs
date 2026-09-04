@@ -1,13 +1,17 @@
 use serde::Serialize;
 
-/// Severity ONLY. `A` exits 1 (blocks CI); `B` is advisory and never affects the exit code.
-/// Independent of `RuleDef::default_on` -- a rule can be Tier B (advisory) and still on by
-/// default (a judgment-call rule you want surfaced but never gating), so tier and default-on
-/// are two separate axes, not a 1:1 pair.
+/// Severity ONLY. `A` exits 1 (blocks CI); `B` is advisory and never affects the exit code;
+/// `C` is advisory too and marks a rule whose threshold has not been validated against a
+/// labelled corpus yet, so it is never on by default. Independent of `RuleDef::default_on` --
+/// a rule can be Tier B (advisory) and still on by default (a judgment-call rule you want
+/// surfaced but never gating), so tier and default-on are two separate axes, not a 1:1 pair.
+/// The one place they are coupled is Tier C, where `registry::tier_c_rules_are_default_off`
+/// enforces `default_on: false`: an uncalibrated rule that switched itself on would be noise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Tier {
     A,
     B,
+    C,
 }
 
 impl Tier {
@@ -17,14 +21,35 @@ impl Tier {
         match s {
             "A" => Some(Tier::A),
             "B" => Some(Tier::B),
+            "C" => Some(Tier::C),
             _ => None,
         }
     }
 
-    /// True when `self` is at least as severe as `floor`. A is the more severe tier, so
-    /// `fail-on-tier = "B"` admits both tiers and `"A"` admits only A.
+    /// Display form, shared by `--list-rules`, the Markdown report and the GitHub annotations
+    /// so a fourth tier can never be spelled three different ways.
+    pub fn label(self) -> &'static str {
+        match self {
+            Tier::A => "A",
+            Tier::B => "B",
+            Tier::C => "C",
+        }
+    }
+
+    /// Descending severity, so `at_least_as_severe_as` is a `>=` on one axis. A `matches!`
+    /// over tier pairs grows quadratically with each new tier; this stays linear.
+    fn rank(self) -> u8 {
+        match self {
+            Tier::A => 2,
+            Tier::B => 1,
+            Tier::C => 0,
+        }
+    }
+
+    /// True when `self` is at least as severe as `floor`. A is the most severe tier, so
+    /// `fail-on-tier = "C"` admits every tier, `"B"` admits A and B, and `"A"` admits only A.
     pub fn at_least_as_severe_as(self, floor: Tier) -> bool {
-        matches!((self, floor), (Tier::A, _) | (Tier::B, Tier::B))
+        self.rank() >= floor.rank()
     }
 }
 

@@ -98,8 +98,13 @@ fn all_sentence_word_counts(doc: &ProseDoc) -> Vec<usize> {
 
 /// stddev(counts) / mean(counts), population variance (no compelling reason to prefer the
 /// sample correction here — this is a descriptive ratio, not an inferential estimate). `None`
-/// when there are fewer than 2 sentences or the mean is 0 (nothing to divide by).
-fn burstiness(counts: &[usize]) -> Option<f64> {
+/// when there are fewer than 2 samples or the mean is 0 (nothing to divide by).
+///
+/// Shared with SLOP045, which measures the same dispersion over code line and block lengths.
+/// One implementation, so the population-vs-sample choice cannot drift apart between the prose
+/// rule and its code twin. SLOP041's messages still call the result "burstiness"; that is this
+/// rule's name for the statistic, not the statistic's own name.
+pub(crate) fn coefficient_of_variation(counts: &[usize]) -> Option<f64> {
     if counts.len() < 2 {
         return None;
     }
@@ -187,7 +192,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let words = masked_words(doc);
     let ttr = type_token_ratio(&words);
     let trigram = trigram_repetition(&words);
-    let burst = burstiness(&all_sentence_word_counts(doc));
+    let burst = coefficient_of_variation(&all_sentence_word_counts(doc));
 
     let mut tripped = Vec::new();
     if let Some(b) = burst {
@@ -242,17 +247,17 @@ mod tests {
     #[test]
     fn burstiness_matches_hand_computed_value() {
         // counts: 4, 4, 4, 4 -> mean 4, variance 0 -> burstiness 0.0
-        assert_eq!(burstiness(&[4, 4, 4, 4]), Some(0.0));
+        assert_eq!(coefficient_of_variation(&[4, 4, 4, 4]), Some(0.0));
         // counts: 2, 4, 6, 8 -> mean 5, population variance = ((3)^2+(1)^2+(1)^2+(3)^2)/4 = 5,
         // stddev = sqrt(5) ~= 2.236..., burstiness = 2.236/5 ~= 0.447
-        let b = burstiness(&[2, 4, 6, 8]).unwrap();
+        let b = coefficient_of_variation(&[2, 4, 6, 8]).unwrap();
         assert!((b - 0.4472136).abs() < 1e-6, "got {b}");
     }
 
     #[test]
     fn burstiness_none_below_two_sentences() {
-        assert_eq!(burstiness(&[]), None);
-        assert_eq!(burstiness(&[5]), None);
+        assert_eq!(coefficient_of_variation(&[]), None);
+        assert_eq!(coefficient_of_variation(&[5]), None);
     }
 
     #[test]

@@ -238,9 +238,10 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP042 | verbosity | Comment that restates the code | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | A plain comment of 2 to 12 words whose content words all already appear in the one statement it sits on, or only name the construct that statement is (`// increment the counter` above `counter += 1`), so it adds nothing the code doesn't say. Doc comments (and the plain comments that serve as docs where a language has no doc syntax: Go file scope and struct fields, Python module and class attributes), pragmas, banners, questions, comments with code symbols or quotes in them, comments naming an identifier the statement lacks, and any comment carrying a *why* (`because`, `otherwise`, `workaround`, a URL, an issue number), a constraint (`not`, `only`, `unless`, `before`) or a warning (`careful`, `subtle`) are exempt. Inflection is ignored (`parsed` matches `parse_header`) but abbreviations are not (`max` is not `maximum`) |
 | SLOP043 | verbosity | Comment that runs long | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | A plain comment block (consecutive comment lines count as one) of more than 40 words. A reason fits in a sentence or two; a comment that needs three full lines is narrating the code or carrying a design note that belongs in a doc comment, the README or the commit message. Doc comments, godoc (any Go comment outside a function body), license headers, generated files and commented-out code are exempt |
 | SLOP044 | artifact | Boilerplate or empty page title | B, on  | HTML | en, pt-BR | A `<title>Document</title>` (the editor's `!` expansion left in place) or an empty `<title>` |
+| SLOP045 | format | Mechanical uniformity (code formatting) | C, off | TS, TSX, Python, Rust | en, pt-BR | A source file of 60+ non-blank lines whose line lengths AND block lengths both barely vary: stddev/mean under 0.30 across content lines and under 0.25 across runs of consecutive non-blank lines. Both must trip. Files with any trailing whitespace (never formatter-touched), flat files under three indent depths, generated files, test paths and Go (gofmt is not optional) are exempt. Thresholds are fitted to human code only and are provisional until issue #39 scores them against a labelled corpus, which is why this is the one Tier C rule |
 
-Every rule is exactly one of three states, `--list-rules` prints the DEFAULT
-column so you can check any given rule at a glance:
+Every rule is exactly one of four states, `--list-rules` prints the TIER and
+DEFAULT columns so you can check any given rule at a glance:
 
 - **Tier A, on by default (12 rules)**: mechanical artifacts (SLOP001–009,
   SLOP011–013) with no legitimate reading. A finding here fails the run
@@ -252,6 +253,13 @@ column so you can check any given rule at a glance:
 - **Tier B, off by default (1 rule)**: SLOP010, gated behind
   `--check-imports` because of its false-positive risk with private
   registries and dynamic imports.
+- **Tier C, always off by default (1 rule)**: SLOP045. Tier C means the
+  rule's threshold has not been scored against a labelled corpus yet, so it
+  stays opt-in until it has been: enable it with
+  `extend-select = ["SLOP045"]` or `--extend-select SLOP045`. A
+  `[[custom-rule]]` may declare `tier = "C"` to keep itself off the exit-1
+  path. Custom rules are always on by default whatever their tier, because you
+  wrote them.
 
 Tier is a fixed property of each rule, and select/ignore can't change it.
 What you can change is which tier the run fails on: `fail-on-tier = "B"` in
@@ -427,7 +435,7 @@ extend-ignore = ["SLOP016"] # adds on top of `ignore`, same relationship
 exclude = ["**/generated/**"]      # extra walker excludes, on top of .gitignore
 check-imports = false
 baseline = ".stopslop-baseline.json"  # subtract findings recorded here (omit to disable)
-fail-on-tier = "A"          # lowest tier that exits 1; "B" gates the build on every finding
+fail-on-tier = "A"          # lowest tier that exits 1; "B" adds Tier B, "C" adds every finding
 language = ["en", "pt-BR"]  # restrict which natural-language panels run (omit = every language)
 
 [per-file-ignores]
@@ -513,10 +521,11 @@ Honest caveats:
   (bad glob, bad regex, unknown key, invalid `[[custom-rule]]` or
   `fail-on-tier` value).
 
-The failing tier is `A` by default, so Tier B findings (including any custom
-rule declared `tier = "B"`) print without blocking. Set `fail-on-tier = "B"`
-in `stopslop.toml`, or pass `--fail-on-tier B`, to gate the build on every
-finding instead; the CLI flag wins over the config. A baseline is applied
+The failing tier is `A` by default, so Tier B and Tier C findings (including
+any custom rule declared `tier = "B"` or `tier = "C"`) print without blocking.
+Set `fail-on-tier = "B"` in `stopslop.toml`, or pass `--fail-on-tier B`, to add
+Tier B to the exit-1 path, and `"C"` to gate on every finding; the CLI flag
+wins over the config. A baseline is applied
 before the exit code is computed, so baselined findings never fail a run
 whatever the tier.
 

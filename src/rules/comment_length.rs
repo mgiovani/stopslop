@@ -81,8 +81,10 @@ fn inside(ranges: &[(usize, usize)], c: &TextNode) -> bool {
 }
 
 /// The `DO NOT EDIT` / `@generated` marker may follow a license header (protoc-gen-go does), so
-/// every comment ahead of the first line of code is checked.
-fn is_generated(ctx: &LintContext) -> bool {
+/// every comment ahead of the first line of code is checked. Shared with SLOP045, which needs
+/// the same exemption for a different reason: generated files are mechanically uniform by
+/// definition, and saying so about them is not a finding.
+pub(crate) fn is_generated(ctx: &LintContext) -> bool {
     let first_code = first_code_byte(ctx.source);
     ctx.comments
         .iter()
