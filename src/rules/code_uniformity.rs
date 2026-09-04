@@ -74,6 +74,10 @@ pub static RULE: RuleDef = RuleDef {
 /// replaces these numbers with measured ones and decides whether the rule turns on.
 const MIN_NONBLANK_LINES: usize = 60;
 /// Below five blocks the block-length statistic is a handful of samples and swings on one edit.
+/// The floor is cheap in the two languages that space their code out -- it excludes 0.6% of
+/// otherwise-eligible Python files and 1.7% of TypeScript ones -- and expensive in Rust, at
+/// 25.2%, because a Rust file with no blank line at all is one block however long it runs.
+/// Paying that in Rust is the point: those files have one sample, not a distribution.
 const MIN_BLOCKS: usize = 5;
 /// The flat-file exclusion, and the floor that earns its keep most. A file that is one long
 /// list at a single indent -- a module table, a re-export list, a const table -- is uniform by
@@ -83,9 +87,10 @@ const MIN_BLOCKS: usize = 5;
 const MIN_INDENT_DEPTHS: usize = 3;
 /// Delimiter-only lines (`}`, `};`, `),`) measure brace density, not uniformity, and TypeScript
 /// has far more of them than Python. Counting them gives TS a structural floor no single
-/// cross-language threshold can clear: TS line-length variation p01 is 0.424 with them and
-/// 0.322 without, against 0.211 for Rust and 0.342 for Python. Dropping them lines the three
-/// languages up, which is what makes one threshold honest for all of them.
+/// cross-language threshold can clear. Line-length variation p01 over the eligible set, with
+/// those lines counted and then dropped: TS 0.440 -> 0.322, Rust 0.213 -> 0.190, Python
+/// 0.383 -> 0.342. Dropping them costs Rust and Python about 0.03 and TypeScript 0.12, which
+/// is what lines the three languages up and makes one threshold honest for all of them.
 const MIN_CONTENT_CHARS: usize = 4;
 /// Human p01 per corpus: 0.190 Rust, 0.342 Python, 0.322 TypeScript.
 const LINE_LENGTH_CV_THRESHOLD: f64 = 0.30;
@@ -141,10 +146,8 @@ fn indent_depths(lines: &[&str]) -> usize {
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let lines: Vec<&str> = ctx.source.lines().collect();
 
-    // Trailing whitespace is the one thing a formatter reliably erases, so a file that still
-    // has any never met one -- and a model essentially never emits it. Its ABSENCE is worthless
-    // (99.7% of crates.io Rust files, 100% of this crate) which is why it is a gate here and
-    // not a fourth signal: as a signal it would be a free point on almost every file.
+    // Absence of trailing whitespace is worthless as a signal (99.7% of crates.io Rust files
+    // have none), but its presence means the file never met a formatter. Gate, not signal.
     if lines.iter().any(|l| l.trim_end().len() != l.len()) {
         return;
     }
@@ -162,6 +165,9 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     if blocks.len() < MIN_BLOCKS {
         return;
     }
+    // block_cv is infallible here -- MIN_BLOCKS guarantees >=5 samples, each >=1, so the mean
+    // is never 0. Only line_cv can be None: a file of nothing but delimiters leaves fewer than
+    // two lines at or above MIN_CONTENT_CHARS.
     let (Some(line_cv), Some(block_cv)) = (
         coefficient_of_variation(&content_line_lengths(&lines)),
         coefficient_of_variation(&blocks),
@@ -291,16 +297,17 @@ mod tests {
         );
     }
 
+    /// Uniform block lengths, wildly varied line lengths: block-length variation trips and
+    /// line-length variation does not. Every floor is cleared on purpose (65 non-blank lines,
+    /// 3 indent depths, 13 blocks) so the file reaches the threshold comparison itself --
+    /// this is the test that fails if anyone loosens the AND into an either-or.
     #[test]
     fn one_signal_alone_stays_silent() {
-        // Uniform block lengths, wildly varied line lengths: block-length variation trips and
-        // line-length variation does not. This is the test that fails if anyone ever loosens
-        // the AND into an either-or.
-        let src: String = (0..14)
+        let src: String = (0..13)
             .map(|i| {
                 format!(
-                    "fn f{i:02}() {{\n    let value = {};\n    println!(\"{{value}}\");\n}}\n\n",
-                    "1 + ".repeat(i * 3) + "1"
+                    "fn f{i:02}() {{\n    if check() {{\n        let value = {};\n    }}\n}}\n\n",
+                    "1 + ".repeat(i * 4) + "1"
                 )
             })
             .collect();
@@ -313,28 +320,48 @@ mod tests {
 
     #[test]
     fn short_file_stays_silent_even_if_perfectly_uniform() {
-        // Same body, below MIN_NONBLANK_LINES: 5 blocks x 6 lines = 30.
+        // The same body that fires at 12 blocks, cut to 5 blocks x 6 lines = 30 non-blank
+        // lines. The precondition pins that only the length changed.
+        assert!(!run(Lang::Rust, &uniform_rust(12)).is_empty());
         assert!(run(Lang::Rust, &uniform_rust(5)).is_empty());
     }
 
     #[test]
     fn flat_file_stays_silent() {
-        // A one-indent-depth list -- a module table, a re-export list, a const table -- is
-        // uniform by nature. This crate's own src/rules/mod.rs is exactly this shape and is
-        // hand-written, which is what MIN_INDENT_DEPTHS exists to protect.
-        let src: String = (0..80)
-            .map(|i| format!("pub mod feature{i:03};\n"))
-            .collect();
+        // A flat list is uniform by nature; src/rules/mod.rs is this shape and hand-written.
+        // Blank lines every 16 entries clear MIN_BLOCKS, so indent depth is the only gate left.
+        let src: String = (0..5)
+            .map(|g| {
+                (0..16)
+                    .map(|j| format!("pub mod feature{:03};\n", g * 16 + j))
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(run(Lang::Rust, &src).is_empty());
+    }
+
+    /// A file of nothing but delimiters clears every floor but leaves fewer than two lines at
+    /// or above MIN_CONTENT_CHARS, so line-length variation is undefined. Undefined must mean
+    /// silent, never a diagnostic fired off a half-computed pair.
+    #[test]
+    fn undefined_line_variation_stays_silent() {
+        let src: String = (0..5)
+            .map(|_| "{\n  {\n    }\n  }\n".repeat(4))
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(run(Lang::Rust, &src).is_empty());
     }
 
     #[test]
     fn few_blocks_stays_silent() {
-        // 72 uniform non-blank lines, but only 4 blocks: block-length variation has too few
-        // samples to mean anything.
-        let block = "fn f() {\n    let value = raw.trim().to_lowercase();\n".to_string()
-            + &"    let other = raw.trim().to_lowercase();\n".repeat(16)
-            + "}\n";
+        // 68 uniform non-blank lines across 3 indent depths -- every other floor cleared --
+        // but only 4 blocks. Both signals would trip, so deleting MIN_BLOCKS fails this test.
+        let block =
+            "fn f() {\n    if check() {\n        let value = raw.trim().to_lowercase();\n    }\n"
+                .to_string()
+                + &"    let other = raw.trim().to_lowercase();\n".repeat(12)
+                + "}\n";
         let src = [block.clone(), block.clone(), block.clone(), block].join("\n");
         assert!(run(Lang::Rust, &src).is_empty());
     }
@@ -366,7 +393,10 @@ mod tests {
         // length by one and quietly move both statistics.
         let lf = uniform_rust(12);
         let crlf = lf.replace('\n', "\r\n");
-        assert_eq!(run(Lang::Rust, &lf).len(), run(Lang::Rust, &crlf).len());
+        // Pinned to 1, not merely to each other: 0 == 0 would pass while hiding a regression
+        // that silenced both.
+        assert_eq!(run(Lang::Rust, &lf).len(), 1);
+        assert_eq!(run(Lang::Rust, &crlf).len(), 1);
     }
 
     #[test]

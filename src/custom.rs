@@ -61,7 +61,7 @@ fn build_one(index: usize, c: &CustomRuleConfig) -> anyhow::Result<CustomRule> {
     })?;
     let Some(tier) = Tier::parse(&c.tier) else {
         anyhow::bail!(
-            "custom-rule[{index}] (pattern {:?}): invalid tier {:?}, expected \"A\" or \"B\"",
+            "custom-rule[{index}] (pattern {:?}): invalid tier {:?}, expected \"A\", \"B\" or \"C\"",
             c.pattern,
             c.tier
         )

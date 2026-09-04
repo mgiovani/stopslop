@@ -256,7 +256,10 @@ DEFAULT columns so you can check any given rule at a glance:
 - **Tier C, always off by default (1 rule)**: SLOP045. Tier C means the
   rule's threshold has not been scored against a labelled corpus yet, so it
   stays opt-in until it has been: enable it with
-  `extend-select = ["SLOP045"]` or `--extend-select SLOP045`.
+  `extend-select = ["SLOP045"]` or `--extend-select SLOP045`. A
+  `[[custom-rule]]` may declare `tier = "C"` to keep itself off the exit-1
+  path. Custom rules are always on by default whatever their tier, because you
+  wrote them.
 
 Tier is a fixed property of each rule, and select/ignore can't change it.
 What you can change is which tier the run fails on: `fail-on-tier = "B"` in

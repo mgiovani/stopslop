@@ -413,6 +413,34 @@ mod tests {
         assert_eq!(doc["stats"]["lines"], 42);
     }
 
+    /// SARIF 2.1.0 restricts `result.level` to none/note/warning/error. A value outside that
+    /// set (GitHub's workflow-command `notice`, say) is silently dropped by code scanning, so
+    /// the mapping is pinned here rather than left to the next reader to re-derive.
+    #[test]
+    fn sarif_level_uses_only_spec_valid_values() {
+        let diags = [
+            diag("SLOP001", Tier::A, "./a.rs"),
+            diag("SLOP018", Tier::B, "./b.md"),
+            diag("SLOP045", Tier::C, "./c.rs"),
+        ];
+        let mut out = Vec::new();
+        emit_sarif(&diags, &HashSet::new(), None, &mut out).unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        let levels: Vec<&str> = doc["runs"][0]["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["level"].as_str().unwrap())
+            .collect();
+        assert_eq!(levels, ["error", "warning", "note"]);
+        for level in levels {
+            assert!(
+                ["none", "note", "warning", "error"].contains(&level),
+                "{level} is not a SARIF 2.1.0 result.level"
+            );
+        }
+    }
+
     #[test]
     fn sarif_with_stats_lands_in_run_properties() {
         let stats = Stats {
