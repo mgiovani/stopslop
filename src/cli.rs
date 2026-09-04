@@ -246,6 +246,9 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         None => diags,
     };
 
+    // Captured before `stats` is shadowed by the `--stats` Option: the exit code must reflect a
+    // panicked file whether or not the user asked for the stats block.
+    let panicked = stats.panicked;
     let stats = cli.stats.then(|| stats.with_wall(started.elapsed()));
     let stdout = std::io::stdout();
     let mut w = stdout.lock();
@@ -263,6 +266,10 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         update_notice();
     }
 
+    if panicked > 0 {
+        eprintln!("stopslop: {panicked} file(s) skipped after a rule panicked");
+        return Ok(2);
+    }
     Ok(exit_code(&diags, fail_on))
 }
 
@@ -270,6 +277,10 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
 /// (update-informer caches under the platform cache dir). Skipped in CI, on opt-out, and when
 /// stderr is not a terminal, so scripts and the pr-comment workflow never see it. Every failure
 /// (offline, timeout, unwritable cache) is swallowed: this must never change the exit code.
+///
+/// The request carries an explicit timeout because this runs AFTER output, on the way out: with
+/// the crate's own default, a half-open network held the process open long after the lint the
+/// user was waiting on had finished (issue #21, H3).
 fn update_notice() {
     let opted_out = ["CI", "STOPSLOP_NO_UPDATE_CHECK", "NO_UPDATE_NOTIFIER"]
         .iter()
@@ -278,7 +289,9 @@ fn update_notice() {
         return;
     }
     let current = env!("CARGO_PKG_VERSION");
-    let informer = update_informer::new(update_informer::registry::Crates, "stopslop", current);
+    // Two seconds: above a healthy crates.io round trip, below what a hung one used to cost.
+    let informer = update_informer::new(update_informer::registry::Crates, "stopslop", current)
+        .timeout(std::time::Duration::from_secs(2));
     // The crate reports the newest published version, not crates.io's max_stable_version, so a
     // pre-release is filtered here rather than advertised.
     if let Ok(Some(latest)) = informer.check_version() {
