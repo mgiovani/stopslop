@@ -38,6 +38,7 @@ bench "self-lint" 20 "-N -w 3" --format json .
 for f in prose_8mb_emdash prose_8mb_ascii headings_20mb oneline_700k; do
   bench "$f.md" 5 "-w 1" --no-config --format json "$inputs/$f.md"
 done
+bench "code_2mb.ts" 10 "-w 3" --no-config --format json "$inputs/code_2mb.ts"
 if [ -n "${STOPSLOP_BENCH_CORPUS:-}" ]; then
   bench "corpus ALL" 5 "-w 1" --no-config --select ALL --format json "$STOPSLOP_BENCH_CORPUS"
 fi

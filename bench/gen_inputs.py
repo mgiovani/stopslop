@@ -73,6 +73,48 @@ def slice_to(text, nbytes):
     return b[: b.rfind(b"\n") + 1].decode()
 
 
+def code_file():
+    """One TypeScript file shaped to catch the quadratics AST rules have actually shipped.
+
+    Every section targets a specific past bug family, so a regression shows up as wall time
+    rather than as a rule that quietly got slower:
+      - 5,000 methods in ONE class body: a `next_named_sibling()` step is O(index) per call.
+      - 20k comments and 20k string literals next to 2,000 regex hits: rules that ask
+        `in_comment_or_string` per match pay matches x spans.
+      - 200-level nesting: parent-chain walks.
+      - one ~200 KB line: anything that rescans to the line start, or from byte 0, per finding.
+    """
+    parts = ["import { readFile, writeFile } from 'node:fs/promises';\n"]
+    parts += [f"import {{ helper{i} }} from './mod{i}';\n" for i in range(200)]
+    parts.append("import express from 'express';\nimport lodash from 'lodash';\n\n")
+
+    parts.append("export class Registry {\n")
+    for i in range(5000):
+        parts.append(f"  // resolves entry {i} from the backing store\n")
+        parts.append(f"  entry{i}(key: string): string {{ return this.store[key] ?? 'default-{i}'; }}\n")
+    parts.append("}\n\n")
+
+    for i in range(2000):
+        parts.append(f"// clone helper {i}: the store hands out shared references\n")
+        parts.append(f"export const clone{i} = (v: unknown) => JSON.parse(JSON.stringify(v));\n")
+        parts.append(f"const label{i} = 'entry-{i}-payload-string-with-some-length';\n")
+        parts.append(f"const note{i} = \"another {i} string literal, kept for the span count\";\n")
+
+    # Indentation makes each of these ~80 KB, so eight is enough to exercise the parent walks
+    # without the nesting section dominating the file's size.
+    for i in range(8):
+        parts.append(f"export function deep{i}(n: number): number {{\n")
+        for d in range(200):
+            parts.append("  " * (d + 1) + f"if (n > {d}) {{\n")
+        parts.append("  " * 201 + "return n;\n")
+        for d in range(199, -1, -1):
+            parts.append("  " * (d + 1) + "}\n")
+        parts.append("  return 0;\n}\n")
+
+    parts.append("const wide = " + " + ".join(f"'chunk{i}'" for i in range(20000)) + ";\n")
+    return "".join(parts)
+
+
 prose = build(8 * MB, prose_block)
 write("prose_8mb_emdash.md", prose)
 write("prose_8mb_ascii.md", prose.replace("—", "--").replace("’", "'").replace("“", '"').replace("”", '"').replace("…", "..."))
@@ -82,6 +124,7 @@ for n in (2, 4, 8):
     write(f"headings_{n}mb.md", slice_to(headings, n * MB))
 write("three_lines.md", "# Notes\n\nThe build runs the tests and then packages the binary.\n")
 write("oneline_700k.md", " — ".join(random.choice(CLEAN).split()[0] + "ish" for _ in range(100_000)) + "\n")
+write("code_2mb.ts", code_file())
 
 for name in sorted(os.listdir(out)):
     data = pathlib.Path(out, name).read_bytes()

@@ -48,6 +48,42 @@ fn line_starts(source: &str) -> Vec<usize> {
         .collect()
 }
 
+/// Comment and string spans merged into one sorted, non-overlapping list.
+///
+/// `ctx.in_comment_or_string` scans every comment and every string per query, which this rule
+/// asks once per regex match: measured on generated `.ts` files where matches and spans grow
+/// together, `--select SLOP037` went 13.3 / 22.3 / 43.3 / 93.9 / 220.1 / 621.8 ms for 500 to
+/// 16,000 matches -- ratios climbing 1.7x, 1.9x, 2.2x, 2.3x, 2.8x per doubling, on their way to
+/// the 4x of a clean quadratic (issue #21). Built once here and binary-searched instead.
+///
+/// The merge is what makes the search correct: `strings` NESTS, because a `template_string`
+/// node contains the `string` nodes inside its `${}` interpolations, and `partition_point` on a
+/// nested list would find the inner span and miss that the byte is still inside the outer one.
+fn masked_spans(ctx: &LintContext) -> Vec<(usize, usize)> {
+    let mut spans: Vec<(usize, usize)> = ctx
+        .comments
+        .iter()
+        .chain(ctx.strings.iter())
+        .map(|n| (n.start_byte, n.end_byte))
+        .collect();
+    spans.sort_unstable();
+    let mut merged: Vec<(usize, usize)> = Vec::with_capacity(spans.len());
+    for (start, end) in spans {
+        match merged.last_mut() {
+            Some(last) if start <= last.1 => last.1 = last.1.max(end),
+            _ => merged.push((start, end)),
+        }
+    }
+    merged
+}
+
+/// True when `byte` falls in `[s, e)` for one of `spans`, which must be sorted and
+/// non-overlapping -- the shape [`masked_spans`] returns.
+fn in_span(spans: &[(usize, usize)], byte: usize) -> bool {
+    let idx = spans.partition_point(|&(s, _)| s <= byte);
+    idx > 0 && byte < spans[idx - 1].1
+}
+
 // --- TypeScript / TSX ---
 
 static JSON_CLONE_RE: LazyLock<Regex> =
@@ -72,8 +108,10 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
             byte,
         )
     };
+    let spans = std::cell::OnceCell::new();
+    let masked = |byte: usize| in_span(spans.get_or_init(|| masked_spans(ctx)), byte);
     for m in JSON_CLONE_RE.find_iter(ctx.source) {
-        if ctx.in_comment_or_string(m.start()) {
+        if masked(m.start()) {
             continue;
         }
         let (line, col) = pos(m.start());
@@ -88,7 +126,7 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
     }
 
     for m in RANDOM_ID_RE.find_iter(ctx.source) {
-        if ctx.in_comment_or_string(m.start()) {
+        if masked(m.start()) {
             continue;
         }
         let (line, col) = pos(m.start());
@@ -103,7 +141,7 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
     }
 
     for m in SPLIT_AMP_RE.find_iter(ctx.source) {
-        if ctx.in_comment_or_string(m.start()) {
+        if masked(m.start()) {
             continue;
         }
         let window_end = (m.end() + 400).min(ctx.source.len());
@@ -122,7 +160,7 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
 
     for caps in LEFT_PAD_RE.captures_iter(ctx.source) {
         let whole = caps.get(0).unwrap();
-        if ctx.in_comment_or_string(whole.start()) {
+        if masked(whole.start()) {
             continue;
         }
         let ident = &caps[1];
@@ -509,6 +547,44 @@ mod tests {
         let mut out = Vec::new();
         check(&RULE, &ctx, &mut out);
         out
+    }
+
+    /// `masked_spans` + `in_span` must answer exactly what the linear
+    /// `LintContext::in_comment_or_string` scan answers, byte for byte, on a source that nests a
+    /// string inside a template literal -- the nesting case the merge pass exists for.
+    #[test]
+    fn in_span_matches_the_linear_scan_for_every_byte() {
+        let src =
+            "// lead\nconst a = `outer ${ 'inner' } tail`;\nconst b = \"plain\"; /* trail */\n";
+        let mut p = Parser::new();
+        p.set_language(&crate::lang::ts_language(Lang::Ts)).unwrap();
+        let tree = p.parse(src, None).unwrap();
+        let (comments, strings, index) = context::extract(&tree, src, Lang::Ts);
+        let ctx = LintContext {
+            display_path: "t".into(),
+            source: src,
+            index: Some(&index),
+            lang: Lang::Ts,
+            comments: &comments,
+            strings: &strings,
+            is_test_path: false,
+            is_stub_file: false,
+            deps: None,
+            prose: None,
+            natlangs: crate::lang::ALL_NATLANGS,
+        };
+        let spans = masked_spans(&ctx);
+        assert!(
+            spans.windows(2).all(|w| w[0].1 <= w[1].0),
+            "merged spans must be disjoint"
+        );
+        for byte in 0..=src.len() {
+            assert_eq!(
+                in_span(&spans, byte),
+                ctx.in_comment_or_string(byte),
+                "byte {byte}"
+            );
+        }
     }
 
     // --- TS ---
