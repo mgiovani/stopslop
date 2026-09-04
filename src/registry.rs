@@ -66,6 +66,7 @@ pub static RULES: &[&'static RuleDef] = &[
     &crate::rules::restate::RULE,          // SLOP042
     &crate::rules::comment_length::RULE,   // SLOP043
     &crate::rules::html_title::RULE,       // SLOP044
+    &crate::rules::code_uniformity::RULE,  // SLOP045
 ];
 
 #[cfg(test)]
