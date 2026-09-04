@@ -36,8 +36,9 @@ pub struct Config {
     #[serde(default)]
     pub per_file_ignores: std::collections::BTreeMap<String, Vec<String>>,
     /// Lowest tier that fails the run. `"A"` (the default) is the historical behaviour: Tier B
-    /// findings print but never affect the exit code. `"B"` puts every finding on the exit-1 path,
-    /// which is what a project wants when it cares about one warn-only rule enough to gate on it.
+    /// and Tier C findings print but never affect the exit code. `"B"` adds Tier B to the exit-1
+    /// path, which is what a project wants when it cares about one warn-only rule enough to gate
+    /// on it, and `"C"` puts every finding there.
     /// `None` (absent) means `"A"`. Kept optional rather than defaulted to a string so the
     /// `#[derive(Default)]` used for the no-config-file case can't produce an unparseable `""`.
     #[serde(default)]

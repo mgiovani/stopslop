@@ -105,12 +105,12 @@ fn emit_sarif(
     let results: Vec<_> = diags
         .iter()
         .map(|d| {
-            // GitHub renders `notice` below `warning`, which is where an opt-in rule whose
-            // threshold is still provisional belongs.
+            // SARIF 2.1.0 restricts result.level to none/note/warning/error, so Tier C maps
+            // to `note` -- GitHub's `notice` is a workflow-command level and is invalid here.
             let level = match d.tier {
                 Tier::A => "error",
                 Tier::B => "warning",
-                Tier::C => "notice",
+                Tier::C => "note",
             };
             let text = match &d.fix {
                 Some(fix) => format!("{} (fix: {fix})", d.message),
@@ -291,6 +291,34 @@ mod tests {
         assert_eq!(doc["stats"]["files"], 3);
         assert_eq!(doc["stats"]["skipped"], 1);
         assert_eq!(doc["stats"]["lines"], 42);
+    }
+
+    /// SARIF 2.1.0 restricts `result.level` to none/note/warning/error. A value outside that
+    /// set (GitHub's workflow-command `notice`, say) is silently dropped by code scanning, so
+    /// the mapping is pinned here rather than left to the next reader to re-derive.
+    #[test]
+    fn sarif_level_uses_only_spec_valid_values() {
+        let diags = [
+            diag("SLOP001", Tier::A, "./a.rs"),
+            diag("SLOP018", Tier::B, "./b.md"),
+            diag("SLOP045", Tier::C, "./c.rs"),
+        ];
+        let mut out = Vec::new();
+        emit_sarif(&diags, &HashSet::new(), None, &mut out).unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        let levels: Vec<&str> = doc["runs"][0]["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["level"].as_str().unwrap())
+            .collect();
+        assert_eq!(levels, ["error", "warning", "note"]);
+        for level in levels {
+            assert!(
+                ["none", "note", "warning", "error"].contains(&level),
+                "{level} is not a SARIF 2.1.0 result.level"
+            );
+        }
     }
 
     #[test]

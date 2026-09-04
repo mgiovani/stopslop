@@ -19,8 +19,8 @@ migration notes live here.
 - **Tier C.** A third severity meaning "advisory, and the threshold has not
   been validated against a labelled corpus yet". Tier C rules are always off
   by default (enforced by `registry::tier_c_rules_are_default_off`) and never
-  affect the exit code unless you set `fail-on-tier = "C"`. `[[custom-rule]]
-  tier = "C"` is accepted too. `fail-on-tier` now orders the tiers A > B > C,
+  affect the exit code unless you set `fail-on-tier = "C"`. `[[custom-rule]] tier = "C"` is
+  accepted too, though a custom rule stays on by default whatever its tier. `fail-on-tier` now orders the tiers A > B > C,
   so `"B"` still admits A and B and `"C"` admits every finding.
 - **pt-BR witnesses for code-language rules.** `tests/natlang_witness.rs`
   now requires a `slop_*_pt_br` fixture per language family for the code

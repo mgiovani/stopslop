@@ -69,8 +69,8 @@ pub struct Cli {
     /// Ignore any project or user-level stopslop.toml (CLI flags only).
     #[arg(long)]
     pub no_config: bool,
-    /// Lowest tier that exits 1: "A" (default) fails only on Tier A findings, "B" fails on any
-    /// finding. Overrides the config's `fail-on-tier`.
+    /// Lowest tier that exits 1: "A" (default) fails only on Tier A findings, "B" adds Tier B,
+    /// "C" fails on any finding. Overrides the config's `fail-on-tier`.
     #[arg(long)]
     pub fail_on_tier: Option<String>,
     /// Report files/lines scanned, wall time and throughput. Text and markdown modes print the
