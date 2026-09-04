@@ -7,6 +7,15 @@ migration notes live here.
 
 ### Added
 
+- **SLOP045** (`format`, Tier C, off): flags a source file whose formatting
+  barely varies, the code twin of SLOP041. Two signals, both required: the
+  coefficient of variation of content line lengths (under 0.30) and of the
+  lengths of runs of consecutive non-blank lines (under 0.25). Files with any
+  trailing whitespace, files under three indent depths, generated files, test
+  paths and Go are exempt. Measured on 5085 eligible human files across
+  crates.io Rust, CPython site-packages, node_modules TypeScript and this
+  repo: 1 finding, 0.02%. Those thresholds are fitted to the human side only
+  and stay provisional until issue #39 scores them, which is what Tier C says.
 - **Tier C.** A third severity meaning "advisory, and the threshold has not
   been validated against a labelled corpus yet". Tier C rules are always off
   by default (enforced by `registry::tier_c_rules_are_default_off`) and never

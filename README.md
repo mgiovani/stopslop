@@ -238,8 +238,9 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP042 | verbosity | Comment that restates the code | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | A plain comment of 2 to 12 words whose content words all already appear in the one statement it sits on, or only name the construct that statement is (`// increment the counter` above `counter += 1`), so it adds nothing the code doesn't say. Doc comments (and the plain comments that serve as docs where a language has no doc syntax: Go file scope and struct fields, Python module and class attributes), pragmas, banners, questions, comments with code symbols or quotes in them, comments naming an identifier the statement lacks, and any comment carrying a *why* (`because`, `otherwise`, `workaround`, a URL, an issue number), a constraint (`not`, `only`, `unless`, `before`) or a warning (`careful`, `subtle`) are exempt. Inflection is ignored (`parsed` matches `parse_header`) but abbreviations are not (`max` is not `maximum`) |
 | SLOP043 | verbosity | Comment that runs long | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | A plain comment block (consecutive comment lines count as one) of more than 40 words. A reason fits in a sentence or two; a comment that needs three full lines is narrating the code or carrying a design note that belongs in a doc comment, the README or the commit message. Doc comments, godoc (any Go comment outside a function body), license headers, generated files and commented-out code are exempt |
 | SLOP044 | artifact | Boilerplate or empty page title | B, on  | HTML | en, pt-BR | A `<title>Document</title>` (the editor's `!` expansion left in place) or an empty `<title>` |
+| SLOP045 | format | Mechanical uniformity (code formatting) | C, off | TS, TSX, Python, Rust | en, pt-BR | A source file of 60+ non-blank lines whose line lengths AND block lengths both barely vary: stddev/mean under 0.30 across content lines and under 0.25 across runs of consecutive non-blank lines. Both must trip. Files with any trailing whitespace (never formatter-touched), flat files under three indent depths, generated files, test paths and Go (gofmt is not optional) are exempt. Thresholds are fitted to human code only and are provisional until issue #39 scores them against a labelled corpus, which is why this is the one Tier C rule |
 
-Every rule is exactly one of three states, `--list-rules` prints the TIER and
+Every rule is exactly one of four states, `--list-rules` prints the TIER and
 DEFAULT columns so you can check any given rule at a glance:
 
 - **Tier A, on by default (12 rules)**: mechanical artifacts (SLOP001–009,
@@ -252,6 +253,10 @@ DEFAULT columns so you can check any given rule at a glance:
 - **Tier B, off by default (1 rule)**: SLOP010, gated behind
   `--check-imports` because of its false-positive risk with private
   registries and dynamic imports.
+- **Tier C, always off by default (1 rule)**: SLOP045. Tier C means the
+  rule's threshold has not been scored against a labelled corpus yet, so it
+  stays opt-in until it has been: enable it with
+  `extend-select = ["SLOP045"]` or `--extend-select SLOP045`.
 
 Tier is a fixed property of each rule, and select/ignore can't change it.
 What you can change is which tier the run fails on: `fail-on-tier = "B"` in
