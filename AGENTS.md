@@ -23,8 +23,8 @@ cargo install --path .      # rebuild the binary before dogfooding a new rule
 
 ## Adding a rule
 
-1. Take the next free `SLOPNNN` and add `src/rules/<tell>.rs` with `pub static RULE: RuleDef` and `fn check`.
-2. Declare the module in `src/rules/mod.rs` and the static in `registry::RULES`.
+1. Take the next free `SLOPNNN` and add `src/rules/<group>/<tell>.rs` with `pub static RULE: RuleDef` and `fn check`.
+2. Declare the module in `src/rules/<group>/mod.rs` and the static in `registry::RULES`.
 3. Put the code in exactly one `groups.rs` entry. `groups_partition_every_rule` fails otherwise.
 4. Open at Tier B. Tier A is for findings with no judgment call in them, because Tier A fails CI.
 5. Set `langs` to `lang::CODE_LANGS` or `lang::PROSE_LANGS` unless the rule is narrower, and add fixtures under `tests/fixtures/<lang>/` for every language listed: one file carrying `expect:` markers and one clean file carrying none. `every_declared_lang_has_a_fixture_witness` fails when the marked file is missing. A rule declaring `Html` needs a witness under `tests/fixtures/html/`. Also declare `natlangs`: `lang::ALL_NATLANGS` when the rule has no natural-language lexicon (AST shape, punctuation, statistics), `&[NatLang::En]` otherwise. Add a `tests/fixtures/markdown/pt-br/` witness before declaring `NatLang::PtBr`; `natlang_witness` fails otherwise.
@@ -90,7 +90,7 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 
 ## Workflow
 
-- Branch from `main`, one topic per branch, prefixed `feat/`, `fix/`, `perf/`, `docs/`, or `ci/`.
+- Branch from `main`, one topic per branch, prefixed `feat/`, `fix/`, `perf/`, `refactor/`, `docs/`, or `ci/`.
 - Write conventional commit subjects (`feat:`, `fix:`, `perf:`, `refactor:`, `docs:`, `test:`, `ci:`, `chore:`).
 - Self-review the whole patch and run the three CI commands plus the dogfood run before pushing.
 - Open a PR and let CI decide. Merge commits, no squash.

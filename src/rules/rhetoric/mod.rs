@@ -1,0 +1,11 @@
+pub mod cliche;
+pub mod colon_reveal;
+pub mod contrast;
+pub mod diff_anchor;
+pub mod fragmentation;
+pub mod opener;
+pub mod outline_section;
+pub mod parallelism;
+pub mod promo;
+pub mod puffery;
+pub mod recap;

@@ -4,7 +4,7 @@ use crate::lang::{NatLang, PROSE_LANGS};
 use crate::prose::{first_byte_per_line, ProseDoc};
 use crate::prose_words::REASONING_CHAIN_FRAGMENT;
 use crate::registry::RuleDef;
-use crate::rules::fragmentation;
+use crate::rules::rhetoric::fragmentation;
 use regex::Regex;
 use std::sync::LazyLock;
 

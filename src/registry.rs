@@ -22,48 +22,48 @@ pub struct RuleDef {
 // Each rule module exposes `pub static RULE: RuleDef`.
 #[allow(clippy::redundant_static_lifetimes)] // frozen contract signature (PLAN §3), keep verbatim
 pub static RULES: &[&'static RuleDef] = &[
-    &crate::rules::elision::RULE,
-    &crate::rules::preamble::RULE,
-    &crate::rules::fence::RULE,
-    &crate::rules::attribution::RULE,
-    &crate::rules::empty_catch::RULE,
-    &crate::rules::py_except::RULE,
-    &crate::rules::type_escape::RULE,
-    &crate::rules::stub::RULE,
-    &crate::rules::placeholder::RULE,
-    &crate::rules::imports::RULE,
-    &crate::rules::residue::RULE,          // SLOP011
-    &crate::rules::citation::RULE,         // SLOP012
-    &crate::rules::template::RULE,         // SLOP013
-    &crate::rules::cliche::RULE,           // SLOP014
-    &crate::rules::hedging::RULE,          // SLOP015
-    &crate::rules::vocabulary::RULE,       // SLOP016
-    &crate::rules::parallelism::RULE,      // SLOP017
-    &crate::rules::emdash::RULE,           // SLOP018
-    &crate::rules::boldface::RULE,         // SLOP019
-    &crate::rules::smartquotes::RULE,      // SLOP020
-    &crate::rules::heading_style::RULE,    // SLOP021
-    &crate::rules::opener::RULE,           // SLOP022
-    &crate::rules::contrast::RULE,         // SLOP023
-    &crate::rules::puffery::RULE,          // SLOP024
-    &crate::rules::weasel::RULE,           // SLOP025
-    &crate::rules::colon_reveal::RULE,     // SLOP026
-    &crate::rules::filler::RULE,           // SLOP027
-    &crate::rules::weak_verb::RULE,        // SLOP028
-    &crate::rules::recap::RULE,            // SLOP029
-    &crate::rules::fragmentation::RULE,    // SLOP030
-    &crate::rules::promo::RULE,            // SLOP031
-    &crate::rules::hyphen::RULE,           // SLOP032
-    &crate::rules::sentence_length::RULE,  // SLOP033
-    &crate::rules::synonym_rotation::RULE, // SLOP034
-    &crate::rules::outline_section::RULE,  // SLOP035
-    &crate::rules::diff_anchor::RULE,      // SLOP036
-    &crate::rules::reinvent::RULE,         // SLOP037
-    &crate::rules::redundant_dep::RULE,    // SLOP038
-    &crate::rules::wrapper::RULE,          // SLOP039
-    &crate::rules::single_impl::RULE,      // SLOP040
-    &crate::rules::uniformity::RULE,       // SLOP041
-    &crate::rules::restate::RULE,          // SLOP042
-    &crate::rules::comment_length::RULE,   // SLOP043
-    &crate::rules::html_title::RULE,       // SLOP044
+    &crate::rules::artifact::elision::RULE,
+    &crate::rules::artifact::preamble::RULE,
+    &crate::rules::artifact::fence::RULE,
+    &crate::rules::artifact::attribution::RULE,
+    &crate::rules::structure::empty_catch::RULE,
+    &crate::rules::structure::py_except::RULE,
+    &crate::rules::structure::type_escape::RULE,
+    &crate::rules::structure::stub::RULE,
+    &crate::rules::structure::placeholder::RULE,
+    &crate::rules::structure::imports::RULE,
+    &crate::rules::artifact::residue::RULE,          // SLOP011
+    &crate::rules::artifact::citation::RULE,         // SLOP012
+    &crate::rules::artifact::template::RULE,         // SLOP013
+    &crate::rules::rhetoric::cliche::RULE,           // SLOP014
+    &crate::rules::verbosity::hedging::RULE,         // SLOP015
+    &crate::rules::verbosity::vocabulary::RULE,      // SLOP016
+    &crate::rules::rhetoric::parallelism::RULE,      // SLOP017
+    &crate::rules::format::emdash::RULE,             // SLOP018
+    &crate::rules::format::boldface::RULE,           // SLOP019
+    &crate::rules::format::smartquotes::RULE,        // SLOP020
+    &crate::rules::format::heading_style::RULE,      // SLOP021
+    &crate::rules::rhetoric::opener::RULE,           // SLOP022
+    &crate::rules::rhetoric::contrast::RULE,         // SLOP023
+    &crate::rules::rhetoric::puffery::RULE,          // SLOP024
+    &crate::rules::sourcing::weasel::RULE,           // SLOP025
+    &crate::rules::rhetoric::colon_reveal::RULE,     // SLOP026
+    &crate::rules::verbosity::filler::RULE,          // SLOP027
+    &crate::rules::verbosity::weak_verb::RULE,       // SLOP028
+    &crate::rules::rhetoric::recap::RULE,            // SLOP029
+    &crate::rules::rhetoric::fragmentation::RULE,    // SLOP030
+    &crate::rules::rhetoric::promo::RULE,            // SLOP031
+    &crate::rules::verbosity::hyphen::RULE,          // SLOP032
+    &crate::rules::verbosity::sentence_length::RULE, // SLOP033
+    &crate::rules::verbosity::synonym_rotation::RULE, // SLOP034
+    &crate::rules::rhetoric::outline_section::RULE,  // SLOP035
+    &crate::rules::rhetoric::diff_anchor::RULE,      // SLOP036
+    &crate::rules::stdlib::reinvent::RULE,           // SLOP037
+    &crate::rules::stdlib::redundant_dep::RULE,      // SLOP038
+    &crate::rules::structure::wrapper::RULE,         // SLOP039
+    &crate::rules::structure::single_impl::RULE,     // SLOP040
+    &crate::rules::verbosity::uniformity::RULE,      // SLOP041
+    &crate::rules::verbosity::restate::RULE,         // SLOP042
+    &crate::rules::verbosity::comment_length::RULE,  // SLOP043
+    &crate::rules::artifact::html_title::RULE,       // SLOP044
 ];

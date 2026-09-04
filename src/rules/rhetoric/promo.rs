@@ -3,7 +3,7 @@ use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{NatLang, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
-use crate::rules::fragmentation::earliest_qualifying;
+use crate::rules::rhetoric::fragmentation::earliest_qualifying;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
