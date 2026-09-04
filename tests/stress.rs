@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 
 fn inputs() -> PathBuf {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/stress-inputs");
-    if !dir.join("oneline_700k.md").exists() {
+    // Sentinel is the newest generated input, so an inputs dir from an older checkout is
+    // regenerated rather than silently missing a file.
+    if !dir.join("code_2mb.ts").exists() {
         let status = Command::new("python3")
             .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("bench/gen_inputs.py"))
             .arg(&dir)
@@ -58,4 +60,16 @@ fn prose_8mb_with_em_dashes_stays_fast() {
 #[ignore]
 fn one_line_file_stays_linear() {
     assert_finishes_within("oneline_700k.md", Duration::from_secs(8));
+}
+
+/// The only wall-clock guard on the AST path: every other input here is Markdown, so a quadratic
+/// in a code rule, a sibling walk, or a parent-chain climb had nothing timing it. The input
+/// carries 5,000 methods in one class body, 20k comments and 40k string literals, 8 functions
+/// nested 200 deep, and a 200 KB single line. Release-mode time is ~0.17 s, so this bound catches
+/// a gross regression rather than a subtle one -- the precise shape guards are the pure-function
+/// agreement tests next to the rules themselves.
+#[test]
+#[ignore]
+fn code_file_stays_fast() {
+    assert_finishes_within("code_2mb.ts", Duration::from_secs(3));
 }

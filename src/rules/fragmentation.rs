@@ -1,7 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{self, PROSE_LANGS};
-use crate::prose::{CodeSpan, ProseDoc};
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::collections::HashMap;
@@ -65,181 +64,6 @@ fn is_lone_initial(s: &str) -> bool {
 /// dialogue lines ("— Sim. — Não. — Talvez.") is conversation, not dramatic fragmentation.
 fn is_dialogue_turn(s: &str) -> bool {
     s.trim_start().starts_with(['—', '–'])
-}
-
-/// Shared with recap.rs (SLOP029), which scans the document from the opposite end for the same
-/// notion of "a blank line".
-pub(crate) fn is_blank(line: &str) -> bool {
-    line.trim().is_empty()
-}
-
-/// Shared with recap.rs (SLOP029): a line consisting only of `-`/`*`/`_` repeated (optionally
-/// spaced), e.g. `---`, `* * *`.
-pub(crate) fn is_horizontal_rule(line: &str) -> bool {
-    let stripped: String = line.chars().filter(|c| !c.is_whitespace()).collect();
-    stripped.len() >= 3
-        && (stripped.bytes().all(|b| b == b'-')
-            || stripped.bytes().all(|b| b == b'*')
-            || stripped.bytes().all(|b| b == b'_'))
-}
-
-/// Shared with recap.rs (SLOP029).
-pub(crate) static REF_DEF_LINE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s{0,3}\[[^\]]+\]:\s*\S").unwrap());
-/// Shared with recap.rs (SLOP029).
-pub(crate) static COMMENT_LINE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s*<!--.*-->\s*$").unwrap());
-/// Shared with recap.rs (SLOP029).
-pub(crate) static HEADING_LINE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s{0,3}#{1,6}\s+\S").unwrap());
-static LIST_ITEM_LINE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s{0,3}(?:[-*+]|\d{1,9}[.)])\s+\S").unwrap());
-
-/// A piped table row, or a table separator row (`|---|:--:|`).
-fn is_table_line(line: &str) -> bool {
-    let t = line.trim();
-    t.starts_with('|') || t.matches('|').count() >= 2
-}
-
-pub(crate) struct Block {
-    pub(crate) text: String,
-    pub(crate) first_byte: usize,
-    /// Exclusive end in the ORIGINAL document. `text` is joined and trimmed, so its length does
-    /// not map back to source bytes; callers that need to test "is this byte inside prose?"
-    /// (see rules::synonym_rotation) need the real span.
-    pub(crate) end_byte: usize,
-}
-
-/// All paragraph blocks in the document: maximal contiguous non-blank line runs, excluding
-/// anything that isn't ordinary prose -- code fences (already blanked to blank-looking lines in
-/// `doc.masked`), frontmatter, headings, list items, table rows, horizontal rules, link-reference
-/// definitions, and HTML-comment-only lines. A block containing even one such line is dropped
-/// entirely rather than partially salvaged: bullet lists, tables, and headings must never be
-/// treated as sentences (spec requirement), and a block that mixes prose with one of these is
-/// rare enough that skipping it whole is the conservative, low-risk choice.
-pub(crate) fn paragraph_blocks(doc: &ProseDoc) -> Vec<Block> {
-    if let Some(ranges) = &doc.paragraphs {
-        return html_blocks(doc, ranges);
-    }
-    let masked = &doc.masked;
-    let spans = &doc.line_spans;
-    let mut blocks = Vec::new();
-    let mut i = 0usize;
-    while i < spans.len() {
-        if is_blank(&masked[spans[i].0..spans[i].1]) {
-            i += 1;
-            continue;
-        }
-        let start = i;
-        while i < spans.len() && !is_blank(&masked[spans[i].0..spans[i].1]) {
-            i += 1;
-        }
-        let end = i;
-        let lines: Vec<&str> = (start..end)
-            .map(|j| &masked[spans[j].0..spans[j].1])
-            .collect();
-        let disqualified = lines.iter().enumerate().any(|(k, l)| {
-            doc.in_heading(spans[start + k].0)
-                || LIST_ITEM_LINE.is_match(l)
-                || is_table_line(l)
-                || is_horizontal_rule(l)
-                || REF_DEF_LINE.is_match(l)
-                || COMMENT_LINE.is_match(l)
-                || doc.in_frontmatter(spans[start + k].0)
-        });
-        if disqualified {
-            continue;
-        }
-        let mut text = String::new();
-        let first_byte = spans[start].0 + (lines[0].len() - lines[0].trim_start().len());
-        for (k, _) in lines.iter().enumerate() {
-            let (ls, le) = spans[start + k];
-            let line = with_code_placeholders(&doc.masked, ls, le, &doc.code_spans);
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            if !text.is_empty() {
-                text.push(' ');
-            }
-            text.push_str(line);
-        }
-        blocks.push(Block {
-            text,
-            first_byte,
-            end_byte: spans[end - 1].1,
-        });
-    }
-    blocks
-}
-
-/// HTML paragraphs come pre-cut from the parse (`ProseDoc::paragraphs`, one leaf block element
-/// each), so the blank-line walk above never runs on a masked HTML stream, where tags are blank
-/// runs and every `<p>` in a section would glue into one block. A paragraph with no visible text
-/// (`<p><img></p>`) is dropped.
-fn html_blocks(doc: &ProseDoc, ranges: &[(usize, usize)]) -> Vec<Block> {
-    ranges
-        .iter()
-        .filter_map(|&(s, e)| {
-            let raw = with_code_placeholders(&doc.masked, s, e, &doc.code_spans);
-            let text = raw.split_whitespace().collect::<Vec<_>>().join(" ");
-            if text.is_empty() {
-                return None;
-            }
-            let first_byte = doc.masked[s..e]
-                .find(|c: char| !c.is_whitespace())
-                .map(|i| s + i)
-                .into_iter()
-                .chain(
-                    doc.code_spans
-                        .iter()
-                        .map(|c| c.start)
-                        .filter(|c| (s..e).contains(c)),
-                )
-                .min()
-                .unwrap_or(s);
-            Some(Block {
-                text,
-                first_byte,
-                end_byte: e,
-            })
-        })
-        .collect()
-}
-
-/// The placeholder standing in for each token of a blanked inline `code` span. An ordinary word,
-/// so a sentence built around code reads like prose: it can open a sentence, and the span
-/// contributes the same number of words a reader would count in it.
-const CODE_PLACEHOLDER: &str = "code";
-
-/// Rebuilds one masked line with each inline-code span replaced by [`CODE_PLACEHOLDER`].
-///
-/// `doc.masked` blanks inline code to spaces, which erases the difference between "there was code
-/// here" and "there was nothing here". Every check in this module keys on position or length --
-/// which word opens a sentence, how many words a sentence has -- so reading the blanks as absence
-/// misreports both. "Run `stopslop --format json .` now." masks to "Run    now." -- two words,
-/// and a sentence that only appears to open with "Run" by luck of what got blanked. With
-/// placeholders it reads "Run code code code code now.", matching the four tokens a reader sees
-/// inside the backticks.
-fn with_code_placeholders(masked: &str, ls: usize, le: usize, code_spans: &[CodeSpan]) -> String {
-    let mut out = String::new();
-    let mut cursor = ls;
-    for span in code_spans {
-        if span.end <= ls || span.start >= le {
-            continue;
-        }
-        let (cs, ce) = (span.start.max(ls), span.end.min(le));
-        out.push_str(&masked[cursor..cs]);
-        for i in 0..span.words {
-            if i > 0 {
-                out.push(' ');
-            }
-            out.push_str(CODE_PLACEHOLDER);
-        }
-        cursor = ce;
-    }
-    out.push_str(&masked[cursor..le]);
-    out
 }
 
 /// Tokens whose trailing period never ends a sentence, matched case-insensitively against the
@@ -428,7 +252,7 @@ fn robotic_rhythm(sentences: &[&str]) -> Option<String> {
 
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
-    for block in paragraph_blocks(doc) {
+    for block in doc.paragraph_blocks() {
         let sentences = split_sentences(&block.text);
         if sentences.is_empty() {
             continue;
@@ -449,6 +273,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 mod tests {
     use super::*;
     use crate::lang::Lang;
+    use crate::prose::ProseDoc;
 
     fn diagnostics_for(src: &str) -> Vec<Diagnostic> {
         diagnostics_in(ProseDoc::parse(src), src, Lang::Md)
@@ -488,15 +313,17 @@ mod tests {
     #[test]
     fn html_code_only_paragraph_anchors_on_the_code_span() {
         let src = "<p><code>a b c</code></p>\n";
-        let blocks = paragraph_blocks(&ProseDoc::parse_html(src));
+        let doc = ProseDoc::parse_html(src);
+        let blocks = doc.paragraph_blocks();
         assert_eq!(blocks[0].first_byte, src.find("<code>").unwrap());
     }
 
     #[test]
     fn html_inline_code_counts_as_words_in_its_sentence() {
-        let blocks = paragraph_blocks(&ProseDoc::parse_html(
+        let doc = ProseDoc::parse_html(
             "<p>Run <code>stopslop --fix .</code> now. Then <b>read</b> the output.</p>\n",
-        ));
+        );
+        let blocks = doc.paragraph_blocks();
         assert_eq!(blocks.len(), 1);
         assert_eq!(
             blocks[0].text,

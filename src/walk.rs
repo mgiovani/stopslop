@@ -8,6 +8,9 @@ use std::sync::Mutex;
 pub struct Stats {
     pub files: u64,
     pub skipped: u64,
+    /// Files whose lint panicked and was skipped. Non-zero makes the run exit non-zero however
+    /// clean the findings look, so a crashed rule can never read as a passing lint.
+    pub panicked: u64,
     pub lines: u64,
     pub wall_secs: f64,
     pub lines_per_sec: u64,
@@ -33,7 +36,28 @@ struct Accumulator {
     // than taking the diag lock that already runs per file.
     files: AtomicU64,
     skipped: AtomicU64,
+    panicked: AtomicU64,
     lines: AtomicU64,
+}
+
+/// A file this size is generated, vendored, or a data blob that got a source extension, not
+/// something anyone reads a review comment about. The 20 MB stress input lints in ~1.7 s, so
+/// this leaves ordinary large documents alone and only catches the pathological ones (issue
+/// #21, H2). A documented constant rather than a flag: nobody has asked to tune it.
+const MAX_FILE_BYTES: u64 = 64 << 20;
+
+fn over_size_limit(bytes: usize) -> bool {
+    bytes as u64 > MAX_FILE_BYTES
+}
+
+/// Runs one file's lint so a panicking rule costs that file instead of the run. Without this a
+/// panic unwinds out of the walker's closure, aborts every other worker, and poisons the
+/// diagnostics `Mutex`, so a whole scan is lost to one bad rule on one bad input.
+///
+/// The caller reports the file and counts it in `Stats::panicked`, which makes the run exit
+/// non-zero: a crashed rule must never read as a clean lint (issue #21, H1).
+fn isolated<T>(lint: impl FnOnce() -> T) -> Option<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(lint)).ok()
 }
 
 impl Accumulator {
@@ -59,11 +83,30 @@ impl Accumulator {
                 return;
             }
         };
+        if over_size_limit(source.len()) {
+            eprintln!(
+                "stopslop: skipping {}: {} MB is over the {} MB limit",
+                path.display(),
+                source.len() as u64 / (1 << 20),
+                MAX_FILE_BYTES / (1 << 20)
+            );
+            self.skipped.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
         self.files.fetch_add(1, Ordering::Relaxed);
         self.lines
             .fetch_add(source.lines().count() as u64, Ordering::Relaxed);
-        let mut found = engine::lint_file(display_path(path, cwd), &source, lang, settings);
-        self.diags.lock().unwrap().append(&mut found);
+        let display = display_path(path, cwd);
+        match isolated(move || engine::lint_file(display, &source, lang, settings)) {
+            Some(mut found) => self.diags.lock().unwrap().append(&mut found),
+            None => {
+                eprintln!(
+                    "stopslop: a rule panicked on {}; skipping the file",
+                    path.display()
+                );
+                self.panicked.fetch_add(1, Ordering::Relaxed);
+            }
+        }
     }
 
     fn finish(self) -> (Vec<Diagnostic>, Stats) {
@@ -72,6 +115,7 @@ impl Accumulator {
         let stats = Stats {
             files: self.files.into_inner(),
             skipped: self.skipped.into_inner(),
+            panicked: self.panicked.into_inner(),
             lines: self.lines.into_inner(),
             ..Default::default()
         };
@@ -215,6 +259,25 @@ mod tests {
             }
         }
         out
+    }
+
+    /// A panicking rule must cost its file and nothing else. The default hook still prints the
+    /// panic, which is the point -- the run reports it and keeps going.
+    #[test]
+    fn isolated_turns_a_panic_into_none_and_passes_a_value_through() {
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let caught = isolated(|| -> i32 { panic!("a rule blew up") });
+        std::panic::set_hook(hook);
+        assert_eq!(caught, None);
+        assert_eq!(isolated(|| 7), Some(7));
+    }
+
+    /// The limit is a ceiling, not a target: a file exactly at it still gets linted.
+    #[test]
+    fn size_limit_is_exclusive_at_the_boundary() {
+        assert!(!over_size_limit(MAX_FILE_BYTES as usize));
+        assert!(over_size_limit(MAX_FILE_BYTES as usize + 1));
     }
 
     #[test]
