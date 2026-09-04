@@ -82,18 +82,26 @@ fn find_manifests(root: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
+    // `entry.file_type()` reads the type `readdir` already returned; `entry.path().is_dir()`
+    // allocated a `PathBuf` and issued a `stat(2)` for every entry in the tree instead. The one
+    // behavioral difference is that a symlinked DIRECTORY is no longer descended, which is what
+    // the lint walk itself does (`ignore`'s `follow_links` is off) -- a symlinked manifest FILE
+    // still matches, since it lands in the name check below either way.
     for entry in entries.flatten() {
-        let p = entry.path();
-        if p.is_dir() {
-            if p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| SKIP_DIRS.contains(&n))
-            {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            if SKIP_DIRS.contains(&name) {
                 continue;
             }
-            find_manifests(&p, out);
-        } else if is_manifest_name(&p) {
-            out.push(p);
+            find_manifests(&entry.path(), out);
+        } else if MANIFEST_NAMES.contains(&name) {
+            out.push(entry.path());
         }
     }
 }
@@ -588,6 +596,36 @@ log = { version = "0.4" }
 
         let idx = DepIndex::discover(&[file]);
         assert!(idx.ts.contains("react"));
+    }
+
+    /// Reading `readdir`'s entry type instead of stat-ing each path must still descend real
+    /// subdirectories, still skip `SKIP_DIRS`, and still pick up a manifest reached by symlink.
+    #[test]
+    fn discover_descends_subdirs_skips_vendor_dirs_and_follows_symlinked_manifests() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nested = tmp.path().join("crates/inner");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("Cargo.toml"), "[dependencies]\nserde = \"1\"\n").unwrap();
+
+        let skipped = tmp.path().join("node_modules/pkg");
+        std::fs::create_dir_all(&skipped).unwrap();
+        std::fs::write(
+            skipped.join("package.json"),
+            r#"{"dependencies":{"left-pad":"1"}}"#,
+        )
+        .unwrap();
+
+        let real = tmp.path().join("elsewhere.json");
+        std::fs::write(&real, r#"{"dependencies":{"react":"18"}}"#).unwrap();
+        std::os::unix::fs::symlink(&real, tmp.path().join("package.json")).unwrap();
+
+        let idx = DepIndex::discover(&[tmp.path().to_path_buf()]);
+        assert!(idx.rust.contains("serde"), "must descend into crates/inner");
+        assert!(
+            idx.ts.contains("react"),
+            "a symlinked manifest still counts"
+        );
+        assert!(!idx.ts.contains("left-pad"), "node_modules stays skipped");
     }
 
     #[test]
