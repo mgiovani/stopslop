@@ -174,6 +174,7 @@ pub fn lint_file(
     // `walk.rs`. This fn's signature is frozen for its existing `&str`-source callers, so it
     // returns empty rather than growing a bytes parameter no code-or-prose caller needs.
     if lang.is_image() {
+        debug_assert!(false, "lint_file called with Lang::Image; use lint_image");
         return Vec::new();
     }
     let mut parser = Parser::new();
@@ -262,10 +263,17 @@ fn lint_prose(
 /// Byte-oriented entry point for `Lang::Image`, reached directly from `walk.rs` (never through
 /// `lint_file`, which returns empty for this lang instead). `source` is the empty string because
 /// an image has no text stream to speak of; image rules read `ctx.image` and nothing else.
-pub fn lint_image(display_path: String, bytes: &[u8], settings: &Settings) -> Vec<Diagnostic> {
-    let Some(doc) = crate::image::ImageDoc::parse(bytes) else {
-        return Vec::new();
-    };
+///
+/// `None` means the bytes match no container format this crate knows, which a caller needs to
+/// tell apart from `Some(vec![])` (a real image with nothing to report): `walk` counts the first
+/// as skipped and the second as linted. Returning it here keeps the parse to one pass -- the
+/// caller checking parseability separately would parse every image in the tree twice.
+pub fn lint_image(
+    display_path: String,
+    bytes: &[u8],
+    settings: &Settings,
+) -> Option<Vec<Diagnostic>> {
+    let doc = crate::image::ImageDoc::parse(bytes)?;
     let is_test = paths::is_test_path(&display_path);
     let ctx = LintContext {
         display_path,
@@ -281,7 +289,7 @@ pub fn lint_image(display_path: String, bytes: &[u8], settings: &Settings) -> Ve
         image: Some(&doc),
         natlangs: &settings.natlangs,
     };
-    run_rules(&ctx, settings)
+    Some(run_rules(&ctx, settings))
 }
 
 #[cfg(test)]

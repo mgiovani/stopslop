@@ -1,5 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
+use crate::image::ImageFormat;
 use crate::lang;
 use crate::registry::RuleDef;
 
@@ -21,6 +22,14 @@ pub static RULE: RuleDef = RuleDef {
 /// icc` (an ICC color profile) and a real corpus file carries one keyed `author`, and both
 /// happen to contain "i" and other short fragments a loose substring panel could still snag on
 /// somewhere down the line -- exact equality is what actually rules that out, not caution.
+///
+/// Residual risk, kept at Tier A anyway: bare `prompt` is a soft judgment call -- a "writing
+/// prompt of the day" card generator could plausibly key its own text this way. It stays because
+/// the surrounding mitigations are real: a PNG tEXt/iTXt keyword is only ever set deliberately by
+/// the app author (never inferred, unlike a filename or a comment), the match is case-sensitive
+/// (`Prompt`/`PROMPT` don't trip it), and every other key in this panel (`workflow`,
+/// `sd-metadata`, the `invokeai_*` pair) is unambiguous. Same treatment as the ICC/`author`
+/// exclusion above: named here so the next reader sees it was weighed, not missed.
 pub static PROMPT_KEYS: &[&str] = &[
     "parameters",
     "prompt",
@@ -30,14 +39,30 @@ pub static PROMPT_KEYS: &[&str] = &[
     "invokeai_workflow",
 ];
 
+/// Names the metadata container in every image rule's message using `doc.format`, replacing the
+/// generic "image metadata field" wording: PNG and WebP metadata lives in length-prefixed RIFF
+/// chunks, JPEG's in APPn segments -- different enough vocabulary that the wrong one reads as
+/// wrong to anyone who has opened a hex editor on either. Shared by all three image rules
+/// (SLOP045-047) rather than duplicated per file, same reasoning as `PROMPT_KEYS` being imported
+/// rather than re-listed.
+pub(crate) fn container_label(format: ImageFormat) -> &'static str {
+    match format {
+        ImageFormat::Png => "png chunk",
+        ImageFormat::Jpeg => "jpeg segment",
+        ImageFormat::WebP => "webp chunk",
+    }
+}
+
 /// One diagnostic per file: this is a file-level fact ("this image carries a prompt chunk"), and
 /// a C2PA-style image can genuinely repeat the same signal in more than one field. Stops at the
 /// first match in `doc.fields` order (the order the container's own chunks/segments appear in),
 /// so the finding is deterministic regardless of how many prompt-shaped fields the file actually
 /// carries.
 ///
-/// The message below never quotes `field.value`: a compressed field's value is empty anyway (see
-/// `MetaField::compressed`'s doc comment in image.rs), and the keyword alone is the tell either way.
+/// The message never quotes `field.value`: the keyword alone is the tell either way. When
+/// `field.compressed` is set (zTXt, or an iTXt with its compression flag on) the value is empty
+/// (see `MetaField::compressed`'s doc comment in image.rs), and the message says so explicitly
+/// rather than silently reading the same as an uncompressed hit.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.image else { return };
     let Some(field) = doc
@@ -47,10 +72,19 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     else {
         return;
     };
-    let message = format!(
-        "image ships its generation prompt in the `{}` metadata field (offset {})",
-        field.key, field.offset
-    );
+    let container = container_label(doc.format);
+    let message = if field.compressed {
+        format!(
+            "{container} `{}` (offset {}) ships a compressed generation-prompt field: the `{}` \
+             keyword is the tell, the zlib-compressed value can't be read",
+            field.key, field.offset, field.key
+        )
+    } else {
+        format!(
+            "{container} `{}` (offset {}) ships its generation prompt",
+            field.key, field.offset
+        )
+    };
     out.push(Diagnostic::at_fix(
         rule,
         ctx,

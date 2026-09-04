@@ -37,17 +37,28 @@ migration notes live here.
   manifest's mere presence is never the signal: camera bodies like the
   Leica M11-P and Sony Alpha sign every frame they take, so only this
   vocabulary value distinguishes an AI-authored manifest from a
-  camera-authored one.
+  camera-authored one. Skips any field SLOP045 already owns, since InvokeAI
+  has been adding Content-Credentials fields to its own metadata export and
+  a real `invokeai_metadata` field can carry the vocabulary term inside its
+  own JSON value.
 - **SLOP047** (`provenance`, Tier B, on): flags a metadata value naming a
   known image generator (`Midjourney`, `Stable Diffusion`, `ComfyUI`, `Adobe
-  Firefly`, and others from a fixed panel), case-insensitively. Skips any
-  field SLOP045 already owns, since a real ComfyUI file's own `prompt`/
-  `workflow` JSON contains the literal string "ComfyUI" and would otherwise
-  double-report one fact as two findings. Deliberately excludes bare `Adobe`,
-  `Photoshop`, `Canon`, `Nikon`, `Sony` (every camera-original or
-  Photoshop-touched JPEG carries these in EXIF) and bare `Firefly`, `Imagen`,
-  `Flux`, `Grok`, `Aurora`, `Gemini` (ordinary words; `Imagen` is Portuguese
-  for "image").
+  Firefly`, and others from a fixed panel). Matches require a word-boundary
+  guard, not a bare substring: plain `.contains()` matched `DALLE` inside
+  "medalled" and `Recraft` inside "we recraft your brand image", both real
+  false positives on ordinary English. Bare `DALLE` and `Recraft` are
+  removed from the panel entirely rather than merely guarded, since
+  `DALL-E`/`DALL·E` already cover the real spelling and a boundary guard
+  cannot save a whole-word match like "recraft" used as an ordinary verb.
+  Skips any field SLOP045 or SLOP046 already owns: a real ComfyUI file's own
+  `prompt`/`workflow` JSON contains the literal string "ComfyUI", and a
+  C2PA/EXIF field can declare `digitalSourceType` and name its signing
+  generator (e.g. Adobe Firefly) in the same value at the same offset.
+  Either would otherwise double-report one fact as two findings. Deliberately
+  excludes bare `Adobe`, `Photoshop`, `Canon`, `Nikon`, `Sony` (every
+  camera-original or Photoshop-touched JPEG carries these in EXIF) and bare
+  `Firefly`, `Imagen`, `Flux`, `Grok`, `Aurora`, `Gemini` (ordinary words;
+  `Imagen` is Portuguese for "image").
 - **pt-BR witnesses for code-language rules.** `tests/natlang_witness.rs`
   now requires a `slop_*_pt_br` fixture per language family for the code
   rules whose comment panels carry Portuguese (SLOP001, 002, 004, 009, 042);

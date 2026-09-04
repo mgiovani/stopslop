@@ -2,6 +2,7 @@ use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang;
 use crate::registry::RuleDef;
+use crate::rules::image_prompt;
 
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP046",
@@ -38,28 +39,57 @@ pub static RULE: RuleDef = RuleDef {
 const NEEDLE: &str = "trainedalgorithmicmedia";
 const COMPOSITE_NEEDLE: &str = "compositewithtrainedalgorithmicmedia";
 
+/// Exposed for SLOP047 (AGENTS.md panel-disjointness): a field that declares a digital source
+/// type is SLOP046's fact even where the same field's value also names the generator that
+/// produced it -- `Adobe Firefly` is in SLOP047's panel precisely because Firefly signs C2PA
+/// manifests, and `digitalSourceType` lives in exactly those manifests. Confirmed on the real
+/// corpus: a C2PA/EXIF field can carry both at the identical offset. `NEEDLE` alone is enough
+/// here too, same as inside `check` below: `COMPOSITE_NEEDLE` contains it as a substring, so one
+/// check catches both terms.
+pub(crate) fn declares_source_type(value_lower: &str) -> bool {
+    value_lower.contains(NEEDLE)
+}
+
+/// Blind spot, recorded rather than left silent (AGENTS.md: "record a rejected alternative
+/// wherever the next reader would otherwise re-propose it"): a zTXt chunk, or an iTXt with its
+/// compression flag set, always yields an empty `MetaField::value` (image.rs adds no zlib
+/// dependency -- SLOP037/038 exist to say adding one for what a few lines already avoid needing
+/// is a defect, and decompressing here would be exactly that for a value this rule only ever
+/// substring-matches). An image whose `trainedAlgorithmicMedia` declaration sits only in a
+/// *compressed* text chunk defeats this rule: `field.compressed` is `true` and `value` is `""`,
+/// so `lower.contains(NEEDLE)` never fires. Pinned by
+/// `compressed_source_type_declaration_is_a_known_blind_spot` below.
+///
 /// One diagnostic per file, first match in `doc.fields` order -- same rationale as SLOP045: this
 /// is a file-level fact, and a real file can repeat it across an XMP packet and a C2PA manifest
 /// at once.
+///
+/// Skips SLOP045's keys first, same disjointness fix SLOP047 already applies and for the same
+/// reason (see `image_prompt::PROMPT_KEYS`'s doc comment): InvokeAI has been adding
+/// Content-Credentials fields to its own metadata export, so a real `invokeai_metadata` field
+/// (SLOP045's key) can carry `trainedAlgorithmicMedia` inside its own JSON value.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.image else { return };
-    // Lowercased once and carried out of the search: a `MetaField` value runs to
-    // `MAX_FIELD_BYTES`, so re-lowercasing the match to pick the message would copy it twice.
+    // Lowercased once and carried out of the search, to avoid copying `f.value` a second time.
     let Some((field, lower)) = doc.fields.iter().find_map(|f| {
+        if image_prompt::PROMPT_KEYS.contains(&f.key.as_str()) {
+            return None;
+        }
         let lower = f.value.to_ascii_lowercase();
         lower.contains(NEEDLE).then_some((f, lower))
     }) else {
         return;
     };
+    let container = image_prompt::container_label(doc.format);
     let message = if lower.contains(COMPOSITE_NEEDLE) {
         format!(
-            "image metadata field `{}` (offset {}) declares digitalSourceType \
+            "{container} `{}` (offset {}) declares digitalSourceType \
              compositeWithTrainedAlgorithmicMedia: an AI-assisted edit of a real photograph",
             field.key, field.offset
         )
     } else {
         format!(
-            "image metadata field `{}` (offset {}) declares digitalSourceType \
+            "{container} `{}` (offset {}) declares digitalSourceType \
              trainedAlgorithmicMedia: the image is fully AI-generated",
             field.key, field.offset
         )
@@ -100,6 +130,14 @@ mod tests {
         let mut data = keyword.as_bytes().to_vec();
         data.push(0);
         data.extend_from_slice(value.as_bytes());
+        data
+    }
+
+    fn ztxt_chunk(keyword: &str) -> Vec<u8> {
+        let mut data = keyword.as_bytes().to_vec();
+        data.push(0);
+        data.push(0); // compression method
+        data.extend_from_slice(b"not-real-zlib-data");
         data
     }
 
@@ -181,6 +219,33 @@ mod tests {
     #[test]
     fn clean_on_bare_png_with_no_text_chunks() {
         let bytes = png(&[("IHDR", &[0; 13]), ("IEND", &[])]);
+        assert!(diagnostics_for(&bytes).is_empty());
+    }
+
+    /// Disjointness guard (A1): a real InvokeAI export can put Content-Credentials-style JSON
+    /// inside its own `invokeai_metadata` field, so the same field would fire both SLOP045 (the
+    /// key) and SLOP046 (the value) without this skip. That fact is SLOP045's to report.
+    #[test]
+    fn skips_slop045_owned_key_even_when_its_value_declares_source_type() {
+        let bytes = png(&[
+            (
+                "tEXt",
+                &text_chunk(
+                    "invokeai_metadata",
+                    r#"{"digitalSourceType":"trainedAlgorithmicMedia"}"#,
+                ),
+            ),
+            ("IEND", &[]),
+        ]);
+        assert!(diagnostics_for(&bytes).is_empty());
+    }
+
+    /// Known limitation, not a regression (see the blind-spot doc comment on `check`): zTXt
+    /// values are always empty, so a `trainedAlgorithmicMedia` declaration inside a compressed
+    /// chunk is invisible to this rule. Pinned here so a future reader sees it as known.
+    #[test]
+    fn compressed_source_type_declaration_is_a_known_blind_spot() {
+        let bytes = png(&[("zTXt", &ztxt_chunk("XML:com.adobe.xmp")), ("IEND", &[])]);
         assert!(diagnostics_for(&bytes).is_empty());
     }
 }

@@ -240,7 +240,7 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP044 | artifact | Boilerplate or empty page title | B, on  | HTML | en, pt-BR | A `<title>Document</title>` (the editor's `!` expansion left in place) or an empty `<title>` |
 | SLOP045 | provenance | Generation prompt shipped in image | A, on | PNG, JPEG, WebP | en, pt-BR | A metadata field keyed exactly `parameters`, `prompt`, `workflow`, `sd-metadata`, `invokeai_metadata`, or `invokeai_workflow` ships the image's full generation prompt or workflow graph; fires on the keyword alone even when the value itself is zlib-compressed |
 | SLOP046 | provenance | Declared AI source type | A, on | PNG, JPEG, WebP | en, pt-BR | A metadata value names the IPTC digital-source-type vocabulary term `trainedAlgorithmicMedia` (fully AI-generated) or `compositeWithTrainedAlgorithmicMedia` (an AI-assisted edit of a real photograph), whether it surfaces in an XMP packet, an IPTC block, or a C2PA manifest. A C2PA manifest's mere presence is never flagged on its own: camera bodies like the Leica M11-P and Sony Alpha sign every frame they take |
-| SLOP047 | provenance | Image metadata names a generator | B, on | PNG, JPEG, WebP | en, pt-BR | A metadata value names a known image generator (`Midjourney`, `Stable Diffusion`, `ComfyUI`, `Adobe Firefly`, and others). Skips any field SLOP045 already owns, so a ComfyUI file's own `prompt`/`workflow` JSON isn't double-reported |
+| SLOP047 | provenance | Image metadata names a generator | B, on | PNG, JPEG, WebP | en, pt-BR | A metadata value names a known image generator (`Midjourney`, `Stable Diffusion`, `ComfyUI`, `Adobe Firefly`, and others), matched with a word-boundary guard so it never trips inside an ordinary word (`medalled`, `we recraft your brand`). Skips any field SLOP045 or SLOP046 already owns, so a ComfyUI file's own `prompt`/`workflow` JSON and a C2PA manifest's own `digitalSourceType` declaration aren't double-reported |
 
 Every rule is exactly one of three states, `--list-rules` prints the DEFAULT
 column so you can check any given rule at a glance:
@@ -248,7 +248,7 @@ column so you can check any given rule at a glance:
 - **Tier A, on by default (14 rules)**: mechanical artifacts (SLOP001–009,
   SLOP011–013, SLOP045–046) with no legitimate reading. A finding here fails
   the run (exit 1) and blocks CI.
-- **Tier B, on by default (29 rules)**: everything else except SLOP010.
+- **Tier B, on by default (32 rules)**: everything else except SLOP010.
   Judgment calls (density and style checks on prose, stdlib/structure
   heuristics) that warn without ever exiting 1. Expect some noise; silence
   what you don't want with `ignore`/`--ignore` by code or group.

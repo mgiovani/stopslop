@@ -60,10 +60,18 @@ impl Accumulator {
             }
         };
         if lang.is_image() {
+            // `None` is "these bytes are no container format we know", which is a skip, not a
+            // clean file. Images have no lines, so `self.lines` is left alone rather than faked.
+            let Some(mut found) = engine::lint_image(display_path(path, cwd), &bytes, settings)
+            else {
+                eprintln!(
+                    "stopslop: parse failed, skipping {}",
+                    display_path(path, cwd)
+                );
+                self.skipped.fetch_add(1, Ordering::Relaxed);
+                return;
+            };
             self.files.fetch_add(1, Ordering::Relaxed);
-            // Images have no lines to count; `self.lines` is left untouched (Stats::lines adds 0
-            // for them rather than faking a line count for a binary file).
-            let mut found = engine::lint_image(display_path(path, cwd), &bytes, settings);
             self.diags.lock().unwrap().append(&mut found);
             return;
         }
@@ -349,5 +357,82 @@ mod tests {
 
         assert!(diags.is_empty());
         assert_eq!(stats.skipped, files.len() as u64);
+    }
+
+    /// Table-free CRC-32 (poly 0xEDB88320), bit by bit -- same algorithm `src/image.rs`'s own
+    /// unit tests use, so this builds a byte-valid PNG the real walk can read off disk.
+    fn crc32(bytes: &[u8]) -> u32 {
+        let mut crc: u32 = 0xFFFF_FFFF;
+        for &b in bytes {
+            crc ^= b as u32;
+            for _ in 0..8 {
+                crc = if crc & 1 != 0 {
+                    (crc >> 1) ^ 0xEDB8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        crc ^ 0xFFFF_FFFF
+    }
+
+    fn png_with_a1111_parameters() -> Vec<u8> {
+        const PNG_SIGNATURE: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        let mut keyword_and_value = b"parameters".to_vec();
+        keyword_and_value.push(0);
+        keyword_and_value
+            .extend_from_slice(b"a photo of a cat, steps: 20, sampler: Euler a, cfg scale: 7");
+        let mut out = PNG_SIGNATURE.to_vec();
+        for (chunk_type, data) in [("tEXt", keyword_and_value.as_slice()), ("IEND", &[])] {
+            let type_bytes = chunk_type.as_bytes();
+            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            out.extend_from_slice(type_bytes);
+            out.extend_from_slice(data);
+            let mut crc_input = type_bytes.to_vec();
+            crc_input.extend_from_slice(data);
+            out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
+        }
+        out
+    }
+
+    fn image_settings() -> Settings {
+        Settings {
+            enabled: resolve_enabled(&["SLOP045".to_string()], &[], &[], &[], &[], false),
+            deps: None,
+            custom_rules: Vec::new(),
+            natlangs: crate::lang::ALL_NATLANGS.to_vec(),
+        }
+    }
+
+    /// F: a real, parseable image with metadata must produce the expected finding and count as a
+    /// linted file, through the actual walk (`tests/image_fixtures.rs` calls `lint_image`
+    /// directly and never exercises this path).
+    #[test]
+    fn walk_lints_a_real_png_on_disk_and_finds_slop045() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a1111.png"), png_with_a1111_parameters()).unwrap();
+
+        let (diags, stats) =
+            lint_paths(&[dir.path().to_path_buf()], &[], &image_settings(), 0).unwrap();
+
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP045");
+        assert_eq!(stats.files, 1);
+        assert_eq!(stats.skipped, 0);
+    }
+
+    /// F: a `.png` whose bytes match no image magic must count as skipped, not as a silently
+    /// clean linted file, matching how a non-UTF-8 text file is already counted.
+    #[test]
+    fn walk_skips_a_png_named_file_with_non_image_bytes_without_panicking() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("not-really-a-png.png"), b"just some text").unwrap();
+
+        let (diags, stats) =
+            lint_paths(&[dir.path().to_path_buf()], &[], &image_settings(), 0).unwrap();
+
+        assert!(diags.is_empty());
+        assert_eq!(stats.files, 0);
+        assert_eq!(stats.skipped, 1);
     }
 }

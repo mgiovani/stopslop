@@ -50,8 +50,7 @@ pub fn changed_files(
 
 /// Bytes of `path` as staged in the index, so a partially staged file is linted as it will be
 /// committed rather than as it sits on disk. `walk::Accumulator::lint` reads this directly for
-/// every lang (image included); `staged_source` below is the text-only wrapper CLI's non-image
-/// callers used before images existed.
+/// every lang, image included, decoding to UTF-8 itself for the text langs.
 pub fn staged_bytes(dir: &Path, path: &Path) -> std::io::Result<Vec<u8>> {
     // One `git show` process per file is fine for a pre-commit-sized diff; if this ever needs to
     // scale to thousands of staged files, switch to a single `git cat-file --batch` pipe instead.
@@ -67,11 +66,6 @@ pub fn staged_bytes(dir: &Path, path: &Path) -> std::io::Result<Vec<u8>> {
         ));
     }
     Ok(output.stdout)
-}
-
-/// Content of `path` as staged in the index, decoded as UTF-8 text.
-pub fn staged_source(dir: &Path, path: &Path) -> std::io::Result<String> {
-    String::from_utf8(staged_bytes(dir, path)?).map_err(std::io::Error::other)
 }
 
 fn run(dir: &Path, args: &[impl AsRef<OsStr>]) -> anyhow::Result<Vec<u8>> {
@@ -143,8 +137,8 @@ mod tests {
         let files = changed_files(dir, &Scope::Staged, &[PathBuf::from(".")]).unwrap();
         assert_eq!(files, vec![PathBuf::from("a b.md")]);
 
-        let source = staged_source(dir, Path::new("a b.md")).unwrap();
-        assert_eq!(source, "staged\n");
+        let source = staged_bytes(dir, Path::new("a b.md")).unwrap();
+        assert_eq!(source, b"staged\n");
     }
 
     #[test]
@@ -228,9 +222,9 @@ mod tests {
     }
 
     #[test]
-    fn staged_source_of_a_path_not_in_the_index_is_an_error() {
+    fn staged_bytes_of_a_path_not_in_the_index_is_an_error() {
         let repo = init_repo();
-        assert!(staged_source(repo.path(), Path::new("missing.md")).is_err());
+        assert!(staged_bytes(repo.path(), Path::new("missing.md")).is_err());
     }
 
     #[test]

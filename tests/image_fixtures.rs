@@ -7,20 +7,12 @@
 use std::collections::HashSet;
 use stopslop::{lint_image, resolve_enabled, Settings, ALL_NATLANGS};
 
+/// Selects the whole `"SLOP"` group, same as `tests/integration.rs`'s text-fixture harness, so an
+/// unrelated rule over-firing on one of these fixtures is caught rather than silently masked by
+/// selecting only SLOP045-047.
 fn settings() -> Settings {
     Settings {
-        enabled: resolve_enabled(
-            &[
-                "SLOP045".to_string(),
-                "SLOP046".to_string(),
-                "SLOP047".to_string(),
-            ],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
-        ),
+        enabled: resolve_enabled(&["SLOP".to_string()], &[], &[], &[], &[], false),
         deps: None,
         custom_rules: Vec::new(),
         natlangs: ALL_NATLANGS.to_vec(),
@@ -29,6 +21,7 @@ fn settings() -> Settings {
 
 fn codes(bytes: &[u8]) -> HashSet<&'static str> {
     lint_image("fixture".to_string(), bytes, &settings())
+        .expect("fixture bytes must parse as a known container format")
         .into_iter()
         .map(|d| d.code)
         .collect()
@@ -53,6 +46,15 @@ fn crc32(bytes: &[u8]) -> u32 {
         }
     }
     crc ^ 0xFFFF_FFFF
+}
+
+/// The parser never validates a chunk's CRC (it walks past it, see `crc32`'s own doc comment), so
+/// nothing in the fixture-building path here would catch a wrong constant in `crc32` above --
+/// pinned against a known-good value instead. `IEND`'s CRC is a fixed, publicly documented
+/// constant precisely because every PNG encoder emits the same empty `IEND` chunk.
+#[test]
+fn crc32_self_check_against_known_iend_constant() {
+    assert_eq!(crc32(b"IEND"), 0xAE42_6082);
 }
 
 fn png(chunks: &[(&str, &[u8])]) -> Vec<u8> {
@@ -256,4 +258,89 @@ fn comfyui_named_inside_its_own_prompt_field_is_slop045_only() {
     let json = r#"{"generator": "ComfyUI", "nodes": []}"#;
     let bytes = png(&[("tEXt", &text_chunk("prompt", json)), ("IEND", &[])]);
     assert_eq!(codes(&bytes), HashSet::from(["SLOP045"]));
+}
+
+#[test]
+fn clean_jpeg_with_no_metadata_segments_is_clean() {
+    let bytes = jpeg(&[]);
+    assert!(codes(&bytes).is_empty());
+}
+
+#[test]
+fn clean_webp_with_no_metadata_chunks_is_clean() {
+    let bytes = webp(&[]);
+    assert!(codes(&bytes).is_empty());
+}
+
+/// A2: a real C2PA/EXIF field can declare `digitalSourceType` and name the generator that signed
+/// the manifest in the same value, at the same offset -- confirmed on the real corpus
+/// (`c2pa_ai_assertion.png`, `c2pa_ai_assertion_firefly_google.png`). SLOP047 must defer to
+/// SLOP046 here, or the same field double-reports one fact.
+#[test]
+fn c2pa_field_declaring_source_type_and_naming_its_signer_is_slop046_only() {
+    let mut data = vec![0x00, 0x01, 0x02];
+    data.extend_from_slice(b"digitalSourceType trainedAlgorithmicMedia");
+    data.extend_from_slice(&[0x00, 0x03]);
+    data.extend_from_slice(b"claim_generator Adobe Firefly");
+    data.extend_from_slice(&[0x00, 0x04]);
+    let bytes = png(&[("caBX", &data), ("IEND", &[])]);
+    assert_eq!(codes(&bytes), HashSet::from(["SLOP046"]));
+}
+
+/// B1: a real false positive a bare `.contains()` produced -- "medalled" contains "dalle". Must
+/// stay silent, or SLOP047 would flag ordinary photo captions mentioning athletes.
+#[test]
+fn medalled_athlete_description_is_clean() {
+    let bytes = png(&[
+        (
+            "tEXt",
+            &text_chunk(
+                "Description",
+                "the gold-medalled athlete waved to the crowd",
+            ),
+        ),
+        ("IEND", &[]),
+    ]);
+    assert!(codes(&bytes).is_empty());
+}
+
+/// B2: a real false positive a bare `.contains()` produced -- "recraft" used as an ordinary verb.
+/// A word-boundary guard alone would not fix this one, since the whole word matches; `Recraft` is
+/// dropped from the panel entirely.
+#[test]
+fn recraft_used_as_an_ordinary_verb_is_clean() {
+    let bytes = png(&[
+        (
+            "tEXt",
+            &text_chunk("Description", "we recraft your brand image every quarter"),
+        ),
+        ("IEND", &[]),
+    ]);
+    assert!(codes(&bytes).is_empty());
+}
+
+/// D: known blind spot, not a regression -- a zTXt value is always empty (image.rs adds no zlib
+/// dependency), so a `digitalSourceType` declaration inside a compressed chunk is invisible to
+/// SLOP046. Pinned so this negative reads as known rather than untested.
+#[test]
+fn compressed_source_type_field_is_a_known_blind_spot() {
+    let bytes = png(&[
+        (
+            "zTXt",
+            &ztxt_chunk("XML:com.adobe.xmp", b"not-real-zlib-bytes"),
+        ),
+        ("IEND", &[]),
+    ]);
+    assert!(codes(&bytes).is_empty());
+}
+
+/// D: same known blind spot for SLOP047 -- a generator name shipped only inside a compressed
+/// text chunk is invisible, since the value the rule matches on is always empty.
+#[test]
+fn compressed_generator_name_field_is_a_known_blind_spot() {
+    let bytes = png(&[
+        ("zTXt", &ztxt_chunk("Software", b"not-real-zlib-bytes")),
+        ("IEND", &[]),
+    ]);
+    assert!(codes(&bytes).is_empty());
 }
