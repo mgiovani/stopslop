@@ -91,6 +91,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
+            image: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();

@@ -42,7 +42,7 @@ impl Accumulator {
         path: &Path,
         cwd: &Path,
         settings: &Settings,
-        read: impl FnOnce(&Path) -> std::io::Result<String>,
+        read: impl FnOnce(&Path) -> std::io::Result<Vec<u8>>,
     ) {
         let lang = match Lang::from_path(path) {
             Some(l) => l,
@@ -51,10 +51,26 @@ impl Accumulator {
                 return;
             }
         };
-        let source = match read(path) {
-            Ok(s) => s,
+        let bytes = match read(path) {
+            Ok(b) => b,
             Err(e) => {
                 eprintln!("stopslop: skipping {}: {e}", path.display());
+                self.skipped.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+        };
+        if lang.is_image() {
+            self.files.fetch_add(1, Ordering::Relaxed);
+            // Images have no lines to count; `self.lines` is left untouched (Stats::lines adds 0
+            // for them rather than faking a line count for a binary file).
+            let mut found = engine::lint_image(display_path(path, cwd), &bytes, settings);
+            self.diags.lock().unwrap().append(&mut found);
+            return;
+        }
+        let source = match String::from_utf8(bytes) {
+            Ok(s) => s,
+            Err(_) => {
+                eprintln!("stopslop: skipping {}: not valid UTF-8", path.display());
                 self.skipped.fetch_add(1, Ordering::Relaxed);
                 return;
             }
@@ -135,7 +151,7 @@ pub fn lint_paths(
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 return WalkState::Continue;
             }
-            acc.lint(entry.path(), &cwd, settings, |p| std::fs::read_to_string(p));
+            acc.lint(entry.path(), &cwd, settings, |p| std::fs::read(p));
             WalkState::Continue
         })
     });
@@ -150,7 +166,7 @@ pub fn lint_files(
     files: &[PathBuf],
     exclude: &[String],
     settings: &Settings,
-    read: impl Fn(&Path) -> std::io::Result<String>,
+    read: impl Fn(&Path) -> std::io::Result<Vec<u8>>,
 ) -> anyhow::Result<(Vec<Diagnostic>, Stats)> {
     let cwd = std::env::current_dir()?;
     let ov = exclude_override(&cwd, exclude)?;
@@ -293,8 +309,7 @@ mod tests {
         let settings = go_settings();
         let files = go_files(&dir);
 
-        let (from_files, _) =
-            lint_files(&files, &[], &settings, |p| std::fs::read_to_string(p)).unwrap();
+        let (from_files, _) = lint_files(&files, &[], &settings, |p| std::fs::read(p)).unwrap();
         let (from_paths, _) = lint_paths(std::slice::from_ref(&dir), &[], &settings, 0).unwrap();
 
         assert!(
@@ -313,7 +328,7 @@ mod tests {
         let files = go_files(&dir);
 
         let (diags, stats) = lint_files(&files, &["**/*.go".to_string()], &settings, |p| {
-            std::fs::read_to_string(p)
+            std::fs::read(p)
         })
         .unwrap();
 

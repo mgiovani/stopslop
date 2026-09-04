@@ -13,10 +13,17 @@ pub enum Lang {
     Txt,
     Rst,
     Html,
+    /// One `Lang` for four container formats (PNG/JPEG/WebP, gated by `IMAGE_LANGS`) because the
+    /// tell a rule reads is the embedded-metadata signal (a generator string, a ComfyUI workflow
+    /// graph, a C2PA claim), not the container byte layout. A rule that must distinguish reads
+    /// `ImageDoc::format`, resolved from the magic bytes by `image::ImageDoc::parse`, the same
+    /// way a code rule reads `ctx.lang` only when one branch needs it.
+    Image,
 }
 
 pub const CODE_LANGS: &[Lang] = &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust];
 pub const PROSE_LANGS: &[Lang] = &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst, Lang::Html];
+pub const IMAGE_LANGS: &[Lang] = &[Lang::Image];
 
 impl Lang {
     pub fn from_path(p: &Path) -> Option<Lang> {
@@ -31,6 +38,7 @@ impl Lang {
             "txt" | "text" => Some(Lang::Txt),
             "rst" => Some(Lang::Rst),
             "html" | "htm" => Some(Lang::Html),
+            "png" | "jpg" | "jpeg" | "webp" => Some(Lang::Image),
             _ => None,
         }
     }
@@ -43,6 +51,13 @@ impl Lang {
             self,
             Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html
         )
+    }
+
+    /// Images take neither the AST path (`context::extract`) nor the `ProseDoc` path: they carry
+    /// no text stream at all, so `engine::lint_image` builds a `LintContext` straight from
+    /// `image::ImageDoc::parse` instead.
+    pub fn is_image(self) -> bool {
+        matches!(self, Lang::Image)
     }
 }
 
@@ -57,8 +72,8 @@ pub fn ts_language(lang: Lang) -> Language {
         Lang::Go => tree_sitter_go::LANGUAGE.into(),
         Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
         Lang::Html => tree_sitter_html::LANGUAGE.into(),
-        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst => {
-            unreachable!("markdown-family prose langs bypass tree-sitter")
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Image => {
+            unreachable!("markdown-family prose langs and images bypass tree-sitter")
         }
     }
 }

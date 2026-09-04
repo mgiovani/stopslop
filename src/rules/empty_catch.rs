@@ -34,7 +34,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         Lang::Go => check_go(rule, ctx, out),
         Lang::Rust => check_rust(rule, ctx, out),
         Lang::Python => {} // owned by SLOP006
-        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html => {} // rule.langs excludes prose; never reached
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html | Lang::Image => {} // rule.langs excludes prose and images; never reached
     }
 }
 
@@ -160,6 +160,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
+            image: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();

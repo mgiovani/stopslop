@@ -48,9 +48,11 @@ pub fn changed_files(
         .collect())
 }
 
-/// Content of `path` as staged in the index, so a partially staged file is linted as it will be
-/// committed rather than as it sits on disk.
-pub fn staged_source(dir: &Path, path: &Path) -> std::io::Result<String> {
+/// Bytes of `path` as staged in the index, so a partially staged file is linted as it will be
+/// committed rather than as it sits on disk. `walk::Accumulator::lint` reads this directly for
+/// every lang (image included); `staged_source` below is the text-only wrapper CLI's non-image
+/// callers used before images existed.
+pub fn staged_bytes(dir: &Path, path: &Path) -> std::io::Result<Vec<u8>> {
     // One `git show` process per file is fine for a pre-commit-sized diff; if this ever needs to
     // scale to thousands of staged files, switch to a single `git cat-file --batch` pipe instead.
     let spec = format!(":./{}", path.display());
@@ -64,7 +66,12 @@ pub fn staged_source(dir: &Path, path: &Path) -> std::io::Result<String> {
             String::from_utf8_lossy(&output.stderr).trim().to_string(),
         ));
     }
-    String::from_utf8(output.stdout).map_err(std::io::Error::other)
+    Ok(output.stdout)
+}
+
+/// Content of `path` as staged in the index, decoded as UTF-8 text.
+pub fn staged_source(dir: &Path, path: &Path) -> std::io::Result<String> {
+    String::from_utf8(staged_bytes(dir, path)?).map_err(std::io::Error::other)
 }
 
 fn run(dir: &Path, args: &[impl AsRef<OsStr>]) -> anyhow::Result<Vec<u8>> {
