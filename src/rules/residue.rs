@@ -4,7 +4,6 @@ use crate::lang::{NatLang, PROSE_LANGS};
 use crate::prose::{first_byte_per_line, ProseDoc};
 use crate::prose_words::REASONING_CHAIN_FRAGMENT;
 use crate::registry::RuleDef;
-use crate::rules::fragmentation;
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -90,7 +89,7 @@ static RE_MIDLINE_STEP: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(?-u:\b)step \d+:").unwrap());
 
 /// Acknowledgment loops ("you're asking about X", "to answer your question, ..."). PARAGRAPH-
-/// INITIAL only, checked separately below via `fragmentation::paragraph_blocks`: a wrapped
+/// INITIAL only, checked separately below via `ProseDoc::paragraph_blocks`: a wrapped
 /// continuation line that happens to start with this phrasing mid-paragraph is ordinary English,
 /// but the very first line of a paragraph is where a chat-turn acknowledgment actually lands.
 static RE_ACK_LOOP: LazyLock<Regex> = LazyLock::new(|| {
@@ -142,7 +141,7 @@ static RE_CLOSER_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
 /// HTML has no blank-line paragraphs; there "paragraph-initial" means opening a block element.
 fn ack_loop_bytes(doc: &ProseDoc, re: &Regex) -> Vec<usize> {
     if doc.block_starts.is_empty() {
-        fragmentation::paragraph_blocks(doc)
+        doc.paragraph_blocks()
             .iter()
             .filter(|b| re.is_match(&b.text))
             .map(|b| b.first_byte)
