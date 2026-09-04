@@ -158,7 +158,7 @@ fn touches_letter(masked: &str, start: usize, end: usize) -> bool {
 }
 
 /// True when `byte` falls inside some block's `[first_byte, end_byte)`. `blocks` comes from
-/// `fragmentation::paragraph_blocks`, which returns blocks in ascending, non-overlapping byte
+/// `ProseDoc::paragraph_blocks`, which returns blocks in ascending, non-overlapping byte
 /// order: the Markdown scan walks `line_spans` once from byte 0 forward, pushing one `Block` per
 /// contiguous non-blank line run in the order it meets them (`fragmentation.rs`, the `while i <
 /// spans.len()` loop around line 120); the HTML scan (`html_blocks`) maps `doc.paragraphs` 1:1,
@@ -167,7 +167,7 @@ fn touches_letter(masked: &str, start: usize, end: usize) -> bool {
 /// instead of scanning every block per byte -- the same idiom as `section_of` above. Was an
 /// O(matches x blocks) linear scan, measured at ~50% of the default lint wall time on a 20 MB
 /// file (issue #21 phase-2: 3.68s -> 1.82s with this rule ignored).
-fn in_prose_blocks(blocks: &[super::fragmentation::Block], byte: usize) -> bool {
+fn in_prose_blocks(blocks: &[crate::prose::Block], byte: usize) -> bool {
     let idx = blocks.partition_point(|b| b.first_byte <= byte);
     idx > 0 && byte < blocks[idx - 1].end_byte
 }
@@ -185,7 +185,7 @@ fn in_prose_blocks(blocks: &[super::fragmentation::Block], byte: usize) -> bool 
 /// - **Sections, not paragraphs.** Genuine rotation is one author drifting across a passage; the
 ///   rule's own fixture spreads `check` x2 and `verify` x2 over four consecutive paragraphs.
 ///   Paragraph scoping would delete that true positive.
-/// - **Only `fragmentation::paragraph_blocks`.** That helper already drops headings, list items,
+/// - **Only `ProseDoc::paragraph_blocks`.** That helper already drops headings, list items,
 ///   tables, rules, link-reference definitions, and comment lines -- "bullet lists, tables, and
 ///   headings must never be treated as sentences", per its own doc comment. Both known false
 ///   positives were list items, and a 17-bullet catalog under one heading is not fixed by section
@@ -193,13 +193,13 @@ fn in_prose_blocks(blocks: &[super::fragmentation::Block], byte: usize) -> bool 
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
 
-    let blocks = super::fragmentation::paragraph_blocks(doc);
+    let blocks = doc.paragraph_blocks();
     if blocks.is_empty() {
         return;
     }
     let heading_starts: Vec<usize> = doc.headings.iter().map(|h| h.byte_start).collect();
     let section_of = |byte: usize| heading_starts.partition_point(|&s| s <= byte);
-    let in_prose = |byte: usize| in_prose_blocks(&blocks, byte);
+    let in_prose = |byte: usize| in_prose_blocks(blocks, byte);
 
     let en = ctx.natlangs.contains(&NatLang::En);
     let pt_br = ctx.natlangs.contains(&NatLang::PtBr);
@@ -270,13 +270,13 @@ mod tests {
     fn in_prose_blocks_matches_brute_force_scan_for_every_byte() {
         let src = "# Heading\n\nFirst paragraph spans one line.\n\nSecond paragraph\nspans two lines.\n\n- list item one\n- list item two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nTail paragraph after the table.\n";
         let doc = ProseDoc::parse(src);
-        let blocks = crate::rules::fragmentation::paragraph_blocks(&doc);
+        let blocks = doc.paragraph_blocks();
         assert!(
             blocks.len() >= 3,
             "fixture should contain multiple prose blocks"
         );
 
-        fn brute(blocks: &[crate::rules::fragmentation::Block], byte: usize) -> bool {
+        fn brute(blocks: &[crate::prose::Block], byte: usize) -> bool {
             blocks
                 .iter()
                 .any(|b| byte >= b.first_byte && byte < b.end_byte)
@@ -284,8 +284,8 @@ mod tests {
 
         for byte in 0..=src.len() {
             assert_eq!(
-                in_prose_blocks(&blocks, byte),
-                brute(&blocks, byte),
+                in_prose_blocks(blocks, byte),
+                brute(blocks, byte),
                 "mismatch at byte {byte}"
             );
         }

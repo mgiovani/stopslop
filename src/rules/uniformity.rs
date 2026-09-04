@@ -86,10 +86,10 @@ const TRIGRAM_REPETITION_THRESHOLD: f64 = 0.04;
 /// the reason for it.
 const TRIGRAM_WORD_WINDOW: usize = 30_000;
 
-/// Word counts of every sentence in the document, sourced from `fragmentation::paragraph_blocks`
+/// Word counts of every sentence in the document, sourced from `ProseDoc::paragraph_blocks`
 /// so headings/lists/tables/code are excluded exactly as SLOP030 excludes them.
 fn all_sentence_word_counts(doc: &ProseDoc) -> Vec<usize> {
-    fragmentation::paragraph_blocks(doc)
+    doc.paragraph_blocks()
         .iter()
         .flat_map(|b| fragmentation::split_sentences(&b.text))
         .map(fragmentation::word_count)
@@ -130,7 +130,8 @@ fn masked_words(doc: &ProseDoc) -> Vec<String> {
     let fm_end = doc.frontmatter.map(|(_, e)| e).unwrap_or(0);
     let prose: String;
     let text = if doc.paragraphs.is_some() {
-        prose = fragmentation::paragraph_blocks(doc)
+        prose = doc
+            .paragraph_blocks()
             .iter()
             .map(|b| b.text.as_str())
             .collect::<Vec<_>>()
