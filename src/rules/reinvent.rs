@@ -2,6 +2,7 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{self, Lang, CODE_LANGS};
+use crate::prose;
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::sync::LazyLock;
@@ -48,17 +49,18 @@ fn line_starts(source: &str) -> Vec<usize> {
         .collect()
 }
 
-/// Comment and string spans merged into one sorted, non-overlapping list.
+/// Comment and string spans merged into one sorted, non-overlapping list, so this rule can
+/// binary-search them with `prose::span_contains` instead of scanning.
 ///
 /// `ctx.in_comment_or_string` scans every comment and every string per query, which this rule
 /// asks once per regex match: measured on generated `.ts` files where matches and spans grow
-/// together, `--select SLOP037` went 13.3 / 22.3 / 43.3 / 93.9 / 220.1 / 621.8 ms for 500 to
-/// 16,000 matches -- ratios climbing 1.7x, 1.9x, 2.2x, 2.3x, 2.8x per doubling, on their way to
-/// the 4x of a clean quadratic (issue #21). Built once here and binary-searched instead.
+/// together, `--select SLOP037` went 13.3 ms at 500 matches to 631.5 ms at 16,000, climbing
+/// towards the 4x per doubling of a clean quadratic (issue #21).
 ///
 /// The merge is what makes the search correct: `strings` NESTS, because a `template_string`
-/// node contains the `string` nodes inside its `${}` interpolations, and `partition_point` on a
-/// nested list would find the inner span and miss that the byte is still inside the outer one.
+/// node contains the `string` nodes inside its `${}` interpolations, and a `partition_point`
+/// over a nested list would find the inner span and miss that the byte is still inside the
+/// outer one.
 fn masked_spans(ctx: &LintContext) -> Vec<(usize, usize)> {
     let mut spans: Vec<(usize, usize)> = ctx
         .comments
@@ -66,22 +68,8 @@ fn masked_spans(ctx: &LintContext) -> Vec<(usize, usize)> {
         .chain(ctx.strings.iter())
         .map(|n| (n.start_byte, n.end_byte))
         .collect();
-    spans.sort_unstable();
-    let mut merged: Vec<(usize, usize)> = Vec::with_capacity(spans.len());
-    for (start, end) in spans {
-        match merged.last_mut() {
-            Some(last) if start <= last.1 => last.1 = last.1.max(end),
-            _ => merged.push((start, end)),
-        }
-    }
-    merged
-}
-
-/// True when `byte` falls in `[s, e)` for one of `spans`, which must be sorted and
-/// non-overlapping -- the shape [`masked_spans`] returns.
-fn in_span(spans: &[(usize, usize)], byte: usize) -> bool {
-    let idx = spans.partition_point(|&(s, _)| s <= byte);
-    idx > 0 && byte < spans[idx - 1].1
+    spans.sort_unstable_by_key(|&(s, _)| s);
+    prose::merge_overlapping(spans)
 }
 
 // --- TypeScript / TSX ---
@@ -109,7 +97,7 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
         )
     };
     let spans = std::cell::OnceCell::new();
-    let masked = |byte: usize| in_span(spans.get_or_init(|| masked_spans(ctx)), byte);
+    let masked = |byte: usize| prose::span_contains(spans.get_or_init(|| masked_spans(ctx)), byte);
     for m in JSON_CLONE_RE.find_iter(ctx.source) {
         if masked(m.start()) {
             continue;
@@ -549,7 +537,7 @@ mod tests {
         out
     }
 
-    /// `masked_spans` + `in_span` must answer exactly what the linear
+    /// `masked_spans` + `span_contains` must answer exactly what the linear
     /// `LintContext::in_comment_or_string` scan answers, byte for byte, on a source that nests a
     /// string inside a template literal -- the nesting case the merge pass exists for.
     #[test]
@@ -580,7 +568,7 @@ mod tests {
         );
         for byte in 0..=src.len() {
             assert_eq!(
-                in_span(&spans, byte),
+                prose::span_contains(&spans, byte),
                 ctx.in_comment_or_string(byte),
                 "byte {byte}"
             );
