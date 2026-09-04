@@ -3,7 +3,7 @@ use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{NatLang, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
-use crate::rules::fragmentation::{
+use crate::rules::rhetoric::fragmentation::{
     is_blank, is_horizontal_rule, COMMENT_LINE, HEADING_LINE, REF_DEF_LINE,
 };
 use regex::Regex;
@@ -132,7 +132,7 @@ struct Block {
 fn final_prose_block(doc: &ProseDoc) -> Option<Block> {
     if doc.paragraphs.is_some() {
         // The ending is the last paragraph outside the page's footer, aside, and nav.
-        return crate::rules::fragmentation::paragraph_blocks(doc)
+        return crate::rules::rhetoric::fragmentation::paragraph_blocks(doc)
             .into_iter()
             .rev()
             .find(|b| !doc.in_footer(b.first_byte))

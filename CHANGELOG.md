@@ -217,6 +217,11 @@ migration notes live here.
 
 ### Changed
 
+- **Rule modules grouped by directory.** `src/rules/` now has one subdirectory
+  per group (`artifact/`, `structure/`, `stdlib/`, `rhetoric/`, `verbosity/`,
+  `sourcing/`, `format/`), so a rule's library path is
+  `stopslop::rules::<group>::<module>`. Rule codes, group names, `--list-rules`
+  output, and the `stopslop::imports_data` re-export are unchanged.
 - **SLOP034** binary-searches its prose scope. The per-match check against
   every paragraph block was O(matches x blocks) and half the wall time on the
   20 MB stress file; `partition_point` over the sorted blocks takes the rule

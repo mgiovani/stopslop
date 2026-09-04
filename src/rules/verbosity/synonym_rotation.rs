@@ -167,7 +167,7 @@ fn touches_letter(masked: &str, start: usize, end: usize) -> bool {
 /// instead of scanning every block per byte -- the same idiom as `section_of` above. Was an
 /// O(matches x blocks) linear scan, measured at ~50% of the default lint wall time on a 20 MB
 /// file (issue #21 phase-2: 3.68s -> 1.82s with this rule ignored).
-fn in_prose_blocks(blocks: &[super::fragmentation::Block], byte: usize) -> bool {
+fn in_prose_blocks(blocks: &[crate::rules::rhetoric::fragmentation::Block], byte: usize) -> bool {
     let idx = blocks.partition_point(|b| b.first_byte <= byte);
     idx > 0 && byte < blocks[idx - 1].end_byte
 }
@@ -193,7 +193,7 @@ fn in_prose_blocks(blocks: &[super::fragmentation::Block], byte: usize) -> bool 
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
 
-    let blocks = super::fragmentation::paragraph_blocks(doc);
+    let blocks = crate::rules::rhetoric::fragmentation::paragraph_blocks(doc);
     if blocks.is_empty() {
         return;
     }
@@ -270,13 +270,13 @@ mod tests {
     fn in_prose_blocks_matches_brute_force_scan_for_every_byte() {
         let src = "# Heading\n\nFirst paragraph spans one line.\n\nSecond paragraph\nspans two lines.\n\n- list item one\n- list item two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nTail paragraph after the table.\n";
         let doc = ProseDoc::parse(src);
-        let blocks = crate::rules::fragmentation::paragraph_blocks(&doc);
+        let blocks = crate::rules::rhetoric::fragmentation::paragraph_blocks(&doc);
         assert!(
             blocks.len() >= 3,
             "fixture should contain multiple prose blocks"
         );
 
-        fn brute(blocks: &[crate::rules::fragmentation::Block], byte: usize) -> bool {
+        fn brute(blocks: &[crate::rules::rhetoric::fragmentation::Block], byte: usize) -> bool {
             blocks
                 .iter()
                 .any(|b| byte >= b.first_byte && byte < b.end_byte)

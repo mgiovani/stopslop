@@ -276,7 +276,7 @@ mod tests {
     fn does_not_duplicate_cliche_testament_span() {
         // "stands as a testament to" is SLOP014's CLICHE_PHRASES territory; SLOP024 must stay
         // silent on that exact span so the two Tier-A rules never both fire on one line.
-        use crate::rules::cliche;
+        use crate::rules::rhetoric::cliche;
         let src = "The bridge stands as a testament to careful engineering.\n";
         let puffery_diags = diagnostics_for(src);
         assert!(puffery_diags.is_empty());
@@ -305,7 +305,7 @@ mod tests {
     fn does_not_duplicate_hedging_role_span() {
         // "plays a vital role" is SLOP015's HEDGE_PHRASES territory; SLOP024 must stay silent on
         // that phrase even though the catalog groups it under "importance puffery" too.
-        use crate::rules::hedging;
+        use crate::rules::verbosity::hedging;
         let src = "Caching plays a vital role in keeping latency low.\n";
         assert!(diagnostics_for(src).is_empty());
 
