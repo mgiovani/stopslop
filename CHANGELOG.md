@@ -217,6 +217,30 @@ migration notes live here.
 
 ### Changed
 
+- **Paragraph blocks are built once per document.** Five default-on rules
+  asked `fragmentation::paragraph_blocks` for the same list on every Markdown
+  file: SLOP030, SLOP034, SLOP041, and SLOP011 twice, once per natlang panel.
+  Each call walked every line and allocated a `String` per paragraph. The block model moved to `ProseDoc` behind a `OnceCell`, next to
+  the `line_col` memo and for the same reason. The 20 MB stress file goes from
+  1.90 s to 1.73 s and the 8 MB prose files from 0.85 s to 0.80 s.
+- **SARIF output streams its results.** `emit_sarif` built one
+  `serde_json::Value` per finding and held them all until the document was
+  written. The format CI uploads therefore cost 2.8x the memory of
+  `--format json` on the same run. Peak RSS on the 20 MB stress file drops
+  from 400 MB to 135 MB, and wall from 2.14 s to 1.88 s. The emitted document
+  is unchanged as JSON; key order within each object now follows the struct
+  rather than being sorted.
+- **SLOP037 binary-searches comment and string spans.** The rule asked
+  `in_comment_or_string` once per regex match and that scanned every span per
+  call. On generated `.ts` files the old path took 13 ms at 500 matches and
+  632 ms at 16,000, climbing towards the 4x per doubling of a clean quadratic.
+  The new path holds at 1.95x, which is the file itself doubling. The spans are merged first because they nest: a template
+  literal contains the strings inside its `${}`.
+- **`--check-imports` reads directory entry types.** Manifest discovery
+  allocated a `PathBuf` and issued a `stat(2)` for every entry in the tree;
+  `readdir` had already returned both. The flag's cost on a 307 MB corpus goes
+  from 1.47 s to 1.32 s. A symlinked directory is no longer descended, which
+  matches the lint walk itself; a symlinked manifest file still counts.
 - **SLOP034** binary-searches its prose scope. The per-match check against
   every paragraph block was O(matches x blocks) and half the wall time on the
   20 MB stress file; `partition_point` over the sorted blocks takes the rule
@@ -264,6 +288,15 @@ migration notes live here.
 
 ### Fixed
 
+- **A panicking rule no longer ends the run.** Each file's lint runs inside
+  `catch_unwind`. The panic used to unwind out of the parallel walker and
+  poison the diagnostics lock, losing every finding from every file. The file
+  is now reported and skipped and the walk continues. The run exits 2, so a
+  crashed rule cannot read as a clean lint.
+- **Files over 64 MB are skipped with a message** rather than linted.
+- **The update check carries an explicit 2 s timeout.** It runs after output,
+  on the way out, so a half-open network held the process open long after the
+  lint had finished.
 - **Deterministic messages.** SLOP015, 027, 028, 030, 031, and 032 tallied
   phrases in a `HashMap` and named whichever qualifying entry came out first,
   so the message changed between identical runs and a `--baseline`
