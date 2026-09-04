@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn bad_tier_is_a_config_error() {
         let mut c = cfg("x", "m");
-        c.tier = "C".to_string();
+        c.tier = "X".to_string();
         let err = err_string(load(&[c]));
         assert!(err.contains("invalid tier"));
     }

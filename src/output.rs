@@ -33,6 +33,7 @@ fn emit_markdown(diags: &[Diagnostic], w: &mut impl Write) -> std::io::Result<()
     for (tier, heading) in [
         (Tier::A, "Tier A -- these fail the build"),
         (Tier::B, "Tier B -- advisory, they do not fail the build"),
+        (Tier::C, "Tier C -- experimental, opt-in and never gating"),
     ] {
         let group: Vec<_> = diags.iter().filter(|d| d.tier == tier).collect();
         if group.is_empty() {
@@ -169,9 +170,12 @@ impl serde::Serialize for SarifResults<'_> {
         for d in self.0 {
             seq.serialize_element(&SarifResult {
                 rule_id: d.code,
+                // SARIF 2.1.0 restricts result.level to none/note/warning/error, so Tier C maps
+                // to `note` -- GitHub's `notice` is a workflow-command level and is invalid here.
                 level: match d.tier {
                     Tier::A => "error",
                     Tier::B => "warning",
+                    Tier::C => "note",
                 },
                 message: SarifMessage {
                     text: match &d.fix {

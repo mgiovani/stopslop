@@ -150,7 +150,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
     // a full scan has already printed its findings.
     let fail_on = match cli.fail_on_tier.or(config.fail_on_tier) {
         Some(s) => Tier::parse(&s).ok_or_else(|| {
-            anyhow::anyhow!("invalid fail-on-tier {s:?}, expected \"A\" or \"B\"")
+            anyhow::anyhow!("invalid fail-on-tier {s:?}, expected \"A\", \"B\" or \"C\"")
         })?,
         None => Tier::A,
     };
@@ -357,10 +357,7 @@ fn list_rules(custom_rules: &[custom::CustomRule]) {
             "{:<8} {:<10} {:<5} {:<8} {:<10} {}",
             r.code,
             groups::group_of(r.code),
-            match r.tier {
-                Tier::A => "A",
-                Tier::B => "B",
-            },
+            r.tier.label(),
             if r.default_on { "on" } else { "off" },
             r.natlangs
                 .iter()
@@ -375,10 +372,7 @@ fn list_rules(custom_rules: &[custom::CustomRule]) {
             "{:<8} {:<10} {:<5} {:<8} {:<10} {}",
             cr.code(),
             "custom",
-            match cr.tier() {
-                Tier::A => "A",
-                Tier::B => "B",
-            },
+            cr.tier().label(),
             "on", // custom rules are always on by default -- the user explicitly wrote them
             "en", // custom rules are user regexes, not a validated lexicon in any one language
             cr.name(),
@@ -432,6 +426,14 @@ mod tests {
         assert_eq!(exit_code(&[], Tier::A, 1), 2);
         assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::A, 1), 2);
         assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::A, 0), 1);
+    }
+
+    #[test]
+    fn tier_c_findings_gate_only_under_fail_on_tier_c() {
+        assert_eq!(exit_code(&[diag_at(Tier::C)], Tier::A), 0);
+        assert_eq!(exit_code(&[diag_at(Tier::C)], Tier::B), 0);
+        assert_eq!(exit_code(&[diag_at(Tier::C)], Tier::C), 1);
+        assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::C), 1);
     }
 
     #[test]

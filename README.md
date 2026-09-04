@@ -239,8 +239,8 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP043 | verbosity | Comment that runs long | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | A plain comment block (consecutive comment lines count as one) of more than 40 words. A reason fits in a sentence or two; a comment that needs three full lines is narrating the code or carrying a design note that belongs in a doc comment, the README or the commit message. Doc comments, godoc (any Go comment outside a function body), license headers, generated files and commented-out code are exempt |
 | SLOP044 | artifact | Boilerplate or empty page title | B, on  | HTML | en, pt-BR | A `<title>Document</title>` (the editor's `!` expansion left in place) or an empty `<title>` |
 
-Every rule is exactly one of three states, `--list-rules` prints the DEFAULT
-column so you can check any given rule at a glance:
+Every rule is exactly one of three states, `--list-rules` prints the TIER and
+DEFAULT columns so you can check any given rule at a glance:
 
 - **Tier A, on by default (12 rules)**: mechanical artifacts (SLOP001–009,
   SLOP011–013) with no legitimate reading. A finding here fails the run
@@ -427,7 +427,7 @@ extend-ignore = ["SLOP016"] # adds on top of `ignore`, same relationship
 exclude = ["**/generated/**"]      # extra walker excludes, on top of .gitignore
 check-imports = false
 baseline = ".stopslop-baseline.json"  # subtract findings recorded here (omit to disable)
-fail-on-tier = "A"          # lowest tier that exits 1; "B" gates the build on every finding
+fail-on-tier = "A"          # lowest tier that exits 1; "B" adds Tier B, "C" adds every finding
 language = ["en", "pt-BR"]  # restrict which natural-language panels run (omit = every language)
 
 [per-file-ignores]
@@ -513,10 +513,11 @@ Honest caveats:
   (bad glob, bad regex, unknown key, invalid `[[custom-rule]]` or
   `fail-on-tier` value).
 
-The failing tier is `A` by default, so Tier B findings (including any custom
-rule declared `tier = "B"`) print without blocking. Set `fail-on-tier = "B"`
-in `stopslop.toml`, or pass `--fail-on-tier B`, to gate the build on every
-finding instead; the CLI flag wins over the config. A baseline is applied
+The failing tier is `A` by default, so Tier B and Tier C findings (including
+any custom rule declared `tier = "B"` or `tier = "C"`) print without blocking.
+Set `fail-on-tier = "B"` in `stopslop.toml`, or pass `--fail-on-tier B`, to add
+Tier B to the exit-1 path, and `"C"` to gate on every finding; the CLI flag
+wins over the config. A baseline is applied
 before the exit code is computed, so baselined findings never fail a run
 whatever the tier.
 
