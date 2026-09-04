@@ -82,11 +82,9 @@ fn find_manifests(root: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
-    // `entry.file_type()` reads the type `readdir` already returned; `entry.path().is_dir()`
-    // allocated a `PathBuf` and issued a `stat(2)` for every entry in the tree instead. The one
-    // behavioral difference is that a symlinked DIRECTORY is no longer descended, which is what
-    // the lint walk itself does (`ignore`'s `follow_links` is off) -- a symlinked manifest FILE
-    // still matches, since it lands in the name check below either way.
+    // `entry.file_type()` reads what `readdir` already returned; `entry.path().is_dir()` cost a
+    // `PathBuf` and a `stat(2)` per entry. It does not follow symlinks, so a symlinked DIRECTORY
+    // is no longer descended -- matching the lint walk, whose `follow_links` is off.
     for entry in entries.flatten() {
         let Ok(file_type) = entry.file_type() else {
             continue;

@@ -390,6 +390,7 @@ mod tests {
         let stats = Stats {
             files: 3,
             skipped: 1,
+            panicked: 0,
             lines: 42,
             wall_secs: 0.1,
             lines_per_sec: 420,
@@ -413,6 +414,7 @@ mod tests {
         let stats = Stats {
             files: 3,
             skipped: 1,
+            panicked: 0,
             lines: 42,
             wall_secs: 0.1,
             lines_per_sec: 420,
@@ -434,6 +436,7 @@ mod tests {
         let stats = Stats {
             files: 3,
             skipped: 1,
+            panicked: 0,
             lines: 42,
             wall_secs: 0.1,
             lines_per_sec: 420,
@@ -457,6 +460,7 @@ mod tests {
         let stats = Stats {
             files: 230,
             skipped: 12,
+            panicked: 0,
             lines: 15918,
             wall_secs: 0.092,
             lines_per_sec: 172241,
