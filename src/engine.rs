@@ -128,6 +128,39 @@ pub fn prewarm<'scope>(scope: &'scope std::thread::Scope<'scope, '_>, settings: 
     }
 }
 
+/// The rule-dispatch loop shared by `lint_file`, `lint_prose` and `lint_image`: filter `RULES` by
+/// enabled/lang/natlang/path-gating, run each one, then the custom-rule second pass, then
+/// `suppress::apply`. Previously pasted identically into `lint_file` and `lint_prose`; folding
+/// `suppress::apply` in too is safe because every caller already passes `ctx.comments` as the
+/// comment slice it reads (`lint_image`'s is empty, making that call a no-op there -- a binary
+/// file has no comment syntax to carry an `ai-slop-ignore` directive in).
+fn run_rules(ctx: &LintContext, settings: &Settings) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for &rule in RULES {
+        if !settings.enabled.contains(rule.code) {
+            continue;
+        }
+        if !rule.langs.contains(&ctx.lang) {
+            continue;
+        }
+        // No-op under the default (every language); bites only when config sets `language`.
+        if !rule.natlangs.iter().any(|n| ctx.natlangs.contains(n)) {
+            continue;
+        }
+        if rule.path_gated && ctx.is_test_path {
+            continue;
+        }
+        (rule.check)(rule, ctx, &mut out);
+    }
+    for cr in &settings.custom_rules {
+        if settings.enabled.contains(cr.code()) {
+            crate::custom::check(cr, ctx, &mut out);
+        }
+    }
+    suppress::apply(&mut out, ctx.comments, &ctx.display_path);
+    out
+}
+
 pub fn lint_file(
     display_path: String,
     source: &str,
@@ -136,6 +169,13 @@ pub fn lint_file(
 ) -> Vec<Diagnostic> {
     if lang.is_prose() {
         return lint_prose(display_path, source, lang, settings);
+    }
+    // Images go through `lint_image` (bytes in, no tree, no text stream), reached directly from
+    // `walk.rs`. This fn's signature is frozen for its existing `&str`-source callers, so it
+    // returns empty rather than growing a bytes parameter no code-or-prose caller needs.
+    if lang.is_image() {
+        debug_assert!(false, "lint_file called with Lang::Image; use lint_image");
+        return Vec::new();
     }
     let mut parser = Parser::new();
     if parser.set_language(&lang::ts_language(lang)).is_err() {
@@ -163,32 +203,10 @@ pub fn lint_file(
         is_stub_file: is_stub,
         deps: settings.deps.as_ref(),
         prose: None,
+        image: None,
         natlangs: &settings.natlangs,
     };
-    let mut out = Vec::new();
-    for &rule in RULES {
-        if !settings.enabled.contains(rule.code) {
-            continue;
-        }
-        if !rule.langs.contains(&lang) {
-            continue;
-        }
-        // No-op under the default (every language); bites only when config sets `language`.
-        if !rule.natlangs.iter().any(|n| ctx.natlangs.contains(n)) {
-            continue;
-        }
-        if rule.path_gated && ctx.is_test_path {
-            continue;
-        }
-        (rule.check)(rule, &ctx, &mut out);
-    }
-    for cr in &settings.custom_rules {
-        if settings.enabled.contains(cr.code()) {
-            crate::custom::check(cr, &ctx, &mut out);
-        }
-    }
-    suppress::apply(&mut out, &comments, &ctx.display_path);
-    out
+    run_rules(&ctx, settings)
 }
 
 /// Prose langs never build a `NodeIndex`: prose rules scan `ProseDoc::masked` (a byte-preserving
@@ -236,32 +254,42 @@ fn lint_prose(
         is_stub_file: false,
         deps: None,
         prose: Some(&doc),
+        image: None,
         natlangs,
     };
-    let mut out = Vec::new();
-    for &rule in RULES {
-        if !settings.enabled.contains(rule.code) {
-            continue;
-        }
-        if !rule.langs.contains(&lang) {
-            continue;
-        }
-        // No-op under the default (every language); bites only when config sets `language`.
-        if !rule.natlangs.iter().any(|n| ctx.natlangs.contains(n)) {
-            continue;
-        }
-        if rule.path_gated && ctx.is_test_path {
-            continue;
-        }
-        (rule.check)(rule, &ctx, &mut out);
-    }
-    for cr in &settings.custom_rules {
-        if settings.enabled.contains(cr.code()) {
-            crate::custom::check(cr, &ctx, &mut out);
-        }
-    }
-    suppress::apply(&mut out, ctx.comments, &ctx.display_path);
-    out
+    run_rules(&ctx, settings)
+}
+
+/// Byte-oriented entry point for `Lang::Image`, reached directly from `walk.rs` (never through
+/// `lint_file`, which returns empty for this lang instead). `source` is the empty string because
+/// an image has no text stream to speak of; image rules read `ctx.image` and nothing else.
+///
+/// `None` means the bytes match no container format this crate knows, which a caller needs to
+/// tell apart from `Some(vec![])` (a real image with nothing to report): `walk` counts the first
+/// as skipped and the second as linted. Returning it here keeps the parse to one pass -- the
+/// caller checking parseability separately would parse every image in the tree twice.
+pub fn lint_image(
+    display_path: String,
+    bytes: &[u8],
+    settings: &Settings,
+) -> Option<Vec<Diagnostic>> {
+    let doc = crate::image::ImageDoc::parse(bytes)?;
+    let is_test = paths::is_test_path(&display_path);
+    let ctx = LintContext {
+        display_path,
+        source: "",
+        index: None,
+        lang: Lang::Image,
+        comments: &[],
+        strings: &[],
+        is_test_path: is_test,
+        is_stub_file: false,
+        deps: None,
+        prose: None,
+        image: Some(&doc),
+        natlangs: &settings.natlangs,
+    };
+    Some(run_rules(&ctx, settings))
 }
 
 #[cfg(test)]

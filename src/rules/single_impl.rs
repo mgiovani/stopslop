@@ -19,7 +19,14 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     match ctx.lang {
         Lang::Ts | Lang::Tsx => check_ts(rule, ctx, out),
         Lang::Python => check_python(rule, ctx, out),
-        Lang::Go | Lang::Rust | Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html => {} // rule.langs excludes these; never reached
+        Lang::Go
+        | Lang::Rust
+        | Lang::Md
+        | Lang::Mdx
+        | Lang::Txt
+        | Lang::Rst
+        | Lang::Html
+        | Lang::Image => {} // rule.langs excludes these; never reached
     }
 }
 
@@ -208,6 +215,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
+            image: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
