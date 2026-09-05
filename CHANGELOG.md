@@ -7,12 +7,33 @@ migration notes live here.
 
 ### Added
 
-- `bench/score_corpus.py` scores the Python rules against AIGCodeSet, the
-  labelled human-vs-machine corpus from issue #39, and prints a markdown table
-  of per-rule hit rate on each side, precision at a 1:1 prior, and findings per
-  KLoC. Twelve rules can produce a number on a `.py` corpus; the report names
-  what the corpus cannot measure. CI does not run it: it needs the network and
-  gates nothing.
+- **`bench/score_corpus.py` grows a multi-dataset, multi-language corpus
+  registry**, scoring every rule against labelled human-vs-machine corpora
+  instead of just AIGCodeSet/Python. Code coverage: TypeScript/TSX (CodeMirage,
+  Ant Design), Python (AIGCodeSet, CPython), Go (the Go standard library), Rust
+  (Rosetta Code, the Rust standard library). Every stdlib/library checkout in
+  that list is pinned to a pre-2022 tag. Prose coverage: English (HC3, MAGE,
+  Ghostbuster, CPython Doc, the Rust book) and Brazilian Portuguese (WETBench pt,
+  Diplomatrix-BR, Essay-BR, Wikipedia-PT). `CoDET-M4` and `DroidCollection`
+  add further code-language cells. Flags: `--datasets`, `--langs`, `--natlangs`,
+  `--limit` (default 500 per cell, a deterministic spread sample rather than
+  the first N), `--bin`, `--dir`, `--report`, `--local NAME=DIR:LABEL:LANG` for
+  a corpus outside the registry, `--skip-failures`, and `--self-check`. The
+  report table is per rule, per code language and per natural language: hit
+  rate on the human split, hit rate on the AI split, precision at a 1:1 prior,
+  and findings per KLoC or per thousand words. `bench/generate_corpus.py` (`uv
+  run`, PEP 723, Anthropic SDK, `claude-opus-5` default) synthesizes an AI
+  split for a cell that has no public one yet. Flags: `--cells` (default all
+  five synthesized cells, aliased as `pt-wiki`, `pt-essay`, `tsx`, `rust`,
+  `en-readme`), `--limit` (default 200 per cell), `--dir`, `--workers`,
+  `--model`, `--yes` to skip the spend confirmation, and `--self-check`.
+  These five synthesized cells are the only source of plain AI
+  Rust and the only source of a TSX AI split. Its output is raw model text and
+  costs money to run, and every synthesized file is marked as such. The
+  committed `bench/corpus_report.md` is regenerated
+  with `--report` and reviewed like any other change. Datasets are never
+  committed. CI does not run either script: both need the network and neither
+  gates a build.
 - **pt-BR witnesses for code-language rules.** `tests/natlang_witness.rs`
   now requires a `slop_*_pt_br` fixture per language family for the code
   rules whose comment panels carry Portuguese (SLOP001, 002, 004, 009, 042);

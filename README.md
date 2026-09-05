@@ -274,6 +274,57 @@ legitimate first step in TypeScript's narrowing idiom. Only the chained form,
 `x as unknown as T`, is flagged, since that's the pattern that fully defeats
 the type checker.
 
+## Measured on labelled corpora
+
+`bench/score_corpus.py` runs the registered rules against labelled
+human-vs-AI corpora. For every rule, code language, and natural language it
+prints the hit rate on the human split (a false-positive proxy), the hit rate
+on the AI split (a recall proxy), precision at a 1:1 human/AI prior, and
+findings per KLoC or per thousand words.
+
+```bash
+uv run bench/generate_corpus.py --cells pt-wiki,pt-essay,tsx,rust,en-readme --limit 200 --yes
+python3 bench/score_corpus.py --limit 500 --report bench/corpus_report.md
+```
+
+`generate_corpus.py` (`uv run`, needs an Anthropic API key, costs money) calls
+Claude to synthesize the AI split for a cell; its output is raw model text and
+every synthesized file is marked as such (on disk under `synth-*`). The five
+synthesized cells, pt-wiki, pt-essay, tsx, rust, and en-readme, are the only
+source of plain AI Rust and the only source of a TSX AI split; every other
+cell's AI split comes from a downloaded corpus. `score_corpus.py` reads
+whatever corpora are present under its dataset registry (real ones downloaded
+separately, synthesized ones from the generator) and scores the built
+`stopslop` binary against a deterministic spread sample of each cell, capped
+at `--limit` per cell. Datasets are never committed; the committed
+[bench/corpus_report.md](bench/corpus_report.md) is the last run's output.
+
+Datasets in the registry, none committed to this repo:
+
+| Name | What it covers | License | Link |
+|---|---|---|---|
+| DroidCollection | code: Python, Go, JavaScript written as .ts; Rust only as adversarial AI; human + AI | not stated on the card | <https://huggingface.co/datasets/project-droid/DroidCollection> |
+| CodeMirage | code: Python, Go, JavaScript as .ts; human + AI + paraphrased AI | CC-BY-NC-ND-4.0 | <https://huggingface.co/datasets/HanxiGuo/CodeMirage> |
+| AIGCodeSet | Python; human + AI | CDLA-Permissive-2.0 | <https://huggingface.co/datasets/basakdemirok/AIGCodeSet> |
+| CoDET-M4 | Python, comments stripped by the publisher; human + AI | MIT | <https://huggingface.co/datasets/DaniilOr/CoDET-M4> |
+| Rosetta Code | Python, Go, Rust, TypeScript; human | GFDL | <https://huggingface.co/datasets/christopher/rosetta-code> |
+| Go 1.17.3 src | Go; human | BSD-3-Clause | <https://github.com/golang/go/tree/go1.17.3/src> |
+| CPython 3.10.0 Lib and Doc | Python and reStructuredText; human | PSF | <https://github.com/python/cpython/tree/v3.10.0> |
+| Rust 1.57.0 library | Rust; human | MIT or Apache-2.0 | <https://github.com/rust-lang/rust/tree/1.57.0/library> |
+| TypeScript 4.5.4 src | TypeScript; human | Apache-2.0 | <https://github.com/microsoft/TypeScript/tree/v4.5.4/src> |
+| Ant Design 4.17.4 components | TSX; human | MIT | <https://github.com/ant-design/ant-design/tree/4.17.4/components> |
+| HC3 | English answers; human + ChatGPT | CC-BY-SA-4.0 | <https://huggingface.co/datasets/Hello-SimpleAI/HC3> |
+| MAGE | English documents from ten corpora; human + 27 models | Apache-2.0 on the card, CC-BY-4.0 in the repo | <https://huggingface.co/datasets/yaful/MAGE> |
+| Ghostbuster data | English essays, news, stories; human + GPT + Claude | CC-BY-3.0 | <https://github.com/vivek3141/ghostbuster-data> |
+| The Rust Programming Language book | English Markdown; human | MIT or Apache-2.0 | <https://github.com/rust-lang/book> |
+| WETBench | Portuguese Wikipedia paragraphs; human + four generators | CC-BY-NC-SA-4.0 | <https://huggingface.co/datasets/cs928346/WETBench> |
+| Diplomatrix-BR | Brazilian Portuguese essays; human + LLM | MIT | <https://huggingface.co/datasets/melll-uff/diplomatrixbr-gen> |
+| Essay-BR | Brazilian Portuguese essays; human | MIT | <https://github.com/rafaelanchieta/essay> |
+| Wikipedia-PT | Portuguese articles; human | CC-BY-SA-3.0 | <https://huggingface.co/datasets/TucanoBR/wikipedia-PT> |
+
+A hit rate here is evidence that a tell appears in a corpus, on a human split
+or an AI split, and it is never a claim that any single file was AI-written.
+
 ## Prose linting
 
 stopslop also lints `.md`, `.mdx`, `.txt`, `.rst`, and `.html`/`.htm` files:
