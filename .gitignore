@@ -2,3 +2,4 @@
 /tmp
 /.claude/worktrees
 /.claude/workflows
+/.env
