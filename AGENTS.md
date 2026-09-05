@@ -32,6 +32,7 @@ cargo install --path .      # rebuild the binary before dogfooding a new rule
 7. Keep the panel in the rule file. `prose_words.rs` holds the panels the prose density rules share and takes no new entries.
 8. Write the message lowercase and specific, and use `Diagnostic::at_fix` whenever a concrete replacement exists.
 9. Install the binary and lint this repo. Fix every finding your rule makes here before opening the PR.
+10. Run `bench/score_corpus.py` and paste the new rule's rows into the PR before opening it.
 
 ## Engineering principles
 
@@ -69,6 +70,7 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 - Pair every positive fixture with a clean one. A rule that cannot stay quiet is unfinished.
 - Test the exclusions you wrote, not the match you already saw work.
 - Treat the dogfood run as the third gate after unit and fixture tests.
+- `bench/score_corpus.py` is the fourth gate for any threshold, panel or tier change: run it and paste the rows for the affected rule into the PR.
 
 ## Invariants
 
