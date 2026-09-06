@@ -276,51 +276,87 @@ the type checker.
 
 ## Measured on labelled corpora
 
-`bench/score_corpus.py` runs the registered rules against labelled
-human-vs-AI corpora. For every rule, code language, and natural language it
+`just corpus` runs every rule against labelled human-vs-AI corpora and
+rebuilds the report. For every rule, code language, and natural language it
 prints the hit rate on the human split (a false-positive proxy), the hit rate
 on the AI split (a recall proxy), precision at a 1:1 human/AI prior, and
 findings per KLoC or per thousand words.
 
 ```bash
-uv run bench/generate_corpus.py --cells pt-wiki,pt-essay,tsx,rust,en-readme --limit 200 --yes
-python3 bench/score_corpus.py --limit 500 --report bench/corpus_report.md
+just corpus          # fetch, score, analyse, render
+just corpus-fetch    # download and materialize the cells (the only step needing the network)
+just corpus-score    # lint them, rebuild bench/corpus_report.md, write results.json
+just corpus-analyze  # measure bench/candidates.toml, split rates by message, rank phrases
+just corpus-html     # render target/corpus/report.html
 ```
 
-`generate_corpus.py` (`uv run`, needs an Anthropic API key, costs money) calls
-Claude to synthesize the AI split for a cell; its output is raw model text and
-every synthesized file is marked as such (on disk under `synth-*`). The five
-synthesized cells, pt-wiki, pt-essay, tsx, rust, and en-readme, are the only
-source of plain AI Rust and the only source of a TSX AI split; every other
-cell's AI split comes from a downloaded corpus. `score_corpus.py` reads
-whatever corpora are present under its dataset registry (real ones downloaded
-separately, synthesized ones from the generator) and scores the built
-`stopslop` binary against a deterministic spread sample of each cell, capped
-at `--limit` per cell. Datasets are never committed; the committed
+Each recipe is one command; run `just --list` to see them, or read the
+[justfile](justfile) and run the underlying `python3 bench/...` line by hand.
+Only `corpus-fetch` touches the network: it writes `target/corpus/fetched.json`,
+and everything after it reads that manifest, so scoring a rule change is
+offline and reproducible. Set `HF_TOKEN` for the Hugging Face datasets-server.
+Datasets are never committed, and neither is the rendered HTML, because several
+registered datasets forbid redistributing a derivative. The committed
 [bench/corpus_report.md](bench/corpus_report.md) is the last run's output.
+
+### What counts as a human split
+
+A split is read as human only when its text is dated 2019 or earlier, or was
+written by identified people under controlled conditions. Everything else was
+collected once coding assistants and chat models were in general use, and
+nobody can guarantee its human side was written without one.
+
+Splits that clear the bar are `pinned-2019` (a 2019 release tag, or a corpus
+built from pre-2020 sources) or `verified-authors` (exam essays written under
+supervision, professional annotators writing to a brief). Splits that do not
+are `unverified`: they are still fetched, scored and reported in full, but
+below a divider that says why, and they never enter the pooled human rates,
+the lift, the precision, or the takeaways.
+
+Every AI split carries the years of the models that wrote it, so a 2022 result
+is never read as a statement about a 2025 model.
+
+### Candidate tells
+
+`bench/candidates.toml` holds proposed tells that are not rules: a regex, a
+scope, and what the corpus said when `just corpus-analyze` measured it. A
+candidate that separates the splits earns an issue and then a rule with
+fixtures; one that does not stays in the file as the record of a measurement,
+next to the tells already measured and dropped. Nothing in that file changes
+what `stopslop` reports.
 
 Datasets in the registry, none committed to this repo:
 
-| Name | What it covers | License | Link |
-|---|---|---|---|
-| DroidCollection | code: Python, Go, JavaScript written as .ts; Rust only as adversarial AI; human + AI | not stated on the card | <https://huggingface.co/datasets/project-droid/DroidCollection> |
-| CodeMirage | code: Python, Go, JavaScript as .ts; human + AI + paraphrased AI | CC-BY-NC-ND-4.0 | <https://huggingface.co/datasets/HanxiGuo/CodeMirage> |
-| AIGCodeSet | Python; human + AI | CDLA-Permissive-2.0 | <https://huggingface.co/datasets/basakdemirok/AIGCodeSet> |
-| CoDET-M4 | Python, comments stripped by the publisher; human + AI | MIT | <https://huggingface.co/datasets/DaniilOr/CoDET-M4> |
-| Rosetta Code | Python, Go, Rust, TypeScript; human | GFDL | <https://huggingface.co/datasets/christopher/rosetta-code> |
-| Go 1.17.3 src | Go; human | BSD-3-Clause | <https://github.com/golang/go/tree/go1.17.3/src> |
-| CPython 3.10.0 Lib and Doc | Python and reStructuredText; human | PSF | <https://github.com/python/cpython/tree/v3.10.0> |
-| Rust 1.57.0 library | Rust; human | MIT or Apache-2.0 | <https://github.com/rust-lang/rust/tree/1.57.0/library> |
-| TypeScript 4.5.4 src | TypeScript; human | Apache-2.0 | <https://github.com/microsoft/TypeScript/tree/v4.5.4/src> |
-| Ant Design 4.17.4 components | TSX; human | MIT | <https://github.com/ant-design/ant-design/tree/4.17.4/components> |
-| HC3 | English answers; human + ChatGPT | CC-BY-SA-4.0 | <https://huggingface.co/datasets/Hello-SimpleAI/HC3> |
-| MAGE | English documents from ten corpora; human + 27 models | Apache-2.0 on the card, CC-BY-4.0 in the repo | <https://huggingface.co/datasets/yaful/MAGE> |
-| Ghostbuster data | English essays, news, stories; human + GPT + Claude | CC-BY-3.0 | <https://github.com/vivek3141/ghostbuster-data> |
-| The Rust Programming Language book | English Markdown; human | MIT or Apache-2.0 | <https://github.com/rust-lang/book> |
-| WETBench | Portuguese Wikipedia paragraphs; human + four generators | CC-BY-NC-SA-4.0 | <https://huggingface.co/datasets/cs928346/WETBench> |
-| Diplomatrix-BR | Brazilian Portuguese essays; human + LLM | MIT | <https://huggingface.co/datasets/melll-uff/diplomatrixbr-gen> |
-| Essay-BR | Brazilian Portuguese essays; human | MIT | <https://github.com/rafaelanchieta/essay> |
-| Wikipedia-PT | Portuguese articles; human | CC-BY-SA-3.0 | <https://huggingface.co/datasets/TucanoBR/wikipedia-PT> |
+| Name | What it covers | Human split | Generators | License |
+|---|---|---|---|---|
+| Go 1.13 src | Go | pinned-2019 | n/a | BSD-3-Clause |
+| CPython 3.8.0 Lib and Doc | Python and reStructuredText | pinned-2019 | n/a | PSF |
+| Rust 1.40.0 std | Rust | pinned-2019 | n/a | MIT or Apache-2.0 |
+| TypeScript 3.7.2 src | TypeScript | pinned-2019 | n/a | Apache-2.0 |
+| Ant Design 3.26.0 | TSX | pinned-2019 | n/a | MIT |
+| The Rust Programming Language book | English Markdown | pinned-2019 | n/a | MIT or Apache-2.0 |
+| HC3 | English answers | pinned-2019 (ELI5, FiQA, WikiQA) | ChatGPT, 2022 | CC-BY-SA-4.0 |
+| MAGE | English documents from ten corpora | pinned-2019 (SciGen dropped) | 27 models, 2019-2022 | Apache-2.0 on the card, CC-BY-4.0 in the repo |
+| Ghostbuster data | English news and stories | pinned-2019 (Reuters, WritingPrompts) | gpt-3.5, claude, 2023 | CC-BY-3.0 |
+| Beemo | English instruction responses | verified-authors (No Robots) | GPT-4o, Llama 3.1, Mixtral, 2023-24 | MIT (edits) |
+| Diplomatrix-BR | Brazilian Portuguese exam essays | verified-authors | GPT-4o, Claude 3, Gemini, 2024 | MIT |
+| DroidCollection | code: Python, Go, JavaScript as .ts, Rust adversarial | unverified | open and API code models, 2024-25 | not stated on the card |
+| SemEval-2026 Task 13 | code: Python, Go, JavaScript as .ts, hybrid and adversarial | unverified | Qwen2.5-Coder, DeepSeek-Coder, GPT-4o, 2024-25 | Apache-2.0 |
+| CodeMirage | code: Python, Go, JavaScript as .ts, plus paraphrased | unverified | ten LLMs, 2025 | CC-BY-NC-ND-4.0 |
+| AIGCodeSet | Python | unverified | CodeLlama, Codestral, Gemini 1.5, 2024 | CDLA-Permissive-2.0 |
+| CoDET-M4 | Python, comments stripped by the publisher | unverified | GPT-4o, Llama 3, Qwen, 2024 | MIT |
+| Rosetta Code | Python, Go, Rust, TypeScript | unverified | n/a | GFDL |
+| FAIDSet | English text, plus a human-LLM collaborative split | unverified | GPT-4o, Gemini 2, Llama 3, DeepSeek, 2024-25 | MIT |
+| AIDev | English pull-request descriptions, AI only | none | Claude Code, Codex, Cursor, Devin, 2025 | CC-BY-4.0 |
+| APT-Eval | English text polished to a stated degree | unverified | GPT-4o, Llama 3.1, DeepSeek-V3, 2024-25 | CC-BY-4.0 |
+| WETBench | Portuguese Wikipedia paragraphs | unverified | GPT-4o mini, Gemini 2.0, Qwen2.5, Mistral, 2024 | CC-BY-NC-SA-4.0 |
+| Essay-BR | Brazilian Portuguese student essays | unverified | n/a | MIT |
+
+`just corpus-generate` (`uv run`, needs an Anthropic API key, costs money)
+calls Claude to synthesize the AI split for a cell that has no public one. Its
+output is raw model text, every synthesized file is marked as such on disk
+under `synth-*`, and those five cells are the only source of plain AI Rust and
+the only source of a TSX AI split.
 
 A hit rate here is evidence that a tell appears in a corpus, on a human split
 or an AI split, and it is never a claim that any single file was AI-written.

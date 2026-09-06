@@ -34,6 +34,34 @@ migration notes live here.
   with `--report` and reviewed like any other change. Datasets are never
   committed. CI does not run either script: both need the network and neither
   gates a build.
+- **The corpus benchmark becomes four `just` commands, and a human split now
+  has to prove it is human.** `just corpus` runs the whole thing; the steps
+  split on the network boundary, so `just corpus-fetch` downloads and
+  materializes every cell into a `target/corpus/fetched.json` manifest and
+  `just corpus-score`, `just corpus-analyze` and `just corpus-html` read that
+  manifest offline. `score_corpus.py` gains `--fetch-only`, `--no-fetch` and
+  `--json`, and the JSON it writes carries every cell's per-rule counts,
+  per-message tallies and flagged lines. A split counts as human only when its
+  text is dated 2019 or earlier or was written by identified people under
+  controlled conditions; every other split is fetched and reported in full but
+  below a divider, and never enters a pooled human rate, a lift or a
+  precision. The pinned checkouts move to 2019 tags (Go 1.13, CPython 3.8.0,
+  Rust 1.40.0, TypeScript 3.7.2, Ant Design 3.26.0, the Rust book before
+  2020), HC3, MAGE and Ghostbuster keep only their pre-2020 human sources, and
+  Wikipedia-PT is dropped because no pre-2020 Portuguese snapshot is
+  reachable. Five datasets built from 2024-25 models join the registry:
+  SemEval-2026 Task 13, FAIDSet, Beemo, AIDev and APT-Eval. Every AI split now
+  states the years of the models that wrote it.
+- **`bench/analyze_corpus.py`, `bench/candidates.toml` and
+  `bench/report_template.html`.** The analyzer measures three things with no
+  model and no network: every proposed tell in `candidates.toml`, each rule's
+  hit rate broken down by which message fired, and the n-grams that appear in
+  far more AI files than verified human ones. `candidates.toml` is the record
+  of those measurements, including the tells that were measured and dropped;
+  it changes nothing about what `stopslop` reports. `bench/render_report.py`
+  renders the template into a standalone `target/corpus/report.html`, which is
+  generated and never committed, because several registered datasets forbid
+  redistributing a derivative.
 - **pt-BR witnesses for code-language rules.** `tests/natlang_witness.rs`
   now requires a `slop_*_pt_br` fixture per language family for the code
   rules whose comment panels carry Portuguese (SLOP001, 002, 004, 009, 042);

@@ -1,0 +1,251 @@
+# Measured hypotheses, not rules.
+#
+# Every candidate here is a tell somebody proposed after reading AI files no rule flagged.
+# bench/analyze_corpus.py compiles the regex, runs it over every materialized cell in the
+# scope the entry names, and prints the human and AI hit rates side by side. A candidate that
+# separates the splits earns a GitHub issue; a candidate that does not stays here as the
+# record of a measurement, so nobody re-proposes it. Nothing in this file changes what
+# stopslop reports: a rule is Rust in src/rules/, opened at Tier B, with fixtures.
+#
+# Candidate fields:
+#   name        one line, what fires
+#   kind        code | prose (which half of the corpus it is measured on)
+#   langs       comma-separated corpus langs, or "code" / "prose" for every lang of that half
+#   natlangs    comma-separated, omitted when the pattern carries no natural-language lexicon
+#   scope       line             every line of the file
+#               comment          comment lines only (markers stripped, string literals blanked)
+#               file-first-line  the first three lines, for a paste artifact at the head
+#               last-block       the last non-blank paragraph, for a closing tell
+#   ignorecase  true to compile with re.IGNORECASE
+#   regex       Python re syntax, written as a TOML literal string so backslashes stay literal
+#   relation    which existing rule this extends, or "new"
+#   tier        the tier it would open at, were it implemented
+#   notes       what the measurement showed and what it does not show
+#
+# A [[miss]] records a case an existing rule should have caught and did not.
+
+# Facts about the corpora that bound what any candidate below can show. Sourced from each
+# dataset's paper; the registry in bench/score_corpus.py carries the per-dataset subset.
+paper_caveats = [
+  "CodeMirage regenerates every AI file to match its paired human file's line count and size and filters to BLEU < 0.5, so length and size tells are suppressed by construction.",
+  "DroidCollection collected its human class after coding assistants were common and says so; its mitigation dropped the 7% most model-uncertain human samples rather than verified mislabels.",
+  "AIGCodeSet is single-domain competitive-programming Python, and two of its three AI scenarios are model patches of existing human code, so part of the AI class keeps human structure.",
+  "CoDET-M4 stripped every comment and docstring from both classes, so no comment-based tell can be measured on it at all.",
+  "HC3 is one ChatGPT snapshot from December 2022, and its answers were pasted out of the API payload: the literal backslash-n break is a pipeline artifact, not model style.",
+  "MAGE normalized punctuation and removed line breaks before release, destroying paragraph, whitespace and markdown-structure signals in both splits.",
+  "Ghostbuster generated each AI document from a prompt derived from the paired human document with a target length, so length is matched by construction.",
+  "WETBench is Wikipedia-specific, its Portuguese data is sentence-level, and one automatically selected prompt per task generated the whole corpus.",
+  "APT-Eval holds no plain-AI split: every AI-side file is human text after a stated degree of polish, the hardest case for any rule and the easiest to over-read.",
+  "AIDev is agent pull-request prose with no paired human split; its baseline has to be the pinned pre-2020 documentation cells, which is a different genre.",
+  "Whitespaces Don't Lie reports leading-space, blank-line and AST-depth features at ROC-AUC 0.995 but publishes no thresholds, no direction of effect and no provenance, and a formatter normalizes all three.",
+  "Style as a Confound contains no AI text: professional editing moves detector scores in opposite directions across families, so rules built on sentence length or lexical diversity risk flagging edited non-native prose.",
+  "RAID engineered its prompts over several rounds to remove meta-commentary and filtered failed generations, so raw-output tells are absent from it by design.",
+  "The dataset-quality survey (arXiv 2410.14677) argues near-perfect F1 on a benchmark usually signals a weak dataset rather than a strong detector.",
+  "Rosetta Code's Python split is about nine tenths Python 2, so any parse-validity signal has nothing to separate there.",
+]
+
+# Tells measured and rejected before they reached a candidate row. Keeping them is the whole
+# point of the file: each line is a measurement somebody would otherwise redo.
+dropped = [
+  "Narrowing SLOP042's Go file-scope exemption to exported identifiers: the proxy fires on 41.6% of pinned human Go files, more than on any AI cell.",
+  "Parse-invalid source file as a rule on its own: human Python 2 and fragment files dominate the hits; only the adversarial split separates, which the ERROR-node candidate covers more narrowly.",
+  "Python docstring that only restates the def name: PEP 257 one-line summaries are the taught style and the human rate is higher than the AI rate.",
+  "Go qualified call to an unimported stdlib package: fires on human fragment files; SLOP010 territory.",
+  "Paragraph-initial transition cascade: SLOP016 already owns Furthermore/Moreover/Additionally, and the Portuguese equivalents do not separate from student essays.",
+  "Portuguese standalone vague quantifiers: already measured and rejected in weak_verb.rs.",
+  "The pt-BR adjective crucial: SLOP016's English panel owns the token, and cross-language disjointness forbids re-flagging it.",
+  "Assumption and simplicity hedges in code comments (assuming, for simplicity): human and AI rates overlap, and the crate's own ponytail convention documents the same idea.",
+  "Meta-rationale comments (for clarity, Redundant check): they appear only in paraphrased AI cells, so they mark the paraphrase pipeline, not generation.",
+  "Placeholder identifiers such as YourClass: one file, and the identifier proxy fires on human test helpers.",
+  "Section-banner comments: SLOP042 exempts banners by design and the shape is a routine human habit.",
+  "Paraphrastic restatement as a SLOP042 synonym table: an unbounded table, and not mechanically closed.",
+  "Log-only Node error-first callback: idiomatic Node, and SLOP005 is catch-scoped on purpose.",
+  "Demo-only main() scaffolding, single-method wrapper classes, enterprise role-suffix naming, exhaustive guard clauses, Google-style docstring sections: each one or two files, none mechanically closed.",
+  "Cross-document verbatim lede reuse: a Rule never sees a second file; this belongs in the bench pipeline, not in a rule.",
+  "Zero-width space and homoglyph perturbations: evasion attacks with no corpus evidence here, and security-linter territory.",
+  "Statistical features from the papers (whitespace averages, AST depth, TTR, readability indices, perplexity, Self-BLEU): each needs a model or a corpus-calibrated threshold the papers do not publish.",
+]
+
+[[candidate]]
+name = "Narrated stand-in comment: the code says it is a placeholder, a simulation or a demo"
+kind = "code"
+langs = "code"
+natlangs = "en"
+scope = "comment"
+ignorecase = true
+regex = '''(would go \bhere\b|(logic|code|implementation) goes \bhere\b|replace with (real|actual|your) |in a real(-world)? (scenario|application|world|system)|for demonstration( purposes)?|simulated? (data|response|delay|the (data|response|process))|for illustration|(this is a )?placeholder (for the (actual|real)|implementation|function|\blogic\b)|implement (the|this|your) \w+( \w+){0,4} (\blogic\b|\bhere\b)|your (code|\blogic\b|implementation) \bhere\b)'''
+relation = "new; SLOP008 flags only empty or todo!() bodies, SLOP009 reads string literals, SLOP013 is prose-only"
+tier = "B"
+notes = """A human leaves a terse marker (TODO, unimplemented!); a model narrates its own
+incompleteness in a sentence and repeats it across sibling methods. The word boundaries around
+bare here and logic are load-bearing: without them the pattern matches inside thereby and
+logician."""
+
+[[candidate]]
+name = "Example usage demo block comment"
+kind = "code"
+langs = "code"
+natlangs = "en"
+scope = "comment"
+ignorecase = true
+regex = '''^\s*(example|sample|test) usage|^\s*example \d+:'''
+relation = "new; no rule owns usage or example in a code comment, and SLOP035 is a prose heading rule"
+tier = "B"
+notes = """A chat answer ends by demonstrating the code it just wrote, often followed by an
+Output: comment predicting the result instead of an assertion. A maintainer puts usage in a
+test, a doctest or the README."""
+
+[[candidate]]
+name = "Assistant residue the SLOP011 panels spell differently"
+kind = "prose"
+langs = "prose"
+natlangs = "en, pt-BR"
+scope = "line"
+ignorecase = true
+regex = '''as an artificial intelligence|i'?m (just )?a computer program|i apologi[sz]e,? but i (will not|won'?t|cannot|can'?t|am (not able|unable) to) (provide|generate|create|write|assist|help)|let me know if you (have|need)[^.!?]{1,40}[.!]|atendendo aos crit[ée]rios|dentro dos limites de (linhas|palavras)|esta reda[çc][ãa]o (explora|aborda|discute|apresenta|busca)'''
+relation = "extend SLOP011; the panel already owns the shorter refusal and closer forms"
+tier = "A"
+notes = """Four shapes one word away from the existing panel: a refusal that spells out the
+verb, a spelled-out self-identification, a closer with a clause between the idiom and the
+period, and a pt-BR closing sentence grading the essay against its own rubric. Few hits, and
+none of them on a human file."""
+
+[[candidate]]
+name = "Advisory importance hedge: it is always important to VERB"
+kind = "prose"
+langs = "prose"
+natlangs = "en"
+scope = "line"
+ignorecase = true
+regex = '''it(?:'?s| is) (always |especially |also |very |equally )?important (for \w+ )?to \w+'''
+relation = "extend SLOP015; HEDGE_PHRASES owns only the to note/mention/remember that subset"
+tier = "B"
+notes = """Safety-tuned answer register: every paragraph re-asserts importance instead of
+stating the fact. Almost every hit comes from one dataset of chat answers to advice questions,
+so read this as a register marker for that genre rather than a general prose tell."""
+
+[[candidate]]
+name = "pt-BR impersonal necessity assertion"
+kind = "prose"
+langs = "prose"
+natlangs = "pt-BR"
+scope = "line"
+ignorecase = true
+regex = '''(^|[^a-záéíóúç])[ée] (fundamental|essencial|imprescind[íi]vel|imperativo)( que| para| compreender| entender| considerar| reconhecer| destacar| ressaltar| garantir| promover|,|\.)'''
+relation = "extend SLOP015 pt-BR; HEDGE_PHRASES_PT_BR covers only é importante/válido/interessante ressaltar"
+tier = "B"
+notes = """The Portuguese twin of the importance hedge, repeated once per paragraph in a short
+essay. The adjective crucial is deliberately absent: SLOP016's English panel owns that token
+and cross-language disjointness forbids re-flagging it. A real rule would need SLOP015's
+density gate; this line-level count is an upper bound on what that gate would see."""
+
+[[candidate]]
+name = "Bare fence language tag left at the head of a source file"
+kind = "code"
+langs = "code"
+scope = "file-first-line"
+ignorecase = true
+regex = '''^\s*(rust|python|typescript|javascript|golang|go|ts|js|py|bash|sh|json|cpp|java)[,:]?\s*$'''
+relation = "extend SLOP003; the same paste artifact with the backticks already stripped"
+tier = "B"
+notes = """Only a chat reply carries a fence, and when the backticks are removed the language
+tag survives as a line that is not valid syntax in any of these languages. The head-of-file
+scope is load-bearing: the same word appears mid-file as a legitimate identifier."""
+
+[[candidate]]
+name = "Literal backslash-n paragraph break in prose"
+kind = "prose"
+langs = "prose"
+scope = "line"
+ignorecase = false
+regex = '''\\n\\n'''
+relation = "new; sibling of SLOP012, the tool and export artifact group"
+tier = "A"
+notes = """Two literal backslash-n sequences where a blank line belongs: a response pasted out
+of an API payload without unescaping, so the whole document is one physical line. Nobody types
+this. The only human hits are doctest examples inside code blocks, which a real rule would not
+see because it would read the masked stream."""
+
+[[candidate]]
+name = "Recap connective opening the final block, at any block length"
+kind = "prose"
+langs = "prose"
+natlangs = "en, pt-BR"
+scope = "last-block"
+ignorecase = false
+regex = '''^(Em (conclus[ãa]o|suma|resumo|s[íi]ntese)|Por fim|Concluindo|Resumindo|Em [úu]ltima an[áa]lise|In conclusion|In summary|To sum up|To summarize|Overall|Ultimately|In short|All in all|To conclude|In closing),'''
+relation = "extend SLOP029; recap.rs gates the same panel at a 20-word kicker so a long conclusion passes"
+tier = "B"
+notes = """The measured word counts of real hits overlap almost completely between the splits,
+so length is descriptive noise, not a discriminator. In Portuguese the shape is also what ENEM
+essay pedagogy teaches, so the human student-essay rate is high on purpose: read the pt-BR row
+as a genre marker, and the doubled close as the separating form."""
+
+[[candidate]]
+name = "Chat prose leaked outside any comment or string"
+kind = "code"
+langs = "code"
+scope = "line"
+ignorecase = false
+regex = '''^[A-Z][a-z]+( [a-zA-Z,'-]+){7,}\.$'''
+relation = "new, artifact group; sibling of SLOP002 and SLOP004, which read comments only"
+tier = "B"
+notes = """A prose sentence at file scope with no comment marker and no quotes, so the file
+does not parse: the chat reply minus the fence. This line regex is a weak proxy and hits
+docstrings and block-comment interiors, which is why the human rate is not zero; a real rule
+would read tree-sitter ERROR nodes and exclude comment and string spans, and only that
+implementation can be measured honestly."""
+
+[[miss]]
+rule = "SLOP011"
+what_it_missed = "Refusal, self-identification and closer phrasings one word outside the panel"
+evidence = "Four AI prose files across two datasets; the extended panel adds no human hit"
+fix_idea = "Add the three English shapes to RE_ANYWHERE and relax RE_CLOSER's terminal anchor to allow a short clause before the period"
+
+[[miss]]
+rule = "SLOP008"
+what_it_missed = "A function body holding nothing but a comment"
+evidence = "Rust TODO-comment bodies, TypeScript comment-only arrow bodies, Go health-check stubs"
+fix_idea = "Count a comment-only body as a stub in all three languages; the crate's own go_comment_body_not_flagged test pins the opposite for Go, so that decision has to be revisited first"
+
+[[miss]]
+rule = "SLOP006"
+what_it_missed = "A broad except whose body logs through a method call and never re-raises"
+evidence = "self.log_error(...) and self.logger.exception(...) bodies; also print(...) followed by return -1"
+fix_idea = "Match the call's last attribute segment against print/log/debug/info/warning/error/exception/critical, and let a trailing return of a literal count as swallowing"
+
+[[miss]]
+rule = "SLOP005"
+what_it_missed = "A TypeScript catch that logs and returns a null sentinel"
+evidence = "console.error(...) followed by return null in the same catch block"
+fix_idea = "Accept one trailing return of null/undefined/false/[]/{} alongside the console call; measure on the pinned TypeScript cells first, the defensive-parse idiom is real"
+
+[[miss]]
+rule = "SLOP001"
+what_it_missed = "Elision phrased and so forth or etc. instead of the panel's words"
+evidence = "An ellipsis comment reading and so forth for each dataset"
+fix_idea = "Add and so (forth|on) and etc. behind the same ellipsis prefix"
+
+[[miss]]
+rule = "SLOP013"
+what_it_missed = "A single-word lowercase bracket marker echoed from the source pipeline"
+evidence = "A bracketed substeps token at the head of two AI prose files"
+fix_idea = "Add the word to the keyword list, or accept a bracket around one short lowercase word; weigh it against how corpus-specific the token is"
+
+[[miss]]
+rule = "SLOP009"
+what_it_missed = "Lowercase kebab and dotted placeholder strings"
+evidence = "Server-address, password and token literals written as your-something in AI Python files"
+fix_idea = "Add a your[-.] prefix alternative to RE_CI, scoped to string literals as the rule already is"
+
+[[miss]]
+rule = "SLOP042"
+what_it_missed = "Module-scope narration over a call assignment in Python"
+evidence = "A create-a-dataframe comment over a pandas constructor call; the same pair inside a function body does fire"
+fix_idea = "Exempt only when the right-hand side holds no call node, which is what the README's module and class attributes wording already promises"
+
+[[miss]]
+rule = "SLOP042"
+what_it_missed = "A doc-comment block before a plain statement inside a TypeScript function body"
+evidence = "An initialize-an-empty-string doc comment over a let binding"
+fix_idea = "Apply the doc-comment exemption only when the anchor is a declaration, not an expression or return statement inside a body"
