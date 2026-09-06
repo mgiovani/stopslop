@@ -52,8 +52,9 @@ CAND_EXAMPLES = 6
 # frequent there than on verified human files. Same shape as the report's verdict thresholds.
 SEPARATES_LIFT = 3.0
 SEPARATES_RATE = 1.0
-# Per-message breakdown: rows below this share of the rule's files are folded into "other".
-MESSAGE_FLOOR = 0.02
+# Per-message rows below this share of the rule's files fold into one "rarer" row.
+# Percent on the pct() 0-100 scale, like SEPARATES_RATE: 2% is 2.0, and 0.02 folded nothing.
+MESSAGE_FLOOR = 2.0
 
 SCOPES = ("line", "comment", "file-first-line", "last-block")
 FIRST_LINES = 3
@@ -80,14 +81,39 @@ def blank_strings(text, lang):
     """Replace string-literal bodies with spaces, keeping every newline, so a comment scan
     never reads a sentence that lives inside a quoted string.
 
-    ponytail: quote-state machine only, no escapes beyond backslash and no raw-string or
-    template-literal awareness; a Rust `r#"..."#` or a JS template literal holding a quote
-    can desynchronize it. Move to tree-sitter if a candidate ever turns on that difference.
+    Comments are tracked in the same pass, one-directionally: once a line comment (`#`, `//`)
+    or a block comment (`/* */`) opens, a quote character inside it is left alone instead of
+    opening a string, because a comment's contents can never be code. Comment text itself
+    passes through unchanged here; `comment_lines` is what reads it.
+
+    ponytail: quote-and-comment state machine only, no escapes beyond backslash and no
+    raw-string or template-literal awareness; a Rust `r#"..."#`, a Go raw string containing a
+    backslash right before its closing backtick, a JS/TS regex literal holding `//`, or a
+    nested Rust `/* */` can each desynchronize it. Move to tree-sitter if a candidate ever
+    turns on one of those differences.
     """
+    marker = LINE_COMMENT.get(lang)
+    block = marker == "//"
     out, quote, i = [], None, 0
     triple = lang == "python"
+    in_line_comment = in_block_comment = False
     while i < len(text):
         ch = text[i]
+        if in_line_comment:
+            if ch == "\n":
+                in_line_comment = False
+            out.append(ch)
+            i += 1
+            continue
+        if in_block_comment:
+            if text.startswith("*/", i):
+                out.append("*/")
+                i += 2
+                in_block_comment = False
+            else:
+                out.append(ch)
+                i += 1
+            continue
         if quote:
             if ch == "\\" and i + 1 < len(text):
                 out.append("  " if text[i + 1] != "\n" else " \n")
@@ -101,12 +127,22 @@ def blank_strings(text, lang):
             out.append("\n" if ch == "\n" else " ")
             i += 1
             continue
+        if marker and text.startswith(marker, i):
+            in_line_comment = True
+            out.append(marker)
+            i += len(marker)
+            continue
+        if block and text.startswith("/*", i):
+            in_block_comment = True
+            out.append("/*")
+            i += 2
+            continue
         if triple and (text.startswith('"""', i) or text.startswith("'''", i)):
             quote = text[i:i + 3]
             out.append("   ")
             i += 3
             continue
-        if ch in "\"'" or (ch == "`" and lang in ("typescript", "tsx")):
+        if ch in "\"'" or (ch == "`" and lang in ("go", "typescript", "tsx")):
             quote = ch
             out.append(" ")
             i += 1
@@ -218,6 +254,37 @@ def compile_candidate(cand):
     return re.compile(cand["regex"], re.IGNORECASE if cand.get("ignorecase") else 0)
 
 
+# Candidates spell Brazilian Portuguese "pt-BR" (the crate's own NatLang name); datasets record
+# it as "pt" (score_corpus.py's `natlang`). Everything else passes through unchanged.
+NATLANG_ALIASES = {"pt-br": "pt"}
+
+
+def candidate_natlangs(cand):
+    """The candidate's declared natlangs, normalized to dataset spelling, or `None` when it
+    declares none and is therefore unrestricted."""
+    raw = cand.get("natlangs")
+    if not raw:
+        return None
+    return {NATLANG_ALIASES.get(x.strip().lower(), x.strip().lower()) for x in raw.split(",")}
+
+
+def cell_matches_natlangs(results, cell, natlangs):
+    """Whether `cell` may count toward a candidate that declared `natlangs`.
+
+    A cell whose dataset states no natural language (every code dataset: `natural_language`
+    is "n/a (code)") is never excluded here -- there is nothing to compare against, and a code
+    candidate's `natlangs` documents the language its regex is written for, not a per-file
+    label the corpus carries. Only a cell whose dataset states "en"/"pt" and it isn't the one
+    requested is dropped, which is the dilution this function exists to stop: a candidate
+    declaring `natlangs = "en"` was, until this check existed, measured over the pt-BR prose
+    cells too.
+    """
+    if natlangs is None:
+        return True
+    stated = natlang_of(results, cell)
+    return stated is None or stated in natlangs
+
+
 # --------------------------------------------------------------------------------------
 # Corpus access.
 # --------------------------------------------------------------------------------------
@@ -264,13 +331,26 @@ def selected_cells(results, args, langs=None):
 # Pass a: candidates.
 # --------------------------------------------------------------------------------------
 
+# A dataset naming one of these in its na_rules had its comments stripped by the publisher
+# (codet_m4, naples-code), so a `scope = "comment"` candidate can never match its cells.
+COMMENT_RULES = ("SLOP042", "SLOP043")
+
+
+def cell_has_comments(results, cell):
+    na = set(results["na_rules"].get(cell["dataset"], ()))
+    return not na.intersection(COMMENT_RULES)
+
+
 def measure_candidates(results, root, candidates, args):
     """One walk over the corpus, evaluating every candidate whose lang scope includes the
     cell; a file is read once and its scope lines are computed once per scope."""
-    compiled = [(c, compile_candidate(c), candidate_langs(c)) for c in candidates]
+    compiled = [(c, compile_candidate(c), candidate_langs(c), candidate_natlangs(c)) for c in candidates]
     tallies = {c["name"]: {} for c in candidates}
     for cell in selected_cells(results, args):
-        active = [(c, rx) for c, rx, langs in compiled if cell["lang"] in langs]
+        comments_ok = cell_has_comments(results, cell)
+        active = [(c, rx) for c, rx, langs, nats in compiled
+                  if cell["lang"] in langs and cell_matches_natlangs(results, cell, nats)
+                  and (c["scope"] != "comment" or comments_ok)]
         if not active:
             continue
         key = (cell["dataset"], cell["label"], cell["lang"])
@@ -308,9 +388,9 @@ def pool(results, tally, wanted_class):
 def candidate_verdict(human, ai):
     if ai["hit"] < MIN_AI_FILES:
         return "too few hits"
+    # ai["hit"] >= MIN_AI_FILES > 0 here, so ai["rate"] > 0 and lift() can never return "--"
+    # (its "neither side fires" case).
     ratio = lift(human["rate"], ai["rate"])
-    if ratio == "--":
-        return "never fires"
     if ratio == "inf" or (ratio >= SEPARATES_LIFT and ai["rate"] >= SEPARATES_RATE):
         return "separates"
     if isinstance(ratio, float) and ratio >= 1.5:
@@ -535,12 +615,16 @@ def phrase_examples(results, root, groups):
                 break
             for _name, text in cell_files(root, cell):
                 for line in cell_text_lines(text, cell["lang"]):
+                    # tokenize() (and so the counting pass) reads a phrase through this same
+                    # substitution; searching the raw line here could never match a phrase
+                    # whose count came from a BPE-marked MAGE line.
+                    clean = BPE_MARKERS.sub(" ", line)
                     for p in list(pending):
                         if len(phrases[p]) >= PHRASE_EXAMPLES:
                             pending.remove(p)
                             continue
-                        if patterns[p].search(line):
-                            phrases[p].append(clip(line.strip(), 1)[0])
+                        if patterns[p].search(clean):
+                            phrases[p].append(clip(clean.strip(), 1)[0])
         for p in g["phrases"]:
             p["examples"] = phrases[p["phrase"]]
     for g in groups:
@@ -579,6 +663,22 @@ def fmt_rate(hit, files, rate):
     return f"{rate:.2f}% ({hit}/{files})"
 
 
+# Verdict category first, lift only breaking ties inside it. A data-starved candidate with a
+# clean human side reads "inf", so sorting on lift first put it above real "leans AI" rows.
+VERDICT_RANK = {"separates": 0, "leans AI": 1, "at chance": 2, "leans human": 3, "too few hits": 4}
+
+
+def verdict_sort_key(row):
+    lift_value = row["measured"]["lift"]
+    if lift_value == "inf":
+        as_float = math.inf
+    elif isinstance(lift_value, float):
+        as_float = lift_value
+    else:
+        as_float = -math.inf
+    return VERDICT_RANK[row["measured"]["verdict"]], -as_float
+
+
 def candidates_section(rows, data):
     separating = [r for r in rows if r["measured"]["verdict"] == "separates"]
     lines = ["## Candidate tells", "",
@@ -587,8 +687,7 @@ def candidates_section(rows, data):
              "Rates pool verified human splits against plain AI splits only.", "",
              "| candidate | scope | langs | verified human | plain AI | lift | verdict |",
              "|---|---|---|---|---|---|---|"]
-    for row in sorted(rows, key=lambda r: (r["measured"]["verdict"] != "separates", -(
-            r["measured"]["lift"] if isinstance(r["measured"]["lift"], float) else 1e9))):
+    for row in sorted(rows, key=verdict_sort_key):
         c, m = row["candidate"], row["measured"]
         lines.append(
             f"| {c['name']} | {c['scope']} | {c['langs']} | "
@@ -650,7 +749,8 @@ def messages_section(rows):
             lines.append(f"| {m['message']} | {m['human_rate']:.2f}% ({m['human']}) | "
                          f"{m['ai_rate']:.2f}% ({m['ai']}) |")
         if row["folded"]:
-            lines.append(f"| {row['folded']} rarer messages | | |")
+            plural = "message" if row["folded"] == 1 else "messages"
+            lines.append(f"| {row['folded']} rarer {plural} | | |")
         lines.append("")
     return lines
 
@@ -715,6 +815,17 @@ def self_check():
     assert comment_lines("/* one\n * two */\nlet x = 1\n", "typescript") == [(1, "one"), (2, "two")]
     assert comment_lines("code\n", "prose") == []
 
+    # An apostrophe inside a comment must not open a string and swallow every comment after
+    # it: the defect that lost 30%+ of the comments in 230 of 499 cpython-lib files.
+    assert comment_lines("x = 1  # Django's default apps\nx = 2\n# real comment\n", "python") == [
+        (1, "Django's default apps"), (3, "real comment")]
+    assert comment_lines("let s = 1  // it's fine\nlet t = 2\n// real comment\n", "typescript") == [
+        (1, "it's fine"), (3, "real comment")]
+    assert comment_lines("/* it's a note */\nlet x = 1\n// after\n", "typescript") == [
+        (1, "it's a note"), (3, "after")]
+    # Go raw strings use backticks; a `//` inside one is not a comment.
+    assert comment_lines('const usage = `see https://x.io for // details`\n// real\n', "go") == [(2, "real")]
+
     assert paragraph_blocks("a\n\nb\nc\n") == [(1, "a"), (3, "b\nc")]
     assert scope_lines("a\nb\nc\nd\n", "prose", "file-first-line") == [(1, "a"), (2, "b"), (3, "c")]
     assert scope_lines("first\n\nlast one\n", "prose", "last-block") == [(3, "last one")]
@@ -724,9 +835,25 @@ def self_check():
     assert candidate_langs({"langs": "prose", "name": "x"}) == {"prose"}
     assert candidate_langs({"langs": "python, go", "name": "x"}) == {"python", "go"}
 
+    assert candidate_natlangs({"natlangs": "en"}) == {"en"}
+    assert candidate_natlangs({"natlangs": "pt-BR"}) == {"pt"}
+    assert candidate_natlangs({"natlangs": "en, pt-BR"}) == {"en", "pt"}
+    assert candidate_natlangs({}) is None
+    nat_results = {"datasets": {"en-ds": {"natural_language": "en"}, "pt-ds": {"natural_language": "pt"},
+                                "code-ds": {"natural_language": "n/a (code)"}}}
+    assert cell_matches_natlangs(nat_results, {"dataset": "en-ds"}, {"en"}) is True
+    assert cell_matches_natlangs(nat_results, {"dataset": "pt-ds"}, {"en"}) is False, \
+        "a prose candidate scoped to natlangs=en must not count a pt-BR dataset's cells"
+    assert cell_matches_natlangs(nat_results, {"dataset": "code-ds"}, {"en"}) is True, \
+        "a code dataset states no natural language, so a natlangs restriction cannot exclude it"
+    assert cell_matches_natlangs(nat_results, {"dataset": "pt-ds"}, None) is True
+
     assert tokenize("It's a test, isn't it?") == ["it's", "a", "test", "isn't", "it"]
     assert tokenize("ĠconclusionĊthe end") == ["conclusion", "the", "end"]
     assert file_ngrams(["a b a b"], 2) == {("a", "b"), ("b", "a")}
+    # phrase_examples searches lines through this same substitution, or a phrase counted from
+    # a BPE-marked MAGE line could never find an example to quote.
+    assert re.compile(r"\bthe end\b").search(BPE_MARKERS.sub(" ", "ĠconclusionĊthe end"))
 
     assert candidate_verdict({"rate": 0.0, "hit": 0, "files": 10}, {"rate": 0.0, "hit": 0, "files": 10}) == "too few hits"
     assert candidate_verdict({"rate": 0.0, "hit": 0, "files": 100}, {"rate": 5.0, "hit": 50, "files": 1000}) == "separates"
@@ -734,14 +861,27 @@ def self_check():
     assert candidate_verdict({"rate": 4.0, "hit": 40, "files": 1000}, {"rate": 4.0, "hit": 40, "files": 1000}) == "at chance"
     assert candidate_verdict({"rate": 9.0, "hit": 90, "files": 1000}, {"rate": 2.0, "hit": 20, "files": 1000}) == "leans human"
 
+    # A "too few hits" row can still carry lift "inf" (clean human side, a handful of AI
+    # hits); it must not outrank a real "leans AI" row in the report.
+    fake_rows = [
+        {"measured": {"verdict": "too few hits", "lift": "inf"}},
+        {"measured": {"verdict": "leans AI", "lift": 2.5}},
+        {"measured": {"verdict": "separates", "lift": 5.0}},
+    ]
+    assert [r["measured"]["verdict"] for r in sorted(fake_rows, key=verdict_sort_key)] == [
+        "separates", "leans AI", "too few hits"]
+
     results = {
         "datasets": {"pinned": {"human_provenance": "pinned-2019"}, "recent": {"human_provenance": "unverified"}},
-        "na_rules": {},
+        "na_rules": {"codet_m4": ["SLOP042", "SLOP043"]},
     }
     assert cell_class(results, {"dataset": "pinned", "label": "human"}) == "human"
     assert cell_class(results, {"dataset": "recent", "label": "human"}) == "human-unverified"
     assert cell_class(results, {"dataset": "recent", "label": "ai"}) == "ai"
     assert cell_class(results, {"dataset": "recent", "label": "ai-paraphrased"}) == "ai-variant"
+    assert not cell_has_comments(results, {"dataset": "codet_m4"}), \
+        "codet_m4 strips every comment; a comment-scope candidate must skip its cells"
+    assert cell_has_comments(results, {"dataset": "pinned"})
 
     # The shipped regexes must still match the shape they were written for. The backslash-n
     # one is two literal backslashes; a TOML edit turning it into a newline measures nothing.
@@ -775,6 +915,22 @@ def self_check():
     assert rows[0]["messages"][0]["human"] == 4 and rows[0]["messages"][0]["ai"] == 40, \
         "an unverified human split must not enter the pooled human count"
     assert rows[0]["human_files"] == 100, "a prose rule's denominator must exclude the code cells"
+
+    # MESSAGE_FLOOR is on the pct() 0-100 scale: a message at 0.3% must fold, one at 5%/6%
+    # must not. At the old 0.02 value nothing ever folded.
+    floor_rows = message_rows({
+        "cells": [
+            {"dataset": "pinned", "label": "human", "lang": "prose", "files": 1000,
+             "msgs": {"SLOP030": {"common": 50, "rare": 3}}},
+            {"dataset": "recent", "label": "ai", "lang": "prose", "files": 1000,
+             "msgs": {"SLOP030": {"common": 60, "rare": 2}}},
+        ],
+        "datasets": {"pinned": {"human_provenance": "pinned-2019"}, "recent": {"human_provenance": "unverified"}},
+        "applicable": {"prose": ["SLOP030"]},
+        "na_rules": {},
+    }, argparse.Namespace(langs=None, datasets=None))
+    assert [m["message"] for m in floor_rows[0]["messages"]] == ["common"], floor_rows[0]["messages"]
+    assert floor_rows[0]["folded"] == 1
 
     print("ok")
 

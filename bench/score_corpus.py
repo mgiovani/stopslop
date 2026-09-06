@@ -76,6 +76,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 
 HF_FILTER_URL = "https://datasets-server.huggingface.co/filter"
 HF_ROWS_URL = "https://datasets-server.huggingface.co/rows"
@@ -101,7 +102,11 @@ MIN_GENERATOR_FILES = 20
 # Flagged lines kept per rule per cell in results.json, spread across the flagged files; the
 # HTML page shows them side by side, so more than a screen's worth per split is unread.
 EXAMPLES_PER_RULE = 14
+# Judgment call, not calibrated: enough lines each side of a flagged line to show the
+# enclosing statement in the HTML example card without approaching a whole file.
 SNIPPET_CONTEXT = 2
+# Judgment call, not calibrated: long enough that clip() rarely needs to cut a normal source
+# line, short enough that one long line does not dominate an HTML example card.
 LINE_MAX = 230
 MANIFEST = "fetched.json"
 RESULTS_SCHEMA = 1
@@ -200,6 +205,9 @@ def fetch(url, dest, what, skip_failures, headers=None):
         part = f"{dest}.part"
         try:
             req = urllib.request.Request(url, headers=headers or {})
+            # `fetch` streams a whole file (csv/jsonl/json resolves up to tens of MB); a
+            # page-sized API response would time out well before this, so the longer bound
+            # only bites a genuine stall, not a slow-but-live transfer.
             with urllib.request.urlopen(req, timeout=120) as resp, open(part, "wb") as out:
                 shutil.copyfileobj(resp, out)
         except urllib.error.HTTPError as e:
@@ -255,6 +263,9 @@ def hf_get_cached(url, cache_path, what, skip_failures, sleeps=RETRY_SLEEPS):
             time.sleep(delay)
         try:
             req = urllib.request.Request(url, headers=hf_headers())
+            # `/rows` and `/filter` answer with at most 100 rows of JSON; a real answer lands
+            # in seconds, so a shorter bound than fetch()'s file download surfaces a stalled
+            # request sooner, before the retry ladder below even starts.
             with urllib.request.urlopen(req, timeout=60) as resp:
                 body, status = resp.read(), resp.status
         except urllib.error.HTTPError as e:
@@ -667,7 +678,8 @@ def shared_clone_dir(cache_dir, repo, ref):
 
 def materialize_from_clone(ds, cell, clone_dir, limit, skip_failures):
     """`git_files` + `read_text_files` tail shared by every git-based fetcher once its clone
-    dir is ready -- `fetch_git_cell` and `fetch_rust_book` differ only in how they get there."""
+    dir is ready -- `fetch_git_cell` and `fetch_git_before_cell` differ only in how they get
+    there."""
     files = git_files(clone_dir, cell["subdir"], cell["glob"], ds.get("exclude", ()))
     if not files:
         if skip_failures:
@@ -898,6 +910,116 @@ def fetch_diplomatrix(ds, limit, cache_dir, skip_failures):
     return spread_pair(human_items, ai_items, limit)
 
 
+# One row per function; every column but `docstring` a rule can read is checked in
+# `naples-code`'s `na_rules`. Columns confirmed live via a byte-range GET on the file.
+NAPLES_CODE_GENERATORS = ("chatgpt_code", "dsc_code", "qwen_code")
+
+
+def fetch_naples_code(ds, limit, cache_dir, skip_failures):
+    """`python_dataset.jsonl` is 651 MB; stream it and stop once both samples are full
+    instead of downloading the whole file like `fetch()` would. The lines actually read are
+    cached (`sample.head.jsonl`), so a rerun at the same or a smaller `--limit` never touches
+    the network again, and only a `--limit 0` run ever reads past the first few hundred rows.
+
+    ponytail: reading from the front of the file is a head sample, not `hf_filter_sample`'s
+    spread sample -- Zenodo has no query endpoint to spread-page against. Upgrade path: fetch
+    the whole file once and spread-sample the rows in memory, if head bias ever shows up.
+    """
+    cache_path = os.path.join(cache_dir, "sample.head.jsonl")
+    want = limit or None
+    if os.path.exists(cache_path):
+        with open(cache_path, encoding="utf-8") as fh:
+            raw_lines = fh.readlines()
+    else:
+        raw_lines = []
+        try:
+            req = urllib.request.Request(ds["url_file"])
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                human_n = ai_n = 0
+                for raw in resp:
+                    line = raw.decode("utf-8", errors="replace")
+                    if not line.strip():
+                        continue
+                    row = json.loads(line)
+                    raw_lines.append(line)
+                    human_n += bool(row.get("human_code"))
+                    ai_n += sum(bool(row.get(c)) for c in NAPLES_CODE_GENERATORS)
+                    if want and human_n >= want and ai_n >= want:
+                        break
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
+            if skip_failures:
+                return None
+            raise SystemExit(f"{ds['name']}: giving up: {e}")
+        part = f"{cache_path}.part"
+        with open(part, "w", encoding="utf-8") as fh:
+            fh.writelines(raw_lines)
+        os.replace(part, cache_path)
+    human_items, ai_items = [], []
+    for line in raw_lines:
+        row = json.loads(line)
+        if row.get("human_code"):
+            human_items.append((row["human_code"], {"generator": "human"}))
+        for col in NAPLES_CODE_GENERATORS:
+            code = row.get(col)
+            if code:
+                ai_items.append((code, {"generator": col[: -len("_code")]}))
+    return {"human": [human_items[i] for i in sample_indices(len(human_items), limit)],
+            "ai": [ai_items[i] for i in sample_indices(len(ai_items), limit)]}
+
+
+def fetch_gpt2_output(ds, limit, cache_dir, skip_failures):
+    """Two flat JSONL files, one per class -- the class is which file, exactly like
+    `fetch_ghostbuster`'s directory layout."""
+    out = {}
+    for label, url, generator in (
+        ("human", ds["url_human"], "human"),
+        ("ai", ds["url_ai"], "gpt-2-xl-1542m"),
+    ):
+        path = fetch(url, os.path.join(cache_dir, os.path.basename(url)), f"{ds['name']}/{label}", skip_failures)
+        if path is None:
+            out[label] = None
+            continue
+        items = []
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                items.append((row.get("text") or "", {"generator": generator}))
+        out[label] = [items[i] for i in sample_indices(len(items), limit)]
+    return out
+
+
+# The two machine-humanized variants: a paraphraser rewrote existing ai text rather than
+# generating it, so these never pool with plain `ai`.
+PAN25_PARAPHRASE_MODELS = ("gpt-4-turbo-paraphrase", "gemini-pro-paraphrase")
+
+
+def fetch_pan25(ds, limit, cache_dir, skip_failures):
+    """Zenodo ships one zip holding `train.jsonl` (and a `val.jsonl` this bench does not use);
+    `fetch()` downloads the zip once, and the stdlib `zipfile` module reads `train.jsonl`
+    straight out of it, no extraction to disk needed."""
+    path = fetch(ds["url_file"], os.path.join(cache_dir, "pan25.zip"), ds["name"], skip_failures)
+    if path is None:
+        return None
+    out = {"human": [], "ai": [], "ai-paraphrased": []}
+    with zipfile.ZipFile(path) as zf, zf.open("train.jsonl") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            model = row.get("model") or "unknown"
+            text = row.get("text") or ""
+            domain = row.get("genre")
+            if row.get("label") == 0:
+                out["human"].append((text, {"generator": "human", "domain": domain}))
+            elif model in PAN25_PARAPHRASE_MODELS:
+                out["ai-paraphrased"].append((text, {"generator": model, "domain": domain}))
+            else:
+                out["ai"].append((text, {"generator": model, "domain": domain}))
+    return {key: [items[i] for i in sample_indices(len(items), limit)] for key, items in out.items()}
+
+
 def fetch_local_cell(directory, limit, label):
     """A plain directory of files: `--local` points anywhere, `generate_corpus.py`'s synth
     cells point at `<dir>/synth/<cell>/ai/<lang>/` and leave an `index.json` one level up
@@ -984,13 +1106,19 @@ def run_lint(binary, root, expected):
     return payload["findings"], stats
 
 
+def cell_materialized(root):
+    """Whether `root` and its sibling `<root>.index.json` (see `write_cell`) both exist --
+    the pair `read_cell` and `carry_over` require before trusting a cell already on disk."""
+    return os.path.isdir(root) and os.path.exists(f"{root}.index.json")
+
+
 def read_cell(root, empty):
     """Recount a cell `--fetch-only` left on disk so `--no-fetch` can score it without the
     network. Dotfiles are skipped because the walk skips them too, and any other disagreement
     between the directory and its index is a half-deleted or hand-edited cell, which is an
     error rather than a smaller sample."""
     index_path = f"{root}.index.json"
-    if not os.path.isdir(root) or not os.path.exists(index_path):
+    if not cell_materialized(root):
         raise SystemExit(f"{root}: cell not materialized; run --fetch-only first")
     with open(index_path, encoding="utf-8") as fh:
         index = json.load(fh)
@@ -1019,9 +1147,12 @@ def tally(findings):
 def normalize_message(code, message):
     """Collapse the per-file parts of a message so one rule's findings group into a handful
     of shapes: backticked identifiers become `X` (except for `KEEP_BACKTICKS`, where the span
-    is the panel entry) and digits become N. Quoted spans stay, they name the panel word."""
-    if code not in KEEP_BACKTICKS:
-        message = re.sub(r"`[^`]*`", "`X`", message)
+    is the panel entry and stays verbatim, digits included) and digits outside any backtick
+    span become N. Quoted spans stay, they name the panel word."""
+    if code in KEEP_BACKTICKS:
+        return re.sub(r"`[^`]*`|\d+(?:\.\d+)?",
+                       lambda m: m.group() if m.group().startswith("`") else "N", message)
+    message = re.sub(r"`[^`]*`", "`X`", message)
     return re.sub(r"\d+(\.\d+)?", "N", message)
 
 
@@ -1100,11 +1231,6 @@ def score_cell(root, counts, binary, dataset_name, label, lang, applicable):
     }
 
 
-def build_cell(root, items, ext, binary, dataset_name, label, lang, applicable):
-    counts = write_cell(root, items, ext)
-    return score_cell(root, counts, binary, dataset_name, label, lang, applicable)
-
-
 # --------------------------------------------------------------------------------------
 # Metrics.
 # --------------------------------------------------------------------------------------
@@ -1156,9 +1282,9 @@ def density(cell, code, lang):
     return per_1k_words(n, cell["words_total"]) if lang == "prose" else per_kloc(n, cell["stats"]["lines"])
 
 
-def dist(counts, top=8):
+def dist(counts):
     ordered = sorted(counts.items(), key=lambda kv: -kv[1])
-    return ", ".join(f"{k} {v}" for k, v in ordered[:top]) or "none"
+    return ", ".join(f"{k} {v}" for k, v in ordered[:8]) or "none"
 
 
 def fmt_ratio(x):
@@ -1337,6 +1463,33 @@ DATASETS = {
              "where": '"language"=\'python\' and "model"<>\'human\''},
         ],
     },
+    "naples-code": {
+        "kind": "url_jsonl", "natlang": "en",
+        "url_file": "https://zenodo.org/records/15423067/files/python_dataset.jsonl",
+        "url": "https://zenodo.org/records/15423067",
+        "paper": "arXiv 2508.21634", "license": "CC-BY-4.0",
+        "generator_years": "gpt-3.5-turbo (2023), DeepSeek-Coder-Instruct-33B and "
+                           "Qwen2.5-Coder-Instruct-32B (2024)",
+        "human_provenance": "pinned-2019",
+        "human_note": "HMCorp: 16,928 non-forked GitHub repos sorted by stars, filtered from "
+                      "CodeSearchNet (2019)",
+        "na_rules": {"SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP042", "SLOP043"},
+        "caveats": [
+            "`docstring` ships as its own column, separate from `human_code`, so "
+            "SLOP001-SLOP004, SLOP042 and SLOP043 print `n/a` here the same way they do on "
+            "codet_m4 -- the extraction pass strips comments and docstrings out of the code "
+            "columns, not the model.",
+            "The file is 651 MB; `fetch_naples_code` streams it and stops once both samples "
+            "are full, so this is a head sample of file order rather than the spread sample "
+            "every HF-backed dataset above gets through `/filter`.",
+            "The Java half of this Zenodo record is not registered: stopslop has no Java lang.",
+        ],
+        "fetch": fetch_naples_code,
+        "cells": [
+            {"label": "human", "lang": "python", "generator": "human"},
+            {"label": "ai", "lang": "python"},
+        ],
+    },
     "rosetta": {
         "kind": "hf_filter", "natlang": None,
         "dataset": "christopher/rosetta-code", "config": "default", "split": "train",
@@ -1357,6 +1510,43 @@ DATASETS = {
             {"label": "human", "lang": "rust", "generator": "human", "where": '"language_name"=\'Rust\''},
             {"label": "human", "lang": "typescript", "generator": "human",
              "where": '"language_name"=\'TypeScript\''},
+        ],
+    },
+    "hairosetta": {
+        "kind": "hf_filter", "natlang": "en",
+        "dataset": "isThisYouLLM/H-AIRosettaMP", "config": "default", "split": "train",
+        "text_col": "code", "generator_col": None,
+        "url": "https://huggingface.co/datasets/isThisYouLLM/H-AIRosettaMP",
+        "paper": "arXiv 2412.14611", "license": "MIT",
+        "generator_years": "StarCoder2 (2024)",
+        "human_provenance": "unverified",
+        "human_note": "Rosetta Code wiki solutions, retrieved 2022-07-01, after Copilot shipped",
+        "caveats": [
+            "The ai side is StarCoder2 translating a human solution from another language "
+            "into this one (named in the `set` column, e.g. `Rust_from_Java`), not writing "
+            "from a task prompt; translated code may carry different tells than prompted "
+            "code, so every ai cell here is labelled `ai-translated`, never plain `ai`.",
+            "Rosetta Code is already registered on its own (`rosetta`); this is the "
+            "derivative that adds the ai half, not a re-proposal.",
+        ],
+        "fetch": fetch_hf_filter_cell,
+        "cells": [
+            {"label": "human", "lang": "python", "generator": "human",
+             "where": '"language_name"=\'Python\' and "target"=\'Human_written\''},
+            {"label": "ai-translated", "lang": "python", "generator": "starcoder2",
+             "where": '"language_name"=\'Python\' and "target"=\'Ai_generated\''},
+            {"label": "human", "lang": "go", "generator": "human",
+             "where": '"language_name"=\'Go\' and "target"=\'Human_written\''},
+            {"label": "ai-translated", "lang": "go", "generator": "starcoder2",
+             "where": '"language_name"=\'Go\' and "target"=\'Ai_generated\''},
+            {"label": "human", "lang": "rust", "generator": "human",
+             "where": '"language_name"=\'Rust\' and "target"=\'Human_written\''},
+            {"label": "ai-translated", "lang": "rust", "generator": "starcoder2",
+             "where": '"language_name"=\'Rust\' and "target"=\'Ai_generated\''},
+            {"label": "human", "lang": "typescript", "generator": "human", "proxy": JS_PROXY,
+             "where": '"language_name"=\'JavaScript\' and "target"=\'Human_written\''},
+            {"label": "ai-translated", "lang": "typescript", "generator": "starcoder2", "proxy": JS_PROXY,
+             "where": '"language_name"=\'JavaScript\' and "target"=\'Ai_generated\''},
         ],
     },
     "go-std": {
@@ -1468,6 +1658,53 @@ DATASETS = {
             {"label": "ai", "lang": "prose"},
         ],
     },
+    "semeval24-m4": {
+        "kind": "hf_filter", "natlang": "en",
+        "dataset": "d0rj/SemEval2024-task8", "config": "subtaskA_monolingual", "split": "train",
+        "text_col": "text", "generator_col": "model",
+        "url": "https://huggingface.co/datasets/d0rj/SemEval2024-task8",
+        "paper": "arXiv 2404.14183 (task overview), arXiv 2305.14902 (corpus)",
+        "license": "Apache-2.0",
+        "generator_years": "ChatGPT, GPT-3 davinci, Cohere, Dolly (2023)",
+        "human_provenance": "pinned-2019",
+        "human_note": "PeerRead (2007-2017) plus pre-2020 arXiv, Reddit and WikiHow text; the "
+                      "wikipedia human rows are dropped, their machine rows kept, the same "
+                      "treatment HC3's wiki_csai config gets",
+        "caveats": [
+            "WikiHow is CC-BY-NC-SA and Wikipedia CC-BY-SA upstream, which the Apache-2.0 "
+            "mirror label does not override; never quote a line from this dataset in an issue.",
+        ],
+        "fetch": fetch_hf_filter_cell,
+        "cells": [
+            {"label": "human", "lang": "prose", "generator": "human",
+             "where": '"label"=0 and "source"<>\'wikipedia\''},
+            {"label": "ai", "lang": "prose", "where": '"label"=1'},
+        ],
+    },
+    "gpt2-output": {
+        "kind": "url_jsonl", "natlang": "en",
+        "url_human": "https://openaipublic.azureedge.net/gpt-2/output-dataset/v1/webtext.test.jsonl",
+        "url_ai": "https://openaipublic.azureedge.net/gpt-2/output-dataset/v1/xl-1542M.test.jsonl",
+        "url": "https://github.com/openai/gpt-2-output-dataset",
+        "paper": None, "license": "MIT",
+        "generator_years": "GPT-2 1542M (2019)",
+        "human_provenance": "pinned-2019",
+        "human_note": "WebText: Reddit-outbound links with karma >= 3, scraped through "
+                      "December 2017",
+        "caveats": [
+            "Top-K 40 sampling shifts the part-of-speech distribution (underuses proper "
+            "nouns, overuses pronouns) per OpenAI's own detection.md, so a pronoun or opener "
+            "rule can look good here for a sampling reason rather than a style one; the "
+            "plain xl-1542M file is registered, not a -k40 variant.",
+            "Documents near 500 characters detect about 15% worse per the same note, so "
+            "length is a confound on this dataset.",
+        ],
+        "fetch": fetch_gpt2_output,
+        "cells": [
+            {"label": "human", "lang": "prose", "generator": "human"},
+            {"label": "ai", "lang": "prose", "generator": "gpt-2-xl-1542m"},
+        ],
+    },
     "ghostbuster": {
         "kind": "git_multi", "natlang": "en",
         "repo": "https://github.com/vivek3141/ghostbuster-data",
@@ -1480,6 +1717,9 @@ DATASETS = {
                       "undated IvyPanda essays are dropped from the human split",
         "caveats": ["gpt_prompt*/gpt_semantic/gpt_writing variants are skipped; only the "
                     "plain gpt/ and claude/ generations are counted as `ai`.",
+                    "Every split carries a sibling logprobs/ tree of GPT-2 token/score dumps, "
+                    "two thirds of the .txt files under human/; they are excluded, because they "
+                    "are model output about a document rather than the document.",
                     "AI documents were generated from prompts derived from the paired human "
                     "document with a target length, so length is matched by construction."],
         "fetch": fetch_ghostbuster,
@@ -1487,7 +1727,7 @@ DATASETS = {
             {"label": "human", "lang": "prose"},
             {"label": "ai", "lang": "prose"},
         ],
-        "exclude": ("gpt_prompt", "gpt_semantic", "gpt_writing"),
+        "exclude": ("gpt_prompt", "gpt_semantic", "gpt_writing", "logprobs"),
     },
     "faidset": {
         "kind": "url_table", "natlang": "en",
@@ -1568,6 +1808,34 @@ DATASETS = {
             {"label": "ai-polished", "lang": "prose"},
         ],
     },
+    "pan25": {
+        "kind": "url_table", "natlang": "en",
+        "url_file": "https://zenodo.org/records/14962653/files/"
+                    "pan25-generative-ai-detection-task1-train.zip",
+        "url": "https://zenodo.org/records/14962653",
+        "paper": None,
+        "license": "research use only, no redistribution (Zenodo record terms)",
+        "generator_years": "23 models spanning 2023-2025, including gpt-4o, o3-mini, "
+                           "gemini-2.0-flash, deepseek-r1-distill-qwen-32b, "
+                           "llama-3.3-70b-instruct and gpt-4.5-preview (model column)",
+        "human_provenance": "unverified",
+        "human_note": "fiction, essay and news human text; the fiction/essay sources could "
+                      "not be confirmed, the news text is dated 2021",
+        "caveats": [
+            "The dataset's license permits research use only and forbids redistribution; "
+            "fetched and scored locally like CodeMirage, but never quote a line from it "
+            "anywhere, including in an issue.",
+            "`gpt-4-turbo-paraphrase` and `gemini-pro-paraphrase` are machine-humanized "
+            "rewrites of existing ai text, not organic generations; they are labelled "
+            "`ai-paraphrased` and never pooled with plain `ai`.",
+        ],
+        "fetch": fetch_pan25,
+        "cells": [
+            {"label": "human", "lang": "prose"},
+            {"label": "ai", "lang": "prose"},
+            {"label": "ai-paraphrased", "lang": "prose"},
+        ],
+    },
     "cpython-doc": {
         "kind": "git_tag", "natlang": "en",
         "repo": "https://github.com/python/cpython", "tag": "v3.8.0",
@@ -1595,6 +1863,34 @@ DATASETS = {
         "fetch": fetch_git_before_cell,
         "cells": [{"label": "human", "lang": "prose", "generator": "human",
                    "subdir": "src", "glob": "*.md"}],
+        "exclude": (),
+    },
+    "react-docs": {
+        "kind": "git_before", "natlang": "en",
+        "repo": "https://github.com/reactjs/react.dev", "before": "2020-01-01",
+        "url": "https://github.com/reactjs/react.dev", "paper": None, "license": "CC-BY-4.0",
+        "generator_years": None,
+        "human_provenance": "pinned-2019",
+        "human_note": "react.dev docs at their last default-branch commit before 2020-01-01",
+        "caveats": ["Files carry YAML frontmatter (id/title/permalink); the repo has no "
+                    "release tag near the cutoff, cloned shallow-since 2019 like rust-book."],
+        "fetch": fetch_git_before_cell,
+        "cells": [{"label": "human", "lang": "prose", "generator": "human",
+                   "subdir": "content/docs", "glob": "*.md"}],
+        "exclude": (),
+    },
+    "k8s-docs": {
+        "kind": "git_tag", "natlang": "en",
+        "repo": "https://github.com/kubernetes/website", "tag": "snapshot-initial-v1.17",
+        "url": "https://github.com/kubernetes/website", "paper": None, "license": "CC-BY-4.0",
+        "generator_years": None,
+        "human_provenance": "pinned-2019",
+        "human_note": "kubernetes/website English docs, tagged December 2019",
+        "caveats": ["Pages carry Hugo shortcodes (`{{% capture body %}}`); some tutorials "
+                    "ship as `.html` instead of `.md`, so the glob stays `.md`-only."],
+        "fetch": fetch_git_cell,
+        "cells": [{"label": "human", "lang": "prose", "generator": "human",
+                   "subdir": "content/en/docs", "glob": "*.md"}],
         "exclude": (),
     },
     "wetbench-pt": {
@@ -1644,6 +1940,24 @@ DATASETS = {
         "cells": [{"label": "human", "lang": "prose",
                    "url": "https://raw.githubusercontent.com/rafaelanchieta/essay/master/essay-br/essay-br.csv"}],
     },
+    "lener-br": {
+        "kind": "git_tag", "natlang": "pt",
+        "repo": "https://github.com/peluz/lener-br",
+        "url": "https://github.com/peluz/lener-br",
+        "paper": "PROPOR 2018 (Universidade de Brasília)",
+        "license": "MIT (packaging); the raw texts are public-domain Brazilian federal "
+                   "statutes and court rulings (Lei 9.610/98 Art. 8)",
+        "generator_years": None,
+        "human_provenance": "pinned-2019",
+        "human_note": "Brazilian federal statutes and court rulings dated 2008-2018 by their "
+                      "own text; the repo's own commit history only starts 2020-05-15, so the "
+                      "cutoff rests on the documents' stated dates, not the clone",
+        "caveats": [],
+        "fetch": fetch_git_cell,
+        "cells": [{"label": "human", "lang": "prose", "generator": "human",
+                   "subdir": "leNER-Br/raw_text", "glob": "*.txt"}],
+        "exclude": (),
+    },
 }
 
 # Synthesized cells written by bench/generate_corpus.py (not part of this file's ownership);
@@ -1686,21 +2000,38 @@ def cell_root(args, name, label, lang):
 
 def fetch_dataset(name, ds, args):
     """Fetch and materialize every cell of one dataset without linting it; returns
-    `({(label, lang): {"ext", "files", "empty", "index"}}, not_fetched)`."""
+    `({(label, lang): {"ext", "files", "empty", "index"}}, not_fetched)`.
+
+    A cell whose fetch returns `None` (retries exhausted under `--skip-failures`) never
+    touches disk: destroying an already-materialized cell on a transient failure would turn
+    one bad network call into a full re-fetch, so a `None` cell instead falls back to the
+    last successful fetch's own files, still on disk and still listed in the previous
+    manifest at this run's `--limit` -- `write_cell` is what actually rebuilds a cell, and it
+    runs only on a real (possibly empty) result.
+    """
     cache_dir = os.path.join(args.dir, "cache", name)
     os.makedirs(cache_dir, exist_ok=True)
     written, not_fetched = {}, []
+    old_manifest = _stored_manifest(args)
+    old_cells = {}
+    if old_manifest and old_manifest.get("limit") == args.limit:
+        old_entry = old_manifest.get("datasets", {}).get(name)
+        if old_entry:
+            old_cells = {(c["label"], c["lang"]): c for c in old_entry["cells"]}
 
     def store(label, lang, ext, items):
         root = cell_root(args, name, label, lang)
         if items is None:
-            # A cell an earlier run did materialize would otherwise sit on disk looking like
-            # part of this run's sample while the report silently omitted it.
-            shutil.rmtree(root, ignore_errors=True)
-            if os.path.exists(f"{root}.index.json"):
-                os.remove(f"{root}.index.json")
-            not_fetched.append(f"{name}/{label}/{lang}")
-            sys.stderr.write(f"not fetched: {name}/{label}/{lang} (retries exhausted; rerun to fill it)\n")
+            old = old_cells.get((label, lang))
+            if old and cell_materialized(root):
+                written[(label, lang)] = read_cell(root, old["empty"]) | {"ext": old["ext"]}
+                sys.stderr.write(
+                    f"not fetched: {name}/{label}/{lang} (retries exhausted; kept the cell "
+                    "from the last successful fetch)\n"
+                )
+            else:
+                not_fetched.append(f"{name}/{label}/{lang}")
+                sys.stderr.write(f"not fetched: {name}/{label}/{lang} (retries exhausted; rerun to fill it)\n")
             return
         written[(label, lang)] = write_cell(root, items, ext) | {"ext": ext}
 
@@ -1724,14 +2055,12 @@ def fetch_dataset(name, ds, args):
         for cell in ds["cells"]:
             items = None if result is None else result.get(cell["label"])
             store(cell["label"], cell["lang"], cell.get("ext", EXT[cell["lang"]]), items)
-    elif kind == "local":
+    else:  # kind == "local", the last member of the closed set `self_check` asserts
         for cell in ds["cells"]:
             if args.langs and cell["lang"] not in args.langs:
                 continue
             items = fetch_local_cell(cell["dir"], args.limit, cell["label"])
             store(cell["label"], cell["lang"], cell.get("ext", EXT[cell["lang"]]), items)
-    else:
-        raise SystemExit(f"{name}: unknown dataset kind {kind!r}")
     return written, not_fetched
 
 
@@ -1764,28 +2093,51 @@ def manifest_path(args):
     return os.path.join(args.dir, MANIFEST)
 
 
-def carry_over(args, selected, datasets, not_fetched):
-    """Keep the manifest entries of datasets this run did not select, so `--datasets x` fills
-    one cell without erasing the record of the other twenty. An entry whose cells are no
-    longer on disk is dropped rather than carried, because `--no-fetch` would fail on it."""
+def _stored_manifest(args):
+    """The previous run's manifest, or `None` when absent or written by a different schema --
+    a soft lookup for `carry_over` and `fetch_dataset`'s restore path. `read_manifest`
+    (`--no-fetch`) needs one to exist and raises instead."""
     path = manifest_path(args)
     if not os.path.exists(path):
-        return not_fetched
+        return None
     with open(path, encoding="utf-8") as fh:
-        old = json.load(fh)
-    if old.get("schema") != RESULTS_SCHEMA or old.get("limit") != args.limit:
+        manifest = json.load(fh)
+    return manifest if manifest.get("schema") == RESULTS_SCHEMA else None
+
+
+def carry_over(args, selected, datasets, not_fetched):
+    """Keep the manifest entries of datasets this run did not touch, so `--datasets x` fills
+    one cell without erasing the record of the other twenty -- including a selected dataset
+    whose refresh produced nothing (every cell of it landed in `not_fetched`), so retries
+    exhausted on the one dataset asked to refresh doesn't drop it from the manifest either.
+    An entry whose cells are no longer on disk, or are missing their index, is dropped rather
+    than carried, because `--no-fetch` would fail on it."""
+    old = _stored_manifest(args)
+    if old is None:
         return not_fetched
-    for name, entry in old.get("datasets", {}).items():
-        if name in datasets or name in selected:
-            continue
-        if all(os.path.isdir(cell_root(args, name, c["label"], c["lang"])) for c in entry["cells"]):
+    attempted_and_failed = {x.split("/", 1)[0] for x in not_fetched}
+    stale_names = [n for n in old.get("datasets", {})
+                   if n not in datasets and (n not in selected or n in attempted_and_failed)]
+    if stale_names and old.get("limit") != args.limit:
+        raise SystemExit(
+            f"{manifest_path(args)}: fetched at --limit {old['limit']}, this run used --limit "
+            f"{args.limit}; carrying {sorted(stale_names)} forward would mix sample sizes "
+            f"under one manifest limit -- select them too, rerun at --limit {old['limit']}, "
+            "or delete the manifest to start over at the new limit."
+        )
+    for name in stale_names:
+        entry = old["datasets"][name]
+        if all(cell_materialized(cell_root(args, name, c["label"], c["lang"])) for c in entry["cells"]):
             datasets[name] = entry
+    # A cell just restored into `datasets` (above, or already by `fetch_dataset`) is no
+    # longer "not fetched", whether it came from `old`'s record or this run's own failures.
     stale = {f"{name}/{c['label']}/{c['lang']}" for name, e in datasets.items() for c in e["cells"]}
     kept = [x for x in old.get("not_fetched", ()) if x.split("/")[0] not in selected and x not in stale]
-    return sorted(set(not_fetched) | set(kept))
+    fresh = [x for x in not_fetched if x not in stale]
+    return sorted(set(fresh) | set(kept))
 
 
-def write_manifest(args, fetched, revisions, registry, not_fetched, selected=()):
+def write_manifest(args, fetched, revisions, registry, not_fetched, selected):
     """Record what `--fetch-only` materialized so `--no-fetch` can score it later: the limit
     (a rerun must not re-declare it), per-cell counts (the walk guard needs `files`, the report
     needs `empty`), revisions (network or clone state), and the full registry entry of any
@@ -1823,7 +2175,7 @@ def read_manifest(args):
 # Report.
 # --------------------------------------------------------------------------------------
 
-def generator_table(cell, applicable, na_rules=()):
+def generator_table(cell, applicable, na_rules):
     """rule x generator hit%, generators with >= MIN_GENERATOR_FILES files, rules with
     >= LOW_SUPPORT total hits in this cell."""
     by_generator = {}
@@ -1925,14 +2277,14 @@ def detail_table(by_label, lang, na_rules):
     return "\n".join(lines)
 
 
-def lang_summary_matrix(lang, datasets_built, registry, only=None):
+def lang_summary_matrix(lang, datasets_built, registry, only):
     """rows = APPLICABLE[lang] + the two union rows; columns = each dataset with a cell of
     this lang, H%/A% (blank when a side is absent, n/a for a dataset's na_rules). `only`
     restricts the columns to a set of dataset names, which is how the verified and unverified
     halves of the report get their own matrices."""
     cols = []  # (dataset_name, header_suffix, by_label)
     for name, by_lang in datasets_built.items():
-        if lang not in by_lang or (only is not None and name not in only):
+        if lang not in by_lang or name not in only:
             continue
         ds = registry[name]
         suffix = ""
@@ -2027,7 +2379,7 @@ def dataset_meta_bullets(name, ds, by_lang, revision, args):
     return lines
 
 
-def build_report(datasets_built, revisions, registry, args, not_fetched=()):
+def build_report(datasets_built, revisions, registry, args, not_fetched):
     version = subprocess.run([args.bin, "--version"], capture_output=True, text=True).stdout.strip()
     lines = [
         "## Per-rule hit rate across the corpus registry",
@@ -2160,16 +2512,23 @@ def parse_rules(readme_text):
 
 
 def rule_codes(binary):
-    out = subprocess.run([binary, "--list-rules"], capture_output=True, text=True).stdout
-    return {line.split()[0] for line in out.splitlines() if line.startswith("SLOP")}
+    proc = subprocess.run([binary, "--list-rules"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise SystemExit(f"{binary} --list-rules: exited {proc.returncode}\n{proc.stderr}")
+    return {line.split()[0] for line in proc.stdout.splitlines() if line.startswith("SLOP")}
 
 
 def load_rules(binary, readme_path):
     """README table vs `--list-rules`: a rule shipped but undocumented (or the reverse) would
-    silently drop out of every table downstream, so the mismatch is an error here."""
+    silently drop out of every table downstream, so the mismatch is an error here -- and so
+    would an empty parse on either side, which a stale `--bin` or a reformatted table turns
+    into a vacuously matching pair of empty sets."""
     with open(readme_path, encoding="utf-8") as fh:
         rules = parse_rules(fh.read())
     codes = rule_codes(binary)
+    if not rules or not codes:
+        raise SystemExit(f"{readme_path}: parsed {len(rules)} README row(s) and {len(codes)} "
+                         f"--list-rules code(s) from {binary!r}; expected both non-empty")
     missing, extra = sorted(codes - set(rules)), sorted(set(rules) - codes)
     if missing or extra:
         raise SystemExit(f"{readme_path}: rule table and --list-rules disagree; "
@@ -2360,12 +2719,48 @@ def self_check():
         except SystemExit:
             continue
 
+    with tempfile.TemporaryDirectory() as tmp:
+        # carry_over: an untouched dataset carries forward, and so does a *selected* one
+        # whose refresh produced nothing; a --limit that would mix sample sizes refuses.
+        args = argparse.Namespace(dir=tmp, limit=500)
+        root = cell_root(args, "x", "human", "python")
+        os.makedirs(root)
+        with open(os.path.join(root, "00000.py"), "w", encoding="utf-8") as fh:
+            fh.write("pass\n")
+        with open(f"{root}.index.json", "w", encoding="utf-8") as fh:
+            json.dump({"00000.py": {"generator": "human", "words": 1}}, fh)
+        with open(manifest_path(args), "w", encoding="utf-8") as fh:
+            json.dump({
+                "schema": RESULTS_SCHEMA, "limit": 500, "not_fetched": [],
+                "datasets": {"x": {"revision": "r1", "cells": [
+                    {"label": "human", "lang": "python", "ext": "py", "files": 1, "empty": 0},
+                ]}},
+            }, fh)
+
+        datasets = {}
+        carry_over(args, {"y"}, datasets, [])
+        assert "x" in datasets, "a dataset outside this run's selection must be carried forward"
+
+        datasets = {}
+        not_fetched = carry_over(args, {"x"}, datasets, ["x/human/python"])
+        assert "x" in datasets, "a selected dataset whose refresh produced nothing must be restored"
+        assert not_fetched == [], "a restored cell must not also read as not-fetched"
+
+        rejected = False
+        try:
+            carry_over(argparse.Namespace(dir=tmp, limit=300), {"x"}, {}, ["x/human/python"])
+        except SystemExit:
+            rejected = True
+        assert rejected, "a --limit mismatched against the manifest must raise, not silently carry"
+
     # normalize_message: a user identifier collapses so one rule's findings group by shape,
     # a library name in a SLOP037 message stays because that span is the panel entry, and a
     # quoted panel word survives either way.
     assert normalize_message("SLOP039", "`newClient` only forwards to `client`") == "`X` only forwards to `X`"
     assert normalize_message("SLOP037", "`ioutil.ReadFile` has a direct `os`/`io` replacement") == \
         "`ioutil.ReadFile` has a direct `os`/`io` replacement"
+    assert normalize_message("SLOP037", "`sha256sum` ran on 3 files") == "`sha256sum` ran on N files", \
+        "a digit inside a KEEP_BACKTICKS span must survive; only the digit outside it collapses"
     assert normalize_message("SLOP033", "sentence runs 51 words; split it") == "sentence runs N words; split it"
     assert normalize_message("SLOP027", 'filler phrase repeated: "in order to" appears multiple times') == \
         'filler phrase repeated: "in order to" appears multiple times'

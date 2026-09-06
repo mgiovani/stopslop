@@ -38,9 +38,9 @@ migration notes live here.
   has to prove it is human.** `just corpus` runs the whole thing; the steps
   split on the network boundary, so `just corpus-fetch` downloads and
   materializes every cell into a `target/corpus/fetched.json` manifest and
-  `just corpus-score`, `just corpus-analyze` and `just corpus-html` read that
-  manifest offline. `score_corpus.py` gains `--fetch-only`, `--no-fetch` and
-  `--json`, and the JSON it writes carries every cell's per-rule counts,
+  `just corpus-score` reads that manifest. Nothing after the fetch touches the
+  network. `score_corpus.py` gains `--fetch-only`, `--no-fetch` and `--json`,
+  and the JSON it writes carries every cell's per-rule counts,
   per-message tallies and flagged lines. A split counts as human only when its
   text is dated 2019 or earlier or was written by identified people under
   controlled conditions; every other split is fetched and reported in full but
@@ -49,9 +49,18 @@ migration notes live here.
   Rust 1.40.0, TypeScript 3.7.2, Ant Design 3.26.0, the Rust book before
   2020), HC3, MAGE and Ghostbuster keep only their pre-2020 human sources, and
   Wikipedia-PT is dropped because no pre-2020 Portuguese snapshot is
-  reachable. Five datasets built from 2024-25 models join the registry:
-  SemEval-2026 Task 13, FAIDSet, Beemo, AIDev and APT-Eval. Every AI split now
-  states the years of the models that wrote it.
+  reachable. Thirteen more datasets join the registry: SemEval-2026 Task 13,
+  FAIDSet, Beemo, AIDev, APT-Eval, naples-code, SemEval-2024 Task 8, the GPT-2
+  output dataset, React docs, Kubernetes docs, LeNER-Br, H-AIRosettaMP and
+  PAN25. Every registered code dataset with a paired AI split had an
+  unverified human side, so precision and lift for every code language had
+  to pool a verified human rate from a pinned stdlib or compiler checkout
+  against an AI rate drawn from a different, unverified corpus. naples-code
+  pairs CodeSearchNet-2019 Python functions with gpt-3.5-turbo,
+  DeepSeek-Coder-Instruct-33B, and Qwen2.5-Coder-Instruct-32B completions of
+  those same functions in one corpus, the first registered code dataset that
+  needs no such compromise. Every AI split now states the years of the
+  models that wrote it.
 - **`bench/analyze_corpus.py`, `bench/candidates.toml` and
   `bench/report_template.html`.** The analyzer measures three things with no
   model and no network: every proposed tell in `candidates.toml`, each rule's

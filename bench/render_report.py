@@ -11,6 +11,12 @@ registered datasets forbid redistributing a derivative, and the page quotes thei
 Every non-ASCII character is escaped, as an entity in the markup and as a `\\u` escape inside
 the script, so the page reads correctly however it is served: a local `http.server` sends no
 charset, and a browser then decodes UTF-8 bytes as Latin-1.
+
+ponytail: the markup region includes `<style>`, a raw-text element where character references
+don't decode, so a non-ASCII character added to that CSS would render as the literal text
+`&#233;`, not the glyph. None exists there today. Upgrade path: carve `<style>...</style>` out
+of the entity-reference pass and give it its own escape (or ban non-ASCII in the template's CSS
+outright) if one is ever added.
 """
 import argparse
 import json
@@ -30,9 +36,10 @@ def embed(obj):
 
 
 def ascii_safe(template):
+    if template.count(SCRIPT_MARKER) != 1:
+        raise SystemExit(f"template must hold exactly one {SCRIPT_MARKER!r}, "
+                          f"found {template.count(SCRIPT_MARKER)}; the markup/script split is guesswork otherwise")
     marker_at = template.find(SCRIPT_MARKER)
-    if marker_at < 0:
-        raise SystemExit(f"template has no {SCRIPT_MARKER!r}; the markup/script split is guesswork without it")
     head, tail = template[:marker_at], template[marker_at:]
     return (head.encode("ascii", "xmlcharrefreplace").decode("ascii")
             + "".join(c if ord(c) < 128 else "\\u%04x" % ord(c) for c in tail))
@@ -61,11 +68,13 @@ def self_check():
             assert False, "a template missing or duplicating a slot must be rejected"
         except SystemExit as refused:
             assert "exactly one" in str(refused)
-    try:
-        ascii_safe(f"<p>no script</p>{DATA_SLOT}")
-        assert False, "a template without the script marker must be rejected"
-    except SystemExit as refused:
-        assert "has no" in str(refused)
+    for bad in (f"<p>no script</p>{DATA_SLOT}",
+                f"{SCRIPT_MARKER}x</script>{SCRIPT_MARKER}y</script>{DATA_SLOT}{CANDS_SLOT}"):
+        try:
+            ascii_safe(bad)
+            assert False, "a template missing or duplicating the script marker must be rejected"
+        except SystemExit as refused:
+            assert "exactly one" in str(refused)
     print("ok")
 
 

@@ -196,6 +196,220 @@ docstrings and block-comment interiors, which is why the human rate is not zero;
 would read tree-sitter ERROR nodes and exclude comment and string spans, and only that
 implementation can be measured honestly."""
 
+[[candidate]]
+name = "Fabricated demo-data announcement in a comment"
+kind = "code"
+langs = "code"
+natlangs = "en"
+scope = "comment"
+ignorecase = true
+regex = '''^(?:(?:(?:creat|generat|defin|build|initiali[sz]|instantiat|mak)(?:e|ing) )?(?:some |a |an |the )?(?:sample|example|dummy|mock|synthetic) (?:data|dataset|dataframe|input|inputs|values|records|users|payload|response|responses|config|configuration|entries|database)|(?:creat|generat|defin|build|initiali[sz]|instantiat|mak)(?:e|ing) (?:some |a |an |the )?(?:sample|example|dummy|mock|synthetic) )'''
+relation = "extends the measured 'Example usage demo block comment' candidate (different head noun)."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 1/2208 = 0.05%, plain AI 92/5000 = 1.84%, lift 40.6 (separates)."
+
+[[candidate]]
+name = "Simulation narration opening a code comment"
+kind = "code"
+langs = "go"
+natlangs = "en"
+scope = "comment"
+ignorecase = true
+regex = '''^simulat(e|es|ed|ing)\b'''
+relation = "extends 'Narrated stand-in comment' (its simulate arm is narrower than this)."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/500 (go-std, the sole pinned-2019 Go corpus -- one stdlib-style codebase, so this denominator is thinner evidence than a pooled one), plain AI 201/1500 = 13.40%, lift inf (separates)."
+
+[[candidate]]
+name = "Comment that names the function's category instead of its identifier"
+kind = "code"
+langs = "go"
+natlangs = "en"
+scope = "comment"
+ignorecase = true
+regex = '''^(a |an |the )?(main|helper|utility|wrapper|dummy|mock) function\b'''
+relation = "new; SLOP042 skips Go file-scope comments entirely (restate.rs:227)."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 1/500 (go-std, the sole pinned-2019 Go corpus -- one stdlib-style codebase, so this denominator is thinner evidence than a pooled one), plain AI 88/1500 = 5.87%, lift 29.3 (separates)."
+
+[[candidate]]
+name = "Constructor doc comment that says it initializes a new X"
+kind = "code"
+langs = "go"
+natlangs = "en"
+scope = "comment"
+ignorecase = true
+regex = '''^\w+ initializes a new\b'''
+relation = "new, same instrument as the category-noun row; SLOP042 is out of reach in Go file scope."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/500 (go-std, the sole pinned-2019 Go corpus -- one stdlib-style codebase, so this denominator is thinner evidence than a pooled one), plain AI 66/1500 = 4.40%, lift inf (separates)."
+
+[[candidate]]
+name = "Passive invitation to extend the stub later"
+kind = "code"
+langs = "go"
+natlangs = "en"
+scope = "comment"
+ignorecase = true
+regex = '''(can|could|may|would) be (added|implemented|placed|inserted|extended) here\b'''
+relation = "extends 'Narrated stand-in comment' (active forms only: `would go here`); this is the passive form."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/500 (go-std, the sole pinned-2019 Go corpus -- one stdlib-style codebase, so this denominator is thinner evidence than a pooled one), plain AI 16/1500 = 1.07%, lift inf (separates)."
+
+[[candidate]]
+name = "Comment that addresses the reader as a tutorial instead of documenting the code"
+kind = "code"
+langs = "go"
+natlangs = "en"
+scope = "comment"
+ignorecase = true
+regex = '''^here,? (you|we)('d|'ll)?( would| could| should| can| may| might| typically| normally)?\s'''
+relation = "new; SLOP011 is PROSE_LANGS only (residue.rs:15), never reaches a code comment."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 1/500 (go-std, the sole pinned-2019 Go corpus -- one stdlib-style codebase, so this denominator is thinner evidence than a pooled one), plain AI 30/1500 = 2.00%, lift 10.0 (separates)."
+
+[[candidate]]
+name = "Struct doc padded with represents the structure of"
+kind = "code"
+langs = "go"
+natlangs = "en"
+scope = "comment"
+ignorecase = true
+regex = '''represents the structure of'''
+relation = "new, third row of the Go-doc instrument; SLOP042 skips Go file scope."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/500 (go-std, the sole pinned-2019 Go corpus -- one stdlib-style codebase, so this denominator is thinner evidence than a pooled one), plain AI 21/1500 = 1.40%, lift inf (separates)."
+
+[[candidate]]
+name = "Filename comment at the head of the file"
+kind = "code"
+langs = "typescript,tsx"
+scope = "file-first-line"
+ignorecase = false
+regex = '''^\s*(?://|/\*)\s*[A-Za-z0-9_.\-/]+\.(?:js|jsx|ts|tsx|mjs|cjs)\s*(?:\*/)?\s*$'''
+relation = "new, artifact group; sibling of the measured 'Bare fence language tag' candidate on the same scope."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/709 (two pinned-2019 corpora: typescript-src [209 .ts files] + antd-tsx [500 .tsx files] -- one stdlib and one component library, not a broad human sample), plain AI 96/1500 = 6.40%, lift inf (separates)."
+
+[[candidate]]
+name = "Definitional \"Function to VERB\" comment over a declaration"
+kind = "code"
+langs = "typescript,tsx"
+natlangs = "en"
+scope = "comment"
+ignorecase = true
+regex = '''^(?:a |the )?(?:helper |utility |main |async |simple )?function (?:to|that|for|which)\b'''
+relation = "extends SLOP042 (restate.rs); belongs there, not a new code, to avoid double-flagging the same span."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 2/709 (two pinned-2019 corpora: typescript-src [209 .ts files] + antd-tsx [500 .tsx files] -- one stdlib and one component library, not a broad human sample), plain AI 112/1500 = 7.47%, lift 26.5 (separates)."
+
+[[candidate]]
+name = "Narrated import block comment"
+kind = "code"
+langs = "typescript,tsx"
+natlangs = "en"
+scope = "comment"
+ignorecase = true
+regex = '''^(?:import|load|require|include)\s+(?:the\s+|all\s+)?(?:necessary|required|needed)\s+(?:librar|module|dependenc|package|component|import)'''
+relation = "new; distinct from SLOP042, SLOP002, and the measured 'Narrated stand-in comment' candidate."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/709 (two pinned-2019 corpora: typescript-src [209 .ts files] + antd-tsx [500 .tsx files] -- one stdlib and one component library, not a broad human sample), plain AI 39/1500 = 2.60%, lift inf (separates)."
+
+[[candidate]]
+name = "Predicted-output comment instead of an assertion"
+kind = "code"
+langs = "typescript,tsx"
+natlangs = "en"
+scope = "comment"
+ignorecase = true
+regex = '''^(?:expected\s+)?(?:output|outputs|prints|logs)\s*:'''
+relation = "new; companion span to the measured 'Example usage demo block comment' candidate."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/709 (two pinned-2019 corpora: typescript-src [209 .ts files] + antd-tsx [500 .tsx files] -- one stdlib and one component library, not a broad human sample), plain AI 16/1500 = 1.07%, lift inf (separates)."
+
+[[candidate]]
+name = "Coding-agent footer left in a pull-request description"
+kind = "prose"
+langs = "prose"
+scope = "line"
+ignorecase = false
+regex = '''<!--\s*(?:START|END) COPILOT CODING AGENT TIPS\s*-->|https?://chatgpt\.com/codex/tasks/'''
+relation = "extends SLOP012 (citation.rs RE_TOKENS), which owns neither literal."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/2674, plain AI 456/3888 = 11.73% pooled -- but all 456 hits sit in one dataset, aidev (456/498 = 91.6% of its ai/prose cell alone; 0 hits in every other AI prose dataset). Read the matching lines: the two alternatives are a literal GitHub Copilot \"CODING AGENT TIPS\" HTML-comment footer and a chatgpt.com/codex/tasks link, both boilerplate a coding-agent tool appends to a PR description. This is tool-injected residue specific to one corpus, not a general AI-prose style tell -- still worth a rule, because nobody hand-types either marker, and it is the one candidate here with a case for Tier A once implemented; but the rate measures a pipeline artifact of one dataset, not a property of AI writing."
+
+[[candidate]]
+name = "Self-labeled deliverable header at the head of the document"
+kind = "prose"
+langs = "prose"
+natlangs = "pt-BR"
+scope = "file-first-line"
+ignorecase = true
+regex = '''^[ \t]*(?:#{1,6}[ \t]*)?(?:\*\*|__)?[ \t]*(?:t[íi]tulo|reda[çc][ãa]o|disserta[çc][ãa]o|ensaio|texto dissertativo)[ \t]*:'''
+relation = "new; checked SLOP021/SLOP035/SLOP013, none owns a `Label:` prefix line."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/88 (Diplomatrix is the only verified pt-BR human dataset after the natlangs fix -- a 0/88 rate is one dataset, not a broad sample, and is weak evidence rather than a clean ceiling), plain AI 52/890 = 5.84%, lift inf (separates)."
+
+[[candidate]]
+name = "Reference to the source material the model was given"
+kind = "prose"
+langs = "prose"
+natlangs = "pt-BR"
+scope = "line"
+ignorecase = true
+regex = '''(?:os|estes|esses|dois|ambos os)\s+(?:textos|fragmentos(?:\s+de\s+texto)?|excertos|trechos)\s+(?:apresentados|fornecidos|propostos|analisados|acima|em quest[ãa]o)'''
+relation = "new; nearest owners SLOP011/SLOP013, neither owns this phrase."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/88 (Diplomatrix is the only verified pt-BR human dataset after the natlangs fix -- a 0/88 rate is one dataset, not a broad sample, and is weak evidence rather than a clean ceiling), plain AI 54/890 = 6.07%, lift inf (separates)."
+
+[[candidate]]
+name = "Assurance clause trailing a sentence: \", garantindo que ...\""
+kind = "prose"
+langs = "prose"
+natlangs = "pt-BR"
+scope = "line"
+ignorecase = true
+regex = ''',\s+(?:garantindo|assegurando)\s+que(?!\w)'''
+relation = "extends SLOP017; parallelism.rs's own doc comment records garantindo/assegurando as deliberately dropped verbs."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/88 (Diplomatrix is the only verified pt-BR human dataset after the natlangs fix -- a 0/88 rate is one dataset, not a broad sample, and is weak evidence rather than a clean ceiling), plain AI 41/890 = 4.61%, lift inf (separates)."
+
+[[candidate]]
+name = "pt-BR role hedge: desempenhar um papel fundamental/ativo/de destaque"
+kind = "prose"
+langs = "prose"
+natlangs = "pt-BR"
+scope = "line"
+ignorecase = true
+regex = '''(?:desempenh|exerc)\w*\s+(?:um|seu|o)\s+papel\s+(?:fundamental|essencial|central|decisivo|preponderante|ativo|importante|de destaque)'''
+relation = "extends SLOP015 pt-BR; the English twin (plays a vital/crucial role) is already owned."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/88 (Diplomatrix is the only verified pt-BR human dataset after the natlangs fix -- a 0/88 rate is one dataset, not a broad sample, and is weak evidence rather than a clean ceiling), plain AI 36/890 = 4.04%, lift inf (separates)."
+
+[[candidate]]
+name = "Invitation to reflect: \"nos convida a refletir/repensar\""
+kind = "prose"
+langs = "prose"
+natlangs = "pt-BR"
+scope = "line"
+ignorecase = true
+regex = '''convida(?:m)?(?:-(?:nos|o|los|las))?\s+(?:o leitor\s+|nos\s+|a sociedade\s+)?(?:a|à)\s*(?:refletir|repensar|questionar|reconsiderar|reflex[ãa]o)'''
+relation = "new; checked SLOP014/SLOP024/SLOP029, none owns convidar/refletir."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/88 (Diplomatrix is the only verified pt-BR human dataset after the natlangs fix -- a 0/88 rate is one dataset, not a broad sample, and is weak evidence rather than a clean ceiling), plain AI 26/890 = 2.92%, lift inf (separates)."
+
+[[candidate]]
+name = "Unattributed perception: \"pode ser vista como\""
+kind = "prose"
+langs = "prose"
+natlangs = "pt-BR"
+scope = "line"
+ignorecase = true
+regex = '''pode(?:m)?\s+ser\s+vist[oa]s?\s+como'''
+relation = "extends SLOP025 pt-BR; WEASEL_ATTRIBUTION_PT_BR owns the passive form but not this modal one."
+tier = "B"
+notes = "Measured on the fixed analyzer: verified human 0/88 (Diplomatrix is the only verified pt-BR human dataset after the natlangs fix -- a 0/88 rate is one dataset, not a broad sample, and is weak evidence rather than a clean ceiling), plain AI 52/890 = 5.84%, lift inf (separates)."
+
 [[miss]]
 rule = "SLOP011"
 what_it_missed = "Refusal, self-identification and closer phrasings one word outside the panel"
