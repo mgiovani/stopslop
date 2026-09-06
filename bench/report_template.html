@@ -193,6 +193,7 @@ details[open].more summary::before{content:"\2013 "}
     <h1>Which stopslop rules fire on whose files</h1>
     <p class="sub" style="margin-top:8px">A hit on a human file is a tell in human writing, not a false positive by default.</p>
     <ul class="takeaways" id="takeaways"></ul>
+    <div class="divider" id="not-fetched" hidden></div>
   </section>
 
   <section id="rules">
@@ -225,6 +226,18 @@ details[open].more summary::before{content:"\2013 "}
   <section id="candidates" hidden>
     <h2>Candidate rules</h2>
     <div id="cands"></div>
+  </section>
+
+  <section id="messages" hidden>
+    <h2>What each rule's message actually was</h2>
+    <p class="sub">A rule's hit rate hides which of its messages did the firing. Rates are files carrying that message over all files in the pool. Collapsed by rule; open one to see its messages.</p>
+    <div id="msgs"></div>
+  </section>
+
+  <section id="phrases" hidden>
+    <h2>Phrases far more common in AI files</h2>
+    <p class="sub">Every n-gram present in enough plain-AI files, ranked by how much more of the AI pool carries it than of the verified human pool. This is where the next candidate comes from, and a high ratio here is a hypothesis, not a rule.</p>
+    <div id="phrs"></div>
   </section>
 
   <section id="method">
@@ -261,12 +274,14 @@ const isCode = ds => (byDs[ds] || []).some(c => c.lang !== 'prose');
 // results.json has to appear on the page without an edit here.
 const ORDER = Object.keys(D.datasets).sort((a, b) =>
   (verified(b) - verified(a)) || (isCode(b) - isCode(a)) || (hasHuman(b) - hasHuman(a)) || a.localeCompare(b));
+// Third element marks a group whose datasets carry an unverified human split, so the
+// divider below is tied to group identity, not to list order.
 const GROUPS = [
-  ['Code, verified human', ORDER.filter(d => isCode(d) && verified(d))],
-  ['Prose, verified human', ORDER.filter(d => !isCode(d) && verified(d))],
-  ['Code, unverified human', ORDER.filter(d => isCode(d) && !verified(d) && hasHuman(d))],
-  ['Prose, unverified human', ORDER.filter(d => !isCode(d) && !verified(d) && hasHuman(d))],
-  ['AI only', ORDER.filter(d => !hasHuman(d))],
+  ['Code, verified human', ORDER.filter(d => isCode(d) && verified(d)), false],
+  ['Prose, verified human', ORDER.filter(d => !isCode(d) && verified(d)), false],
+  ['Code, unverified human', ORDER.filter(d => isCode(d) && !verified(d) && hasHuman(d)), true],
+  ['Prose, unverified human', ORDER.filter(d => !isCode(d) && !verified(d) && hasHuman(d)), true],
+  ['AI only', ORDER.filter(d => !hasHuman(d)), false],
 ].filter(g => g[1].length);
 const langsOf = ds => [...new Set((byDs[ds]||[]).map(c => c.lang))];
 const cellOf = (ds, label, lang) => (byDs[ds]||[]).find(c => c.label === label && c.lang === lang);
@@ -293,13 +308,17 @@ const PAIRED = new Set(HUMAN.filter(h => cellOf(h.dataset, 'ai', h.lang)).map(h 
 function pooled(code, list) { let f = 0, t = 0; list.forEach(c => { if (codesForLang(c.lang).includes(code) && !naFor(c.dataset).includes(code)) { f += hits(c, code); t += c.files; } }); return {f, t, r: pct(f, t)}; }
 const VERDICT = {sep: 'separates', weak: 'leans AI', chance: 'at chance', inv: 'leans human', nodata: 'too few hits'};
 const RANK = {sep: 0, weak: 1, chance: 2, inv: 3, nodata: 4};
+// Mirrors bench/analyze_corpus.py's candidate_verdict() exactly (MIN_AI_FILES,
+// SEPARATES_LIFT, SEPARATES_RATE) -- that function is the source of these numbers, so a rule
+// gets one verdict whether it's read here or in the candidate section below.
+const MIN_AI_FILES = 15, SEPARATES_LIFT = 3, SEPARATES_RATE = 1;
 function verdict(h, a) {
-  if (a.f + h.f < 5) return 'nodata';
-  const lift = h.r ? a.r / h.r : Infinity;
-  if (a.r >= 1.5 && lift >= 3) return 'sep';
+  if (a.f < MIN_AI_FILES) return 'nodata';
+  const lift = h.r ? a.r / h.r : Infinity; // a.f >= MIN_AI_FILES > 0 so a.r > 0 always
+  if (lift === Infinity || (lift >= SEPARATES_LIFT && a.r >= SEPARATES_RATE)) return 'sep';
   if (lift >= 1.5) return 'weak';
-  if (lift >= 0.67) return 'chance';
-  return 'inv';
+  if (lift < 0.67) return 'inv';
+  return 'chance';
 }
 const sbRows = Object.keys(RULES).filter(c => c !== 'SLOP010' && c !== 'SLOP044').map(code => {
   const h = pooled(code, HUMAN), a = pooled(code, AI);
@@ -318,6 +337,12 @@ const TAKE = ['sep', 'weak', 'chance', 'inv'].map(k => {
 const baseHeavy = sbRows.filter(r => r.b.r >= 10 && RULES[r.code].tier === 'A').map(r => r.code.replace('SLOP', ''));
 if (baseHeavy.length) TAKE.push(`<li><span class="v inv">Tier A, human</span><span class="codes">${baseHeavy.join(' · ')} <span class="muted">fire on 10%+ of verified human files with no AI counterpart</span></span></li>`);
 document.getElementById('takeaways').innerHTML = TAKE.join('');
+if ((D.not_fetched || []).length) {
+  const nf = document.getElementById('not-fetched');
+  nf.hidden = false;
+  nf.innerHTML = `<h3>${D.not_fetched.length} split${D.not_fetched.length === 1 ? '' : 's'} not fetched</h3>` +
+    `<p>Retries exhausted under <code>--skip-failures</code>; absent from every table below. Rerun <code>just corpus-fetch</code> to fill them from cache: ${D.not_fetched.map(esc).join(', ')}</p>`;
+}
 
 // ---------- Per-rule table
 function renderSb() {
@@ -372,9 +397,9 @@ function renderDatasets() {
   const openAll = document.getElementById('ds-open-all').checked;
   const root = document.getElementById('ds');
   let dividerShown = false;
-  root.innerHTML = GROUPS.map(([gname, list]) => list.filter(ds => byDs[ds]).map(ds => {
+  root.innerHTML = GROUPS.map(([gname, list, unverifiedHuman]) => list.filter(ds => byDs[ds]).map(ds => {
     let lead = '';
-    if (!verified(ds) && !dividerShown) { dividerShown = true; lead = `<div class="divider"><h3>Unverified human splits</h3><p>${esc(D.provenance_note)}</p></div>`; }
+    if (unverifiedHuman && !dividerShown) { dividerShown = true; lead = `<div class="divider"><h3>Unverified human splits</h3><p>${esc(D.provenance_note)}</p></div>`; }
     const m = meta(ds);
     const gens = {};
     (byDs[ds]||[]).filter(c => isAi(c.label)).forEach(c => Object.entries(c.generators).forEach(([g, n]) => { gens[g] = (gens[g] || 0) + n; }));
@@ -384,7 +409,7 @@ function renderDatasets() {
     const labs = labelsOf(ds, langsOf(ds)[0]).sort((a, b) => splitOrder(a) - splitOrder(b));
     const rev = m.revision && m.revision !== 'n/a' ? `<span>revision</span><b class="mono" title="${esc(m.revision)}">${esc(m.revision.slice(0, 12))}</b>` : '';
     const head = `<div class="dshead"><div><h3 id="ds-${ds}">${esc(name(ds))}</h3>` +
-      `<div class="tags">${langsOf(ds).map(l => `<span class="chip">${LANG[l]}</span>`).join('')}${nat ? `<span class="chip">${esc(nat)}</span>` : ''}${labs.map(l => `<span class="chip ${isAi(l) ? 'ai' : 'human'}">${l === 'ai' ? 'AI' : SPLIT[l] || l}</span>`).join('')}</div>` +
+      `<div class="tags">${langsOf(ds).map(l => `<span class="chip">${LANG[l]}</span>`).join('')}${nat ? `<span class="chip">${esc(nat)}</span>` : ''}${labs.map(l => `<span class="chip ${isAi(l) ? 'ai' : 'human'}">${l === 'ai' ? 'AI' : esc(SPLIT[l] || l)}</span>`).join('')}</div>` +
       (m.notes && m.notes.length ? `<ul class="notes">${m.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '') + `</div>` +
       `<div class="meta">${m.source ? `<span>source</span><a href="${esc(m.source)}" target="_blank" rel="noopener">${esc(m.source.replace(/^https?:\/\/(www\.)?/, ''))}</a>` : ''}${paper ? `<span>paper</span><a href="https://arxiv.org/abs/${esc(paper)}" target="_blank" rel="noopener">arXiv ${esc(paper)}</a>` : ''}${m.license ? `<span>license</span><b>${esc(m.license)}</b>` : ''}${rev}` +
       (m.generator_years ? `<span>generators</span><b>${esc(m.generator_years)}</b>` : '') +
@@ -401,7 +426,7 @@ function renderDatasets() {
       codes.sort((x, y) => Math.max(...cellsL.map(c => rate(c, y))) - Math.max(...cellsL.map(c => rate(c, x))));
       const maxr = Math.max(1, ...codes.flatMap(c => cellsL.map(cl => rate(cl, c))));
       const w = v => Math.max(v ? 1.5 : 0, 100 * v / maxr);
-      const counts = labsL.map((l, i) => `<span style="color:${isAi(l) ? 'var(--ai)' : 'var(--human)'}">${l === 'ai' ? 'AI' : SPLIT[l]}</span> ${cellsL[i].files} files, ${fmt(pct(cellsL[i].flagged_files, cellsL[i].files))}% hit`).join(' · ');
+      const counts = labsL.map((l, i) => `<span style="color:${isAi(l) ? 'var(--ai)' : 'var(--human)'}">${l === 'ai' ? 'AI' : esc(SPLIT[l])}</span> ${cellsL[i].files} files, ${fmt(pct(cellsL[i].flagged_files, cellsL[i].files))}% hit`).join(' · ');
       const rows = codes.map(code => {
         const hr = rate(H, code), ar = rate(A, code);
         const lift = H && A ? (hr ? ar / hr : (ar ? Infinity : NaN)) : NaN;
@@ -506,9 +531,46 @@ renderDatasets();
     ((data.dropped || []).length ? `<details class="more"><summary>${data.dropped.length} tells measured and dropped</summary><ul class="notes">${data.dropped.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : '');
 })();
 
+// ---------- Per-rule messages: one collapsed row per rule, reusing the candidate card and
+// the details.more disclosure already on the page instead of dumping 39 tables into the flow.
+(function renderMessages() {
+  const rows = CANDS && CANDS.messages;
+  if (!rows || !rows.length) return;
+  document.getElementById('messages').hidden = false;
+  document.getElementById('msgs').innerHTML = rows.map(row => {
+    const table = `<div class="tablewrap"><table><thead><tr><th>message</th><th class="n human">human %</th><th class="n ai">AI %</th></tr></thead><tbody>` +
+      row.messages.map(m => `<tr><td>${esc(m.message)}</td>` +
+        `<td class="n human">${fmt(m.human_rate)}<small>${fraction(m.human, row.human_files)}</small></td>` +
+        `<td class="n ai">${fmt(m.ai_rate)}<small>${fraction(m.ai, row.ai_files)}</small></td></tr>`).join('') +
+      (row.folded ? `<tr><td colspan="3" class="muted">${row.folded} rarer message${row.folded === 1 ? '' : 's'}</td></tr>` : '') +
+      `</tbody></table></div>`;
+    return `<div class="cand"><details class="more"><summary>${ruleCell(row.code)} <span class="muted">${row.human_files} human &middot; ${row.ai_files} AI files</span></summary>${table}</details></div>`;
+  }).join('');
+})();
+
+// ---------- Phrase differential: one ranked table per natural-language / code-comment group.
+(function renderPhrases() {
+  const groups = CANDS && CANDS.phrases;
+  if (!groups || !groups.length) return;
+  document.getElementById('phrases').hidden = false;
+  document.getElementById('phrs').innerHTML = groups.map(g => {
+    const desc = g.topic_matched
+      ? "Both sides come from the same datasets, so the two halves answer the same prompts and a phrase that ranks here is not just this corpus's subject matter."
+      : "No dataset clears the human bar on both sides for code, so the human half is the pinned 2019 checkouts and the AI half is a different corpus. Topic differs as well as authorship: read a domain word here as evidence about the corpora, not about models.";
+    const table = `<div class="tablewrap"><table><thead><tr><th>phrase</th><th class="n ai">AI</th><th class="n human">verified human</th><th class="n">ratio</th><th>examples</th></tr></thead><tbody>` +
+      g.phrases.map(p => `<tr><td>${esc(p.phrase)}</td>` +
+        `<td class="n ai">${fmt(p.ai_rate)}<small>${p.ai}</small></td>` +
+        `<td class="n human">${fmt(p.human_rate)}<small>${p.human}</small></td>` +
+        `<td class="n">${p.ratio.toFixed(1)}</td>` +
+        `<td>${(p.examples || []).map(e => `<span class="q">${esc(e)}</span>`).join('')}</td></tr>`).join('') +
+      `</tbody></table></div>`;
+    return `<div class="cand"><div class="top"><h3>${esc(g.group)}</h3><span class="rel">${g.ai_files} AI files &middot; ${g.human_files} verified human</span></div><p class="sub" style="margin:6px 0 10px">${desc}</p>${table}</div>`;
+  }).join('');
+})();
+
 // ---------- Method
 document.getElementById('method-body').innerHTML = [
-  ['Split', 'One dataset, one language, one label (human, AI, or an AI variant). Up to 500 files each, a deterministic spread across the whole dataset; reruns are byte-identical.'],
+  ['Split', `One dataset, one language, one label (human, AI, or an AI variant). ${D.limit ? `Up to ${D.limit} files each` : 'All files in each split'}, a deterministic spread across the whole dataset; reruns are byte-identical.`],
   ['Hit', 'A file counts once per rule. Rates are files hit over files in the split.'],
   ['Lift', 'AI rate over human rate.'],
   ['Prec 1:1', 'AI rate over AI rate plus human rate: precision at an equal human:AI mix.'],
@@ -522,7 +584,7 @@ document.getElementById('method-body').innerHTML = [
 // ---------- Rail
 const rail = document.getElementById('rail');
 rail.innerHTML = `<div class="brand">stopslop<span>corpus scorecard</span></div>` +
-  `<div class="navgroup"><a href="#overview">Overview</a><a href="#rules">Per rule</a><a href="#matrices">By language</a><a href="#datasets">Datasets</a>${CANDS ? '<a href="#candidates">Candidate rules</a>' : ''}<a href="#method">Method</a></div>` +
+  `<div class="navgroup"><a href="#overview">Overview</a><a href="#rules">Per rule</a><a href="#matrices">By language</a><a href="#datasets">Datasets</a>${CANDS ? '<a href="#candidates">Candidate rules</a>' : ''}${CANDS && CANDS.messages && CANDS.messages.length ? '<a href="#messages">Messages</a>' : ''}${CANDS && CANDS.phrases && CANDS.phrases.length ? '<a href="#phrases">Phrases</a>' : ''}<a href="#method">Method</a></div>` +
   GROUPS.map(([g, list]) => `<div class="navgroup ds-nav"><div class="lbl">${g}</div>${list.filter(ds => byDs[ds]).map(ds => `<a href="#ds-${ds}"><span>${esc(name(ds))}</span><span class="k">${(byDs[ds]||[]).reduce((s, c) => s + c.files, 0)}</span></a>`).join('')}</div>`).join('');
 const links = [...rail.querySelectorAll('a')];
 const targets = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);

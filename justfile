@@ -11,10 +11,15 @@
 # derivative. The only committed output is bench/corpus_report.md.
 #
 # Override any variable per run: `just limit=50 corpus-fetch`.
+# `limit` caps files per cell for corpus-fetch. `corpus-generate` reads its own `gen_limit`
+# instead: it calls the Anthropic API once per file, so sharing `limit` (default 500) would
+# raise its default spend from 200 calls/cell to 500. Override it with `just gen_limit=50
+# corpus-generate`.
 
 bin := "target/release/stopslop"
 corpus := "target/corpus"
 limit := "500"
+gen_limit := "200"
 
 # List the recipes.
 default:
@@ -53,12 +58,17 @@ corpus-html:
 # The whole benchmark: fetch, score, analyse, render.
 corpus: corpus-fetch corpus-score corpus-analyze corpus-html
 
+# Reads gen_limit, not limit: sharing limit would raise the default spend from 200 API calls
+# per cell to 500. `just --list` shows the line directly above a recipe, so summaries go last.
 # Synthesize the AI splits no public dataset covers (calls the Anthropic API, costs money).
 corpus-generate:
-    uv run bench/generate_corpus.py --dir {{corpus}} --cells pt-wiki,pt-essay,tsx,rust,en-readme --limit 200
+    uv run bench/generate_corpus.py --dir {{corpus}} --cells pt-wiki,pt-essay,tsx,rust,en-readme --limit {{gen_limit}}
 
+# The find below is an unguarded rm -rf of that directory's children, so the guard refuses
+# when `corpus` has been overridden away from target/corpus.
 # Drop the materialized cells and generated outputs, keeping the download cache.
 corpus-clean:
+    python3 -c "import os,sys; a,b=sys.argv[1:]; r=os.path.normpath(os.path.abspath(a)); e=os.path.normpath(b); sys.exit(0) if r==e else sys.exit('corpus-clean: refusing, %r resolves to %s, expected %s' % (a, r, e))" "{{corpus}}" "{{justfile_directory()}}/target/corpus"
     find {{corpus}} -mindepth 1 -maxdepth 1 ! -name cache -exec rm -rf {} +
 
 # Assert the bench scripts' own invariants.
