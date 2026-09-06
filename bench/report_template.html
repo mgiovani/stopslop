@@ -1,0 +1,536 @@
+<!--
+THESIS: a scorecard you scan, not read. One dense table answers "which rules work"; every row opens to the flagged lines. Refuses the KPI-tile and finding-card dashboard.
+OWN-WORLD: charcoal ground, hairline separators, one family (Hanken Grotesk) with Fragment Mono for numbers and code. Color encodes data only: human blue, AI orange, verdict green/red. No cards, no shadows, no eyebrows.
+STORY: the maintainer sees which rules separate the splits and which fire on humans, opens the source lines, decides what to tune.
+FIRST VIEWPORT: title and one sentence, takeaways computed from the same data as the table, then the per-rule table itself. Rail on the left for the 19 datasets.
+FORM: pinned by the brief (modern, minimalist, dark charcoal). No concept roll; the brief wins.
+-->
+<title>Stopslop Corpus Scorecard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Fragment+Mono&display=swap">
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#0B0C0E; --bg-1:#111316; --bg-2:#16191D; --bg-3:#1C2025;
+  --line:#22262C; --line-2:#1A1D22;
+  --fg:#E7E9EC; --fg-2:#9BA3AD; --fg-3:#7A848E;
+  --human:#7AA7F0; --ai:#F0915A; --bad:#F16A5F; --warn:#D9A94A; --good:#5DCB8A;
+  --hit:#1F2329;
+  --hl-kw:#C4A2F5; --hl-str:#9ED9A6; --hl-num:#F0C078; --hl-cm:#78838E; --hl-fn:#8FB8F5; --hl-ty:#7ED4DC;
+  --sans:"Hanken Grotesk",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --mono:"Fragment Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scrollbar-color:var(--bg-3) var(--bg)}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+::selection{background:rgba(122,167,240,.35)}
+a{color:var(--fg);text-decoration:none;text-underline-offset:3px}
+a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--fg);outline-offset:2px;border-radius:2px}
+code,pre,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+h1,h2,h3,h4{margin:0;font-weight:500;letter-spacing:-.015em;text-wrap:balance}
+h1{font-size:26px;line-height:1.2}
+h2{font-size:18px;line-height:1.3}
+h3{font-size:15px;line-height:1.35}
+h4{font-size:13px;line-height:1.4}
+h3.sect{margin:28px 0 8px;color:var(--fg-2)}
+p{margin:0}
+.muted{color:var(--fg-3);font-weight:400;font-size:12.5px}
+.layout{display:grid;grid-template-columns:208px minmax(0,1fr);min-height:100vh}
+nav.rail{position:sticky;top:0;height:100vh;overflow:auto;padding:26px 10px 30px 22px;display:flex;flex-direction:column;gap:18px;border-right:1px solid var(--line-2);scrollbar-width:thin}
+.brand{font-size:13px;line-height:1.35;padding:0 8px}
+.brand span{display:block;color:var(--fg-3)}
+.navgroup{display:flex;flex-direction:column;gap:1px}
+.navgroup .lbl{font-size:11px;color:var(--fg-3);padding:6px 8px 4px;letter-spacing:.02em}
+.rail a{display:flex;justify-content:space-between;gap:8px;align-items:baseline;color:var(--fg-2);padding:4px 8px;border-radius:4px;font-size:13px;transition:color .15s var(--ease),background .15s var(--ease)}
+.rail a:hover{color:var(--fg);text-decoration:none;background:var(--bg-1)}
+.rail a.on{color:var(--fg);background:var(--bg-2)}
+.rail a .k{font-family:var(--mono);font-size:12px;color:var(--fg-3)}
+main{padding:40px 48px 96px;max-width:1280px;min-width:0}
+section{margin-bottom:72px}
+section>h2{margin-bottom:8px}
+.sub{color:var(--fg-2);max-width:68ch;font-size:14px}
+.takeaways{list-style:none;margin:22px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;max-width:96ch;font-size:14px;color:var(--fg-2)}
+.takeaways li{display:grid;grid-template-columns:11ch 1fr;gap:12px;align-items:baseline}
+.takeaways .v{font-size:13px}
+.takeaways .codes{font-family:var(--mono);font-size:12.5px;color:var(--fg)}
+.controls{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin:18px 0 10px;font-size:13px;color:var(--fg-2)}
+.controls label{display:flex;align-items:center;gap:7px;min-height:24px}
+.controls .gloss{margin-left:auto;color:var(--fg-3);font-size:12px}
+.controls select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg-1);border:1px solid var(--line);border-radius:5px;padding:4px 26px 4px 8px;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%239BA3AD' stroke-width='1.5'/></svg>");background-repeat:no-repeat;background-position:right 9px center;transition:border-color .15s var(--ease)}
+.controls select:hover{border-color:var(--fg-3)}
+.controls input[type=checkbox]{accent-color:var(--fg);width:14px;height:14px;margin:0}
+.tier{font-family:var(--mono);font-size:12px;color:var(--fg-2)}
+.rule{white-space:nowrap}
+.rule .code{font-family:var(--mono);font-size:12.5px;color:var(--fg)}
+.rule .nm{color:var(--fg-2);font-size:12.5px;margin-left:8px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font-size:11px;letter-spacing:.02em;color:var(--fg-3);font-weight:500;text-align:left;padding:0 10px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th.human{color:var(--human)} th.ai{color:var(--ai)}
+td{padding:7px 10px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12.5px;white-space:nowrap}
+td.n small{display:block;color:var(--fg-3);font-size:12px;line-height:1.2;white-space:nowrap}
+td.human{color:var(--human)} td.ai{color:var(--ai)}
+.tablewrap{overflow-x:auto;border-top:1px solid var(--line)}
+.tablewrap table th{padding-top:10px}
+.v{font-size:12px;white-space:nowrap}
+.v.sep{color:var(--good)} .v.weak{color:var(--warn)} .v.chance{color:var(--fg-3)} .v.inv{color:var(--bad)} .v.nodata{color:var(--fg-3)}
+.in{color:var(--fg-3);font-size:12px;line-height:1.4;white-space:nowrap}
+.in a,.meta a{color:var(--fg-2);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.in a:hover,.meta a:hover{text-decoration-color:currentColor}
+.heat td.c{text-align:right;font-family:var(--mono);font-size:12px;padding:5px 9px;border-left:1px solid var(--line-2)}
+.heat th.c{text-align:right;border-left:1px solid var(--line-2);padding:8px 9px;line-height:1.25}
+.heat th.c small{display:block;font-size:12px;color:var(--fg-3);font-weight:400;letter-spacing:0}
+.heat td.c.z{color:var(--fg-3)}
+.heat tr.union td{color:var(--fg);border-top:1px solid var(--line)}
+.ds{border-top:1px solid var(--line);padding:22px 0 10px;margin-top:8px}
+.divider{border-top:1px solid var(--warn);margin-top:34px;padding:18px 0 4px}
+.divider h3{color:var(--warn)}
+.divider p{color:var(--fg-2);font-size:13px;max-width:80ch;margin-top:6px}
+.meta b.unver{color:var(--warn)}
+.dshead{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:10px 40px;align-items:start}
+.dshead .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{font-family:var(--mono);font-size:11px;padding:1px 7px;border-radius:4px;border:1px solid var(--line);color:var(--fg-2);white-space:nowrap}
+.chip.human{color:var(--human);border-color:rgba(122,167,240,.35)} .chip.ai{color:var(--ai);border-color:rgba(240,145,90,.35)}
+.meta{display:grid;grid-template-columns:max-content 1fr;gap:3px 14px;font-size:12.5px;color:var(--fg-3)}
+.meta b{font-weight:400;color:var(--fg-2)}
+.meta a,.meta b{overflow-wrap:anywhere}
+.notes{margin:10px 0 0;padding-left:16px;font-size:12.5px;color:var(--fg-3);max-width:72ch}
+.notes li{margin:2px 0}
+.cell{margin-top:20px}
+.cellhead{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;padding:0 0 6px}
+.cellhead h4{font-size:13px;color:var(--fg-2);font-weight:500}
+.cellhead .counts{font-size:12px;color:var(--fg-3);font-family:var(--mono)}
+.rhead,.rrow{display:grid;grid-template-columns:minmax(0,1.5fr) 84px 84px minmax(80px,1fr) 52px 60px 20px;gap:10px;align-items:center;padding:0 8px}
+.rhead{font-size:11px;color:var(--fg-3);padding-bottom:6px;border-bottom:1px solid var(--line)}
+.rhead .r,.rrow .n{text-align:right}
+.rhead .human{color:var(--human)} .rhead .ai{color:var(--ai)}
+.rrow{padding-top:7px;padding-bottom:7px;border-bottom:1px solid var(--line-2);cursor:pointer;transition:background .15s var(--ease)}
+.rrow:hover,.rrow.open{background:var(--bg-1)}
+.rrow .rule{display:block;overflow:hidden;text-overflow:ellipsis}
+.rrow .n{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+.rrow .n small{color:var(--fg-3);font-size:12px}
+.rrow .n.human{color:var(--human)} .rrow .n.ai{color:var(--ai)}
+.bars{display:flex;flex-direction:column;gap:2px;min-width:80px}
+.bar{height:4px;background:var(--bg-3);border-radius:2px;position:relative}
+.bar span{position:absolute;left:0;top:0;bottom:0;border-radius:2px}
+.bar .h{background:var(--human)} .bar .a{background:var(--ai)}
+.rrow .chev{color:var(--fg-3);text-align:center;transition:transform .18s var(--ease);font-size:14px;line-height:1}
+.rrow.open .chev{transform:rotate(90deg)}
+.exwrap{border-bottom:1px solid var(--line-2);background:var(--bg-1)}
+.exwrap .desc{padding:12px 8px 0;font-size:12.5px;color:var(--fg-3);max-width:90ch}
+.examples{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;padding:12px 8px 18px}
+.examples.single{grid-template-columns:1fr}
+.excol{min-width:0}
+.excol .colhead{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;padding:0 0 8px;border-bottom:1px solid var(--line);margin-bottom:6px;min-height:28px}
+.excol.human .colhead{color:var(--human)} .excol.ai .colhead{color:var(--ai)}
+.splittabs{display:flex;gap:4px}
+.splittabs button{font:inherit;font-size:11px;font-family:var(--mono);border:1px solid var(--line);background:transparent;color:var(--fg-3);border-radius:4px;padding:2px 9px;min-height:24px;cursor:pointer;transition:color .15s var(--ease),border-color .15s var(--ease)}
+.splittabs button:hover{color:var(--fg-2)}
+.splittabs button[aria-pressed="true"]{color:var(--ai);border-color:rgba(240,145,90,.5)}
+.ex{padding:10px 0 12px;border-bottom:1px solid var(--line-2)}
+.ex:last-child{border-bottom:0}
+.ex .exhead{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;font-size:12px;color:var(--fg-3)}
+.ex .exhead .f{font-family:var(--mono);color:var(--fg-2)}
+.ex .msg{font-size:13px;margin:4px 0 8px;color:var(--fg)}
+.ex .msg .fix{display:block;color:var(--fg-3);font-size:12.5px}
+.ex .msg .fix::before{content:"fix ";color:var(--fg-2)}
+.ex pre{margin:0;padding:6px 0;background:var(--bg);border:1px solid var(--line-2);border-radius:5px;font-size:12px;line-height:1.55;overflow-x:auto;scrollbar-width:thin}
+.ex .ln{display:flex;gap:12px;padding:0 10px;white-space:pre}
+.ex .ln .no{color:var(--fg-3);min-width:3.5ch;text-align:right;user-select:none;flex:none}
+.ex .ln.hit{background:var(--hit);box-shadow:inset 2px 0 0 var(--fg-2)}
+.excol.human .ln.hit{box-shadow:inset 2px 0 0 var(--human)} .excol.ai .ln.hit{box-shadow:inset 2px 0 0 var(--ai)}
+.ex .ln.hit .no{color:var(--fg)}
+.empty{padding:10px 0;color:var(--fg-3);font-size:12.5px}
+.hljs-keyword,.hljs-built_in,.hljs-literal{color:var(--hl-kw)}
+.hljs-string,.hljs-meta .hljs-string{color:var(--hl-str)}
+.hljs-number{color:var(--hl-num)}
+.hljs-comment,.hljs-quote{color:var(--hl-cm)}
+.hljs-title,.hljs-title.function_,.hljs-section{color:var(--hl-fn)}
+.hljs-type,.hljs-title.class_,.hljs-attr{color:var(--hl-ty)}
+.hljs-strong{font-weight:600}.hljs-emphasis{font-style:italic}
+.cand{padding:18px 0;border-top:1px solid var(--line-2)}
+.cand .top{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;justify-content:space-between}
+.cand .top .rel{color:var(--fg-3);font-size:12.5px}
+.cand .stats{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:12.5px;margin:6px 0 10px;color:var(--fg-2)}
+.cand .stats .human{color:var(--human)} .cand .stats .ai{color:var(--ai)}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;font-size:13px;color:var(--fg-2);max-width:92ch;margin:0}
+.kv dt{color:var(--fg-3)} .kv dd{margin:0}
+.kv .q{font-family:var(--mono);font-size:11.5px;background:var(--bg-1);border:1px solid var(--line-2);padding:1px 6px;border-radius:4px;display:inline-block;margin:0 6px 4px 0;max-width:100%;overflow-wrap:anywhere;color:var(--fg-2)}
+.kv .regex{font-family:var(--mono);font-size:12px;overflow-wrap:anywhere}
+.cand ul{margin:0;padding-left:16px;font-size:12.5px;color:var(--fg-2)}
+details.more{margin-top:10px;font-size:12.5px}
+details.more summary{cursor:pointer;color:var(--fg-3);list-style:none;min-height:24px}
+details.more summary::before{content:"+ ";font-family:var(--mono)}
+details[open].more summary::before{content:"\2013 "}
+.method{display:grid;grid-template-columns:max-content 1fr;gap:8px 24px;font-size:13px;color:var(--fg-2);max-width:90ch;border-top:1px solid var(--line);padding-top:16px;margin:0}
+.method dt{color:var(--fg);font-weight:500}
+.method dd{margin:0}
+.method code{font-size:12.5px;color:var(--fg)}
+@media (max-width:920px){
+  .layout{grid-template-columns:1fr}
+  nav.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line-2);flex-direction:row;flex-wrap:wrap;gap:6px 10px;padding:14px 16px}
+  .navgroup{flex-direction:row;flex-wrap:wrap}
+  .navgroup .lbl,.rail a .k{display:none}
+  nav.rail .ds-nav{display:none}
+  main{padding:26px 18px 64px}
+  .examples{grid-template-columns:1fr}
+  .dshead{grid-template-columns:1fr}
+  .rhead,.rrow{grid-template-columns:minmax(0,1.5fr) 68px 68px 44px 18px;gap:8px}
+  .rhead .bars,.rrow .bars,.rhead .prec,.rrow .prec{display:none}
+  .controls .gloss{margin-left:0}
+  .method{grid-template-columns:1fr;gap:2px 0}
+  .method dd{margin-bottom:8px}
+}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important} html{scroll-behavior:auto} }
+</style>
+
+<div class="layout">
+<nav class="rail" id="rail" aria-label="Sections"></nav>
+<main>
+  <section id="overview">
+    <h1>Which stopslop rules fire on whose files</h1>
+    <p class="sub" style="margin-top:8px">A hit on a human file is a tell in human writing, not a false positive by default.</p>
+    <ul class="takeaways" id="takeaways"></ul>
+  </section>
+
+  <section id="rules">
+    <h2>Per rule</h2>
+    <p class="sub">Human % pools every verified human split, AI % every plain AI split. For the code rules the two halves come from different corpora: no code dataset clears the 2019 human bar on both sides, so their lift carries a topic difference as well as an authorship one. Unpaired % is the verified human text that has no AI counterpart at all.</p>
+    <div class="controls">
+      <label>sort <select id="sb-sort"><option value="lift">lift</option><option value="ai">AI %</option><option value="human">human %</option><option value="base">unpaired %</option><option value="code">rule</option></select></label>
+      <label><input type="checkbox" id="sb-hide-empty" checked> hide rules that never fired</label>
+      <span class="gloss">A fails CI &middot; B warns &middot; lift = AI &divide; human &middot; prec 1:1 = AI &divide; (AI + human)</span>
+    </div>
+    <div class="tablewrap" tabindex="0"><table id="sb"></table></div>
+  </section>
+
+  <section id="matrices">
+    <h2>Hit rate by language</h2>
+    <div id="mx"></div>
+  </section>
+
+  <section id="datasets">
+    <h2>Datasets and flagged lines</h2>
+    <p class="sub">Click a rule to open its flagged lines, human left, AI right.</p>
+    <div class="controls">
+      <label>rule <select id="ds-rule"><option value="">all</option></select></label>
+      <label><input type="checkbox" id="ds-hide-zero" checked> hide rules that never fired</label>
+      <label><input type="checkbox" id="ds-open-all"> open every rule</label>
+    </div>
+    <div id="ds"></div>
+  </section>
+
+  <section id="candidates" hidden>
+    <h2>Candidate rules</h2>
+    <div id="cands"></div>
+  </section>
+
+  <section id="method">
+    <h2>Method</h2>
+    <dl class="method" id="method-body"></dl>
+  </section>
+</main>
+</div>
+
+<script id="data" type="application/json">/*__DATA__*/</script>
+<script id="cands-data" type="application/json">/*__CANDS__*/</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>
+(function(){
+const D = JSON.parse(document.getElementById('data').textContent);
+const CANDS = JSON.parse(document.getElementById('cands-data').textContent || 'null');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pct = (n, d) => d ? (100 * n / d) : 0;
+const fmt = v => v === 0 ? '0' : v < 0.1 ? '<0.1' : v.toFixed(v < 10 ? 1 : 0);
+const RULES = D.rules;
+const PRETTY = {aigcodeset:'AIGCodeSet',codemirage:'CodeMirage',codet_m4:'CoDET-M4',droid:'DroidCollection',semeval13:'SemEval-2026 T13','cpython-lib':'CPython Lib','go-std':'Go std','rust-std':'Rust library','typescript-src':'TypeScript src','antd-tsx':'Ant Design',rosetta:'Rosetta Code',hc3:'HC3',mage:'MAGE',ghostbuster:'Ghostbuster',faidset:'FAIDSet',beemo:'Beemo',aidev:'AIDev','apt-eval':'APT-Eval',diplomatrix:'Diplomatrix-BR','wetbench-pt':'WETBench pt','cpython-doc':'CPython Doc','rust-book':'Rust book','essay-br':'Essay-BR'};
+const LANG = {python:'Python',go:'Go',rust:'Rust',typescript:'TypeScript',tsx:'TSX',prose:'Prose'};
+const SPLIT = {ai:'plain','ai-paraphrased':'paraphrased','ai-refined':'refined','ai-adversarial':'adversarial','ai-hybrid':'hybrid','ai-collab':'collaborative','ai-polished':'polished','ai-human-edited':'human-edited','ai-llm-edited':'LLM-edited',human:'human'};
+const HL = {python:'python',go:'go',rust:'rust',typescript:'typescript',tsx:'typescript',prose:'markdown'};
+const cells = D.cells;
+const byDs = {};
+cells.forEach(c => { (byDs[c.dataset] ||= []).push(c); });
+const name = ds => PRETTY[ds] || ds;
+const meta = ds => D.datasets[ds] || {notes: []};
+const verified = ds => !!meta(ds).verified;
+const hasHuman = ds => (byDs[ds] || []).some(c => c.label === 'human');
+const isCode = ds => (byDs[ds] || []).some(c => c.lang !== 'prose');
+// Dataset order and grouping come from the data, not a hand-kept list: a new dataset in
+// results.json has to appear on the page without an edit here.
+const ORDER = Object.keys(D.datasets).sort((a, b) =>
+  (verified(b) - verified(a)) || (isCode(b) - isCode(a)) || (hasHuman(b) - hasHuman(a)) || a.localeCompare(b));
+const GROUPS = [
+  ['Code, verified human', ORDER.filter(d => isCode(d) && verified(d))],
+  ['Prose, verified human', ORDER.filter(d => !isCode(d) && verified(d))],
+  ['Code, unverified human', ORDER.filter(d => isCode(d) && !verified(d) && hasHuman(d))],
+  ['Prose, unverified human', ORDER.filter(d => !isCode(d) && !verified(d) && hasHuman(d))],
+  ['AI only', ORDER.filter(d => !hasHuman(d))],
+].filter(g => g[1].length);
+const langsOf = ds => [...new Set((byDs[ds]||[]).map(c => c.lang))];
+const cellOf = (ds, label, lang) => (byDs[ds]||[]).find(c => c.label === label && c.lang === lang);
+const rate = (c, code) => c && c.rules[code] ? pct(c.rules[code].files, c.files) : 0;
+const hits = (c, code) => c && c.rules[code] ? c.rules[code].files : 0;
+const labelsOf = (ds, lang) => (byDs[ds]||[]).filter(c => c.lang === lang).map(c => c.label);
+const splitOrder = l => (l === 'human' ? 0 : l === 'ai' ? 1 : 2);
+const isAi = l => l.startsWith('ai');
+const naFor = ds => D.na_rules[ds] || [];
+const codesForLang = lang => (D.applicable[lang] || []).filter(code => RULES[code]);
+const tier = code => `<span class="tier">${RULES[code].tier}</span>`;
+const ruleCell = code => `<span class="rule"><span class="code">${code}</span><span class="nm">${esc(RULES[code].name)}</span></span>`;
+const fraction = (f, t) => `${f}/${t}`;
+
+// ---------- Per-rule pooled numbers
+// Only verified human splits pool: a human side collected after assistants were common
+// cannot carry a false-positive rate, so it is shown but never averaged in. Pairing is not
+// required, because under the 2019 bar no code dataset clears it on both sides: the human
+// half of a code rule's row is the pinned checkouts and the AI half is somebody else's
+// corpus. The section note says so rather than reporting a zero the rule did not earn.
+const HUMAN = cells.filter(c => c.label === 'human' && verified(c.dataset));
+const AI = cells.filter(c => c.label === 'ai');
+const PAIRED = new Set(HUMAN.filter(h => cellOf(h.dataset, 'ai', h.lang)).map(h => h.dataset + '/' + h.lang));
+function pooled(code, list) { let f = 0, t = 0; list.forEach(c => { if (codesForLang(c.lang).includes(code) && !naFor(c.dataset).includes(code)) { f += hits(c, code); t += c.files; } }); return {f, t, r: pct(f, t)}; }
+const VERDICT = {sep: 'separates', weak: 'leans AI', chance: 'at chance', inv: 'leans human', nodata: 'too few hits'};
+const RANK = {sep: 0, weak: 1, chance: 2, inv: 3, nodata: 4};
+function verdict(h, a) {
+  if (a.f + h.f < 5) return 'nodata';
+  const lift = h.r ? a.r / h.r : Infinity;
+  if (a.r >= 1.5 && lift >= 3) return 'sep';
+  if (lift >= 1.5) return 'weak';
+  if (lift >= 0.67) return 'chance';
+  return 'inv';
+}
+const sbRows = Object.keys(RULES).filter(c => c !== 'SLOP010' && c !== 'SLOP044').map(code => {
+  const h = pooled(code, HUMAN), a = pooled(code, AI);
+  const b = pooled(code, HUMAN.filter(c => !PAIRED.has(c.dataset + '/' + c.lang)));
+  const lift = h.r ? a.r / h.r : (a.r ? Infinity : NaN);
+  const dsHits = ORDER.filter(ds => (byDs[ds]||[]).some(c => hits(c, code) > 0));
+  return {code, h, a, b, lift, v: verdict(h, a), dsHits, any: cells.reduce((s, c) => s + hits(c, code), 0)};
+});
+
+// ---------- Takeaways, computed from the same rows as the table
+const liftKey = r => r.v === 'nodata' ? -2 : isNaN(r.lift) ? -1 : r.lift === Infinity ? 1e9 : r.lift;
+const TAKE = ['sep', 'weak', 'chance', 'inv'].map(k => {
+  const list = sbRows.filter(r => r.v === k).sort((x, y) => liftKey(y) - liftKey(x)).map(r => r.code.replace('SLOP', ''));
+  return list.length ? `<li><span class="v ${k}">${VERDICT[k]}</span><span class="codes">${list.join(' · ')}</span></li>` : '';
+});
+const baseHeavy = sbRows.filter(r => r.b.r >= 10 && RULES[r.code].tier === 'A').map(r => r.code.replace('SLOP', ''));
+if (baseHeavy.length) TAKE.push(`<li><span class="v inv">Tier A, human</span><span class="codes">${baseHeavy.join(' · ')} <span class="muted">fire on 10%+ of verified human files with no AI counterpart</span></span></li>`);
+document.getElementById('takeaways').innerHTML = TAKE.join('');
+
+// ---------- Per-rule table
+function renderSb() {
+  const hide = document.getElementById('sb-hide-empty').checked;
+  const sort = document.getElementById('sb-sort').value;
+  const rows = sbRows.filter(r => !hide || r.any > 0);
+  const key = {lift: liftKey, ai: r => r.a.r, human: r => r.h.r, base: r => r.b.r, code: r => -parseInt(r.code.slice(4))}[sort];
+  rows.sort((x, y) => sort === 'lift' ? (RANK[x.v] - RANK[y.v] || key(y) - key(x)) : key(y) - key(x));
+  document.getElementById('sb').innerHTML = `<thead><tr><th>rule</th><th>tier</th><th class="n human">human %</th><th class="n ai">AI %</th><th class="n">lift</th><th class="n" title="AI rate over AI rate plus human rate: precision at an equal human:AI mix">prec 1:1</th><th class="n" title="verified human splits that have no AI counterpart: documentation and pinned releases">unpaired %</th><th>verdict</th><th>fires in</th></tr></thead><tbody>` +
+    rows.map(r => {
+      const nodata = r.v === 'nodata';
+      const prec = nodata || !(r.a.r + r.h.r) ? '–' : (r.a.r / (r.a.r + r.h.r)).toFixed(2);
+      const lift = nodata || isNaN(r.lift) ? '–' : r.lift === Infinity ? '∞' : r.lift.toFixed(r.lift < 10 ? 1 : 0);
+      const shown = r.dsHits.slice(0, 3), rest = r.dsHits.length - shown.length;
+      const fires = shown.map(d => `<a href="#ds-${d}">${esc(name(d))}</a>`).join(', ') + (rest > 0 ? ` <span title="${esc(r.dsHits.map(name).join(', '))}">+${rest}</span>` : '');
+      return `<tr><td>${ruleCell(r.code)}</td><td>${tier(r.code)}</td>` +
+        `<td class="n human">${fmt(r.h.r)}<small>${fraction(r.h.f, r.h.t)}</small></td>` +
+        `<td class="n ai">${fmt(r.a.r)}<small>${fraction(r.a.f, r.a.t)}</small></td>` +
+        `<td class="n">${lift}</td><td class="n">${prec}</td><td class="n">${fmt(r.b.r)}<small>${fraction(r.b.f, r.b.t)}</small></td>` +
+        `<td><span class="v ${r.v}">${VERDICT[r.v]}</span></td><td class="in">${fires || '–'}</td></tr>`;
+    }).join('') + '</tbody>';
+}
+document.getElementById('sb-hide-empty').addEventListener('change', renderSb);
+document.getElementById('sb-sort').addEventListener('change', renderSb);
+renderSb();
+
+// ---------- Matrices
+const LANGS = ['python','go','rust','typescript','tsx','prose'];
+function heat(v, ai) {
+  if (!v) return '';
+  const t = Math.min(1, Math.log1p(v) / Math.log1p(60));
+  const a = (0.10 + 0.40 * t).toFixed(2);
+  return ai ? `background:rgba(240,145,90,${a})` : `background:rgba(122,167,240,${a})`;
+}
+document.getElementById('mx').innerHTML = LANGS.map(lang => {
+  const cols = [];
+  ORDER.forEach(ds => (byDs[ds]||[]).filter(c => c.lang === lang).sort((x, y) => splitOrder(x.label) - splitOrder(y.label)).forEach(c => cols.push(c)));
+  if (!cols.length) return '';
+  const codes = codesForLang(lang).filter(code => cols.some(c => hits(c, code) > 0));
+  const head = cols.map(c => `<th class="c ${isAi(c.label) ? 'ai' : 'human'}">${esc(name(c.dataset))}<small>${esc(SPLIT[c.label] || c.label)} · ${c.files}</small></th>`).join('');
+  const body = codes.map(code => `<tr><td>${ruleCell(code)}</td>` + cols.map(c => { const v = rate(c, code); const na = naFor(c.dataset).includes(code); return `<td class="c ${v ? '' : 'z'}" style="${heat(v, isAi(c.label))}">${na ? 'n/a' : fmt(v)}</td>`; }).join('') + '</tr>').join('');
+  const union = `<tr class="union"><td>any rule</td>` + cols.map(c => `<td class="c">${fmt(pct(c.flagged_files, c.files))}</td>`).join('') + '</tr>';
+  return `<h3 class="sect" id="mx-${lang}">${LANG[lang]}</h3><div class="tablewrap" tabindex="0"><table class="heat" aria-labelledby="mx-${lang}"><thead><tr><th>rule</th>${head}</tr></thead><tbody>${body}${union}</tbody></table></div>`;
+}).join('');
+
+// ---------- Datasets
+const ruleSel = document.getElementById('ds-rule');
+Object.keys(RULES).forEach(code => { const o = document.createElement('option'); o.value = code; o.textContent = `${code} ${RULES[code].name}`; ruleSel.appendChild(o); });
+function renderDatasets() {
+  const only = ruleSel.value;
+  const hideZero = document.getElementById('ds-hide-zero').checked;
+  const openAll = document.getElementById('ds-open-all').checked;
+  const root = document.getElementById('ds');
+  let dividerShown = false;
+  root.innerHTML = GROUPS.map(([gname, list]) => list.filter(ds => byDs[ds]).map(ds => {
+    let lead = '';
+    if (!verified(ds) && !dividerShown) { dividerShown = true; lead = `<div class="divider"><h3>Unverified human splits</h3><p>${esc(D.provenance_note)}</p></div>`; }
+    const m = meta(ds);
+    const gens = {};
+    (byDs[ds]||[]).filter(c => isAi(c.label)).forEach(c => Object.entries(c.generators).forEach(([g, n]) => { gens[g] = (gens[g] || 0) + n; }));
+    const genList = Object.entries(gens).sort((a, b) => b[1] - a[1]);
+    const nat = m.natural_language && !/n\/a/.test(m.natural_language) ? m.natural_language : null;
+    const paper = m.paper ? m.paper.replace(/arXiv\s*/, '') : null;
+    const labs = labelsOf(ds, langsOf(ds)[0]).sort((a, b) => splitOrder(a) - splitOrder(b));
+    const rev = m.revision && m.revision !== 'n/a' ? `<span>revision</span><b class="mono" title="${esc(m.revision)}">${esc(m.revision.slice(0, 12))}</b>` : '';
+    const head = `<div class="dshead"><div><h3 id="ds-${ds}">${esc(name(ds))}</h3>` +
+      `<div class="tags">${langsOf(ds).map(l => `<span class="chip">${LANG[l]}</span>`).join('')}${nat ? `<span class="chip">${esc(nat)}</span>` : ''}${labs.map(l => `<span class="chip ${isAi(l) ? 'ai' : 'human'}">${l === 'ai' ? 'AI' : SPLIT[l] || l}</span>`).join('')}</div>` +
+      (m.notes && m.notes.length ? `<ul class="notes">${m.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '') + `</div>` +
+      `<div class="meta">${m.source ? `<span>source</span><a href="${esc(m.source)}" target="_blank" rel="noopener">${esc(m.source.replace(/^https?:\/\/(www\.)?/, ''))}</a>` : ''}${paper ? `<span>paper</span><a href="https://arxiv.org/abs/${esc(paper)}" target="_blank" rel="noopener">arXiv ${esc(paper)}</a>` : ''}${m.license ? `<span>license</span><b>${esc(m.license)}</b>` : ''}${rev}` +
+      (m.generator_years ? `<span>generators</span><b>${esc(m.generator_years)}</b>` : '') +
+      (m.human_provenance ? `<span>human split</span><b class="${verified(ds) ? '' : 'unver'}">${esc(m.human_provenance)}: ${esc(m.human_note || '')}</b>` : '') +
+      (genList.length ? `<span>in this sample</span><span>${genList.slice(0, 8).map(([g, n]) => `<b>${esc(g)}</b> ${n}`).join(', ')}${genList.length > 8 ? `, +${genList.length - 8} more` : ''}</span>` : '') + `</div></div>`;
+    const blocks = langsOf(ds).map(lang => {
+      const labsL = labelsOf(ds, lang).sort((a, b) => splitOrder(a) - splitOrder(b));
+      const cellsL = labsL.map(l => cellOf(ds, l, lang));
+      const H = cellOf(ds, 'human', lang), A = cellOf(ds, 'ai', lang);
+      const extra = labsL.filter(l => isAi(l) && l !== 'ai');
+      let codes = codesForLang(lang);
+      if (only) codes = codes.filter(c => c === only);
+      if (hideZero) codes = codes.filter(code => cellsL.some(c => hits(c, code) > 0));
+      codes.sort((x, y) => Math.max(...cellsL.map(c => rate(c, y))) - Math.max(...cellsL.map(c => rate(c, x))));
+      const maxr = Math.max(1, ...codes.flatMap(c => cellsL.map(cl => rate(cl, c))));
+      const w = v => Math.max(v ? 1.5 : 0, 100 * v / maxr);
+      const counts = labsL.map((l, i) => `<span style="color:${isAi(l) ? 'var(--ai)' : 'var(--human)'}">${l === 'ai' ? 'AI' : SPLIT[l]}</span> ${cellsL[i].files} files, ${fmt(pct(cellsL[i].flagged_files, cellsL[i].files))}% hit`).join(' · ');
+      const rows = codes.map(code => {
+        const hr = rate(H, code), ar = rate(A, code);
+        const lift = H && A ? (hr ? ar / hr : (ar ? Infinity : NaN)) : NaN;
+        const prec = H && A && (hr + ar) ? (ar / (hr + ar)).toFixed(2) : '–';
+        const aiAlt = extra.length ? Math.max(0, ...extra.map(l => rate(cellOf(ds, l, lang), code))) : 0;
+        const aiCell = A ? `${fmt(ar)}% <small>${hits(A, code)}</small>` : (extra.length ? `${fmt(aiAlt)}% <small>${SPLIT[extra[0]]}</small>` : '<small>–</small>');
+        const pid = `ex-${ds}-${lang}-${code}`;
+        return `<div class="rrow" tabindex="0" data-ds="${ds}" data-lang="${lang}" data-code="${code}" role="button" aria-expanded="false" aria-controls="${pid}">` +
+          `<span class="rule"><span class="code">${code}</span> ${tier(code)}<span class="nm">${esc(RULES[code].name)}</span></span>` +
+          `<div class="n human">${H ? `${fmt(hr)}% <small>${hits(H, code)}</small>` : '<small>–</small>'}</div>` +
+          `<div class="n ai">${aiCell}</div>` +
+          `<div class="bars" aria-hidden="true"><div class="bar"><span class="h" style="width:${w(hr)}%"></span></div><div class="bar"><span class="a" style="width:${w(A ? ar : aiAlt)}%"></span></div></div>` +
+          `<div class="n">${isNaN(lift) ? '–' : lift === Infinity ? '∞' : lift.toFixed(lift < 10 ? 1 : 0)}</div><div class="n prec">${prec}</div><span class="chev" aria-hidden="true">›</span></div><div class="exwrap" id="${pid}" hidden></div>`;
+      }).join('');
+      return `<div class="cell"><div class="cellhead"><h4>${LANG[lang]}</h4><span class="counts">${counts}</span></div>` +
+        (codes.length ? `<div class="rhead"><span>rule</span><span class="r human">human</span><span class="r ai">AI</span><span class="bars"></span><span class="r">lift</span><span class="r prec">prec 1:1</span><span></span></div>${rows}` : `<div class="empty">No rule fired in this split.</div>`) + `</div>`;
+    }).join('');
+    return `${lead}<div class="ds">${head}${blocks}</div>`;
+  }).join('')).join('');
+  root.querySelectorAll('.rrow').forEach(row => {
+    const toggle = () => { const open = row.classList.toggle('open'); row.setAttribute('aria-expanded', open); const wrap = row.nextElementSibling; if (open && !wrap.dataset.done) { wrap.innerHTML = renderExamples(row.dataset.ds, row.dataset.lang, row.dataset.code); wrap.dataset.done = '1'; wireTabs(wrap); } wrap.hidden = !open; };
+    row.addEventListener('click', toggle);
+    row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    if (openAll) toggle();
+  });
+}
+function hl(text, lang) { try { return hljs.highlight(text, {language: HL[lang] || 'plaintext', ignoreIllegals: true}).value; } catch (e) { return esc(text); } }
+function exCard(ex, lang) {
+  const meta = Object.entries(ex.meta || {}).filter(([k, v]) => v && v !== 'human').map(([k, v]) => `<span>${esc(v)}</span>`).join('');
+  return `<div class="ex"><div class="exhead"><span class="f">${esc(ex.file)}:${ex.line}:${ex.col}</span>${meta}${ex.more ? `<span>+${ex.more} in file</span>` : ''}</div>` +
+    `<div class="msg">${esc(ex.message)}${ex.fix ? `<span class="fix">${esc(ex.fix)}</span>` : ''}</div>` +
+    `<pre>${ex.snippet.map(([n, t, hit]) => `<div class="ln${hit ? ' hit' : ''}"><span class="no">${n}</span><code>${hl(t, lang)}</code></div>`).join('')}</pre></div>`;
+}
+function renderExamples(ds, lang, code) {
+  const labs = labelsOf(ds, lang).sort((a, b) => splitOrder(a) - splitOrder(b));
+  const H = cellOf(ds, 'human', lang);
+  const aiLabs = labs.filter(isAi);
+  const list = arr => arr && arr.length ? arr.map(e => exCard(e, lang)).join('') : '<div class="empty">No hits in this split.</div>';
+  const humanCol = H ? `<div class="excol human"><div class="colhead"><span>human · ${hits(H, code)} files</span></div>${list(H.examples[code])}</div>` : '';
+  let aiCol = '';
+  if (aiLabs.length) {
+    const tabs = aiLabs.length > 1 ? `<span class="splittabs">${aiLabs.map((l, i) => `<button type="button" data-lab="${l}" aria-pressed="${i === 0}">${SPLIT[l]}</button>`).join('')}</span>` : '';
+    const panes = aiLabs.map((l, i) => `<div class="pane" data-lab="${l}" ${i ? 'hidden' : ''}>${list(cellOf(ds, l, lang).examples[code])}</div>`).join('');
+    const count = aiLabs.map(l => `${hits(cellOf(ds, l, lang), code)} ${SPLIT[l]}`).join(' / ');
+    aiCol = `<div class="excol ai"><div class="colhead"><span>AI · ${count}</span>${tabs}</div>${panes}</div>`;
+  }
+  return `<p class="desc">${esc(RULES[code].desc)}</p><div class="examples${humanCol && aiCol ? '' : ' single'}">${humanCol}${aiCol}</div>`;
+}
+function wireTabs(w) {
+  w.querySelectorAll('.splittabs button').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    const col = b.closest('.excol');
+    col.querySelectorAll('.splittabs button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    col.querySelectorAll('.pane').forEach(p => { p.hidden = p.dataset.lab !== b.dataset.lab; });
+  }));
+}
+['ds-rule','ds-hide-zero','ds-open-all'].forEach(id => document.getElementById(id).addEventListener('change', renderDatasets));
+renderDatasets();
+
+// ---------- Candidate rules
+(function renderCands() {
+  if (!CANDS) return;
+  document.getElementById('candidates').hidden = false;
+  const root = document.getElementById('cands');
+  const rows = CANDS.candidates || [];
+  const data = CANDS.candidates_data || {};
+  const kv = pairs => `<dl class="kv">${pairs.filter(p => p[1]).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+  const quotes = arr => (arr || []).map(q => `<span class="q">${esc(q)}</span>`).join('');
+  const liftText = v => typeof v === 'number' ? v.toFixed(1) : (v === 'inf' ? '∞' : '–');
+  const splitRows = m => {
+    const shown = m.splits.filter(s => s.hit).sort((a, b) => b.rate - a.rate);
+    if (!shown.length) return '<div class="empty">No split matched.</div>';
+    return `<table><thead><tr><th>split</th><th>pool</th><th class="n">files</th><th class="n">hit</th><th class="n">rate</th></tr></thead><tbody>` +
+      shown.map(s => `<tr><td>${esc(s.dataset)}/${esc(SPLIT[s.label] || s.label)}/${esc(LANG[s.lang] || s.lang)}</td>` +
+        `<td class="${s.class === 'human' ? 'human' : s.class === 'ai' ? 'ai' : ''}">${esc(s.class)}</td>` +
+        `<td class="n">${s.files}</td><td class="n">${s.hit}</td><td class="n">${fmt(s.rate)}%</td></tr>`).join('') +
+      `</tbody></table>`;
+  };
+  const card = ({candidate: c, measured: m}) => {
+    const lines = m.splits.filter(s => s.examples && s.examples.length).sort((a, b) => b.rate - a.rate).slice(0, 3);
+    return `<div class="cand"><div class="top"><h3>${esc(c.name)} <span class="muted">${esc(c.scope)} · ${esc(c.langs)} · tier ${esc(c.tier)}</span></h3><span class="rel">${esc(c.relation)}</span></div>` +
+      `<div class="stats"><span class="human">verified human ${fraction(m.human.hit, m.human.files)} (${fmt(m.human.rate)}%)</span>` +
+      `<span class="ai">plain AI ${fraction(m.ai.hit, m.ai.files)} (${fmt(m.ai.rate)}%)</span>` +
+      `<span>lift ${liftText(m.lift)}</span><span class="v ${m.verdict === 'separates' ? 'sep' : m.verdict === 'leans AI' ? 'weak' : m.verdict === 'leans human' ? 'inv' : 'chance'}">${esc(m.verdict)}</span></div>` +
+      kv([['pattern', `<span class="regex">${esc(c.regex)}</span>`],
+          ['notes', esc(c.notes || '')],
+          ['unverified human', `${fraction(m.human_unverified.hit, m.human_unverified.files)} (${fmt(m.human_unverified.rate)}%)`],
+          ['AI variants', `${fraction(m.ai_variant.hit, m.ai_variant.files)} (${fmt(m.ai_variant.rate)}%)`]]) +
+      `<details class="more"><summary>every split, and the lines that matched</summary>` +
+      `<div class="tablewrap" tabindex="0">${splitRows(m)}</div>` +
+      lines.map(s => kv([[`lines in ${esc(s.dataset)}/${esc(s.label)}`, quotes(s.examples.map(e => e.text))]])).join('') +
+      `</details></div>`;
+  };
+  const sep = rows.filter(r => r.measured.verdict === 'separates');
+  const rest = rows.filter(r => r.measured.verdict !== 'separates');
+  const byLift = (x, y) => (typeof y.measured.lift === 'number' ? y.measured.lift : 1e9) - (typeof x.measured.lift === 'number' ? x.measured.lift : 1e9);
+  root.innerHTML = `<p class="sub">Proposed tells, measured by <code>bench/analyze_corpus.py</code> against verified human splits and plain AI splits. A number here is a hypothesis, not a rule.</p>` +
+    (sep.length ? `<h3 class="sect">${sep.length} separate the splits</h3>${sep.sort(byLift).map(card).join('')}` : '') +
+    (rest.length ? `<h3 class="sect">${rest.length} below the bar</h3>${rest.sort(byLift).map(card).join('')}` : '') +
+    ((data.miss || []).length ? `<h3 class="sect">Rules that missed</h3>${data.miss.map(m => `<div class="cand"><h3>${esc(m.rule)} <span class="muted">${esc((RULES[m.rule] || {}).name || '')}</span></h3>${kv([['missed', esc(m.what_it_missed)], ['evidence', esc(m.evidence)], ['fix', esc(m.fix_idea)]])}</div>`).join('')}` : '') +
+    ((data.paper_caveats || []).length ? `<h3 class="sect">Paper caveats</h3><ul class="notes" style="font-size:13px;color:var(--fg-2)">${data.paper_caveats.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '') +
+    ((data.dropped || []).length ? `<details class="more"><summary>${data.dropped.length} tells measured and dropped</summary><ul class="notes">${data.dropped.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : '');
+})();
+
+// ---------- Method
+document.getElementById('method-body').innerHTML = [
+  ['Split', 'One dataset, one language, one label (human, AI, or an AI variant). Up to 500 files each, a deterministic spread across the whole dataset; reruns are byte-identical.'],
+  ['Hit', 'A file counts once per rule. Rates are files hit over files in the split.'],
+  ['Lift', 'AI rate over human rate.'],
+  ['Prec 1:1', 'AI rate over AI rate plus human rate: precision at an equal human:AI mix.'],
+  ['Variants', 'Paraphrased, refined and adversarial AI splits are shown separately, never pooled.'],
+  ['JavaScript', 'CodeMirage and DroidCollection JavaScript is written as .ts so the TypeScript rules run; SLOP007 cannot fire there.'],
+  ['n/a', 'CoDET-M4 ships comment-stripped code, so its comment rules are not scored.'],
+  ['Lines', 'Up to 14 flagged files per rule per split; lines over 230 characters are clipped around the finding.'],
+  ['Reproduce', '<code>just corpus</code> fetches, scores, analyses and rebuilds this page.'],
+].map(([h, p]) => `<dt>${esc(h)}</dt><dd>${p}</dd>`).join('');
+
+// ---------- Rail
+const rail = document.getElementById('rail');
+rail.innerHTML = `<div class="brand">stopslop<span>corpus scorecard</span></div>` +
+  `<div class="navgroup"><a href="#overview">Overview</a><a href="#rules">Per rule</a><a href="#matrices">By language</a><a href="#datasets">Datasets</a>${CANDS ? '<a href="#candidates">Candidate rules</a>' : ''}<a href="#method">Method</a></div>` +
+  GROUPS.map(([g, list]) => `<div class="navgroup ds-nav"><div class="lbl">${g}</div>${list.filter(ds => byDs[ds]).map(ds => `<a href="#ds-${ds}"><span>${esc(name(ds))}</span><span class="k">${(byDs[ds]||[]).reduce((s, c) => s + c.files, 0)}</span></a>`).join('')}</div>`).join('');
+const links = [...rail.querySelectorAll('a')];
+const targets = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+if ('IntersectionObserver' in window) {
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(en => { if (en.isIntersecting) { const id = '#' + en.target.id; links.forEach(a => { const on = a.getAttribute('href') === id; a.classList.toggle('on', on); if (on) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current'); }); } });
+  }, {rootMargin: '-10% 0px -80% 0px'});
+  targets.forEach(t => io.observe(t));
+}
+})();
+</script>

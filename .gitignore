@@ -3,3 +3,4 @@
 /.claude/worktrees
 /.claude/workflows
 /.env
+__pycache__/

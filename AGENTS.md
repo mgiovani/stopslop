@@ -3,12 +3,11 @@
 Deterministic linter for AI slop in code and prose.
 
 ```bash
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-cargo run -- .              # dogfood this repo; Tier A findings exit 1
+just check                  # fmt, clippy, test, dogfood: the three CI gates plus the dogfood run
 cargo run -- . --list-rules # code, group, tier, default state
 cargo install --path .      # rebuild the binary before dogfooding a new rule
+just corpus                 # fetch, score, analyse and render the labelled-corpus benchmark
+just --list                 # every recipe; each one is a single command you can also run by hand
 ```
 
 ## Architecture
@@ -32,7 +31,7 @@ cargo install --path .      # rebuild the binary before dogfooding a new rule
 7. Keep the panel in the rule file. `prose_words.rs` holds the panels the prose density rules share and takes no new entries.
 8. Write the message lowercase and specific, and use `Diagnostic::at_fix` whenever a concrete replacement exists.
 9. Install the binary and lint this repo. Fix every finding your rule makes here before opening the PR.
-10. Run `bench/score_corpus.py` and paste the new rule's rows into the PR before opening it.
+10. Run `just corpus-score` and paste the new rule's rows into the PR before opening it.
 
 ## Engineering principles
 
@@ -70,7 +69,8 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 - Pair every positive fixture with a clean one. A rule that cannot stay quiet is unfinished.
 - Test the exclusions you wrote, not the match you already saw work.
 - Treat the dogfood run as the third gate after unit and fixture tests.
-- `bench/score_corpus.py` is the fourth gate for any threshold, panel or tier change: run it and paste the rows for the affected rule into the PR.
+- `just corpus-score` is the fourth gate for any threshold, panel or tier change: run it and paste the rows for the affected rule into the PR. It is offline once `just corpus-fetch` has run, and only verified human splits (2019 or earlier, or identified authors) enter the pooled rates.
+- A new tell starts as a `bench/candidates.toml` row measured by `just corpus-analyze`, not as a rule. Ship the rule once the measurement separates the splits; leave the row behind either way, so the next person reads the measurement instead of redoing it.
 
 ## Invariants
 
