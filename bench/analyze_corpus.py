@@ -388,7 +388,7 @@ def pool(results, tally, wanted_class):
 def candidate_verdict(human, ai):
     if ai["hit"] < MIN_AI_FILES:
         return "too few hits"
-    # ai["hit"] >= MIN_AI_FILES > 0 here, so ai["rate"] > 0 and lift() can never return "--"
+    # ai["hit"] >= MIN_AI_FILES > 0 here, so ai["rate"] > 0 and lift() can never return "n/a"
     # (its "neither side fires" case).
     ratio = lift(human["rate"], ai["rate"])
     if ratio == "inf" or (ratio >= SEPARATES_LIFT and ai["rate"] >= SEPARATES_RATE):
