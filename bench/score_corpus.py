@@ -1258,10 +1258,10 @@ def precision_at_prior(hits_ai, hits_h):
 
 
 def lift(rate_h, rate_ai):
-    """ai hit rate over human hit rate. `'inf'` when human is clean and ai is not; `'--'`
+    """ai hit rate over human hit rate. `'inf'` when human is clean and ai is not; `'n/a'`
     when neither side fires."""
     if rate_h == 0:
-        return "inf" if rate_ai > 0 else "--"
+        return "inf" if rate_ai > 0 else "n/a"
     return rate_ai / rate_h
 
 
@@ -1289,11 +1289,11 @@ def dist(counts):
 
 def fmt_ratio(x):
     if x is None:
-        return "--"
+        return "n/a"
     if x == "inf":
         return "inf"
-    if x == "--":
-        return "--"
+    if x == "n/a":
+        return "n/a"
     return f"{x:.2f}"
 
 
@@ -1322,7 +1322,7 @@ DATASETS = {
             "AtCoder is Japanese and many human files carry Japanese comments, which the "
             "English-lexicon rules cannot match.",
             "The machine side is entirely code that failed; the human side is one third "
-            "accepted -- the dataset authors matched outcome buckets deliberately.",
+            "accepted: the dataset authors matched outcome buckets deliberately.",
         ],
         "fetch": fetch_aigcodeset,
         "cells": [
@@ -1477,7 +1477,7 @@ DATASETS = {
         "caveats": [
             "`docstring` ships as its own column, separate from `human_code`, so "
             "SLOP001-SLOP004, SLOP042 and SLOP043 print `n/a` here the same way they do on "
-            "codet_m4 -- the extraction pass strips comments and docstrings out of the code "
+            "codet_m4: the extraction pass strips comments and docstrings out of the code "
             "columns, not the model.",
             "The file is 651 MB; `fetch_naples_code` streams it and stops once both samples "
             "are full, so this is a head sample of file order rather than the spread sample "
@@ -2351,14 +2351,14 @@ def dataset_meta_bullets(name, ds, by_lang, revision, args):
     if ds.get("generator_years"):
         lines.append(f"- Generators: {ds['generator_years']}")
     if has_human(ds):
-        lines.append(f"- Human split: {ds.get('human_provenance') or 'unverified'} -- "
-                     f"{ds.get('human_note') or 'provenance not recorded'}")
+        lines.append(f"- Human split: {ds.get('human_provenance') or 'unverified'} "
+                     f"({ds.get('human_note') or 'provenance not recorded'})")
     lines.append(f"- Revision: {revision}")
     lines.append(f"- Files fetched: {total_files}")
     for lang, by_label in sorted(by_lang.items()):
-        parts = ", ".join(f"{label} {cell['files']} ({cell['empty']} blank dropped)"
-                           for label, cell in sorted(by_label.items()))
-        lines.append(f"  - {lang}: {parts}")
+        lines.append(f"  - {lang}:")
+        for label, cell in sorted(by_label.items()):
+            lines.append(f"    - {label}: {cell['files']} ({cell['empty']} blank dropped).")
         for label, cell in sorted(by_label.items()):
             if label == "human":
                 continue
@@ -2368,7 +2368,7 @@ def dataset_meta_bullets(name, ds, by_lang, revision, args):
                 for m in cell["index"].values():
                     g = m.get("generator", "unknown")
                     counts[g] = counts.get(g, 0) + 1
-                lines.append(f"    - {label} generators: {dist(counts)}")
+                lines.append(f"    - {label} generators: {dist(counts)}.")
     proxies = {c["proxy"] for c in ds.get("cells", []) if c.get("proxy")}
     for p in sorted(proxies):
         lines.append(f"- {p}")
@@ -2385,7 +2385,7 @@ def build_report(datasets_built, revisions, registry, args, not_fetched):
         "## Per-rule hit rate across the corpus registry",
         "",
         f"- Binary: {version}, run as `stopslop <dir> --format json --stats --no-config --select ALL`",
-        f"- --limit: {args.limit or 'all (0)'}" + ("  **-- a deterministic spread sample, never a reported number, when non-zero and below a dataset's full size**" if args.limit else ""),
+        f"- `--limit`: {args.limit or 'all (0)'}" + (" (a deterministic spread sample, never a reported number, when non-zero and below a dataset's full size)" if args.limit else ""),
     ]
     for name in sorted(datasets_built):
         lines.append(f"- {name} revision: {revisions.get(name, 'n/a')}")
@@ -2403,10 +2403,10 @@ def build_report(datasets_built, revisions, registry, args, not_fetched):
         "- `precision @1:1` assumes one ai file per human file, a property of this table's "
         "construction, not of any repository; it re-expresses the two hit rates and carries "
         "no information they do not. `precision @prior` instead uses the raw counts actually "
-        "fetched, so it reflects this run's `--limit` and each cell's real population. `--` "
+        "fetched, so it reflects this run's `--limit` and each cell's real population. `n/a` "
         "means neither side fired.",
         "- `lift` is the ai hit rate divided by the human hit rate: `inf` means the rule is "
-        "clean on human files here and not on ai ones; `--` means neither side fired.",
+        "clean on human files here and not on ai ones; `n/a` means neither side fired.",
         "- Findings per KLoC/1k words only mean something read against the hit rate: a high "
         "hit rate next to a modest density is a rule weakly present everywhere, and a low hit "
         "rate next to a high density is a rule that fires hard in a few files.",
@@ -2439,7 +2439,7 @@ def build_report(datasets_built, revisions, registry, args, not_fetched):
     for name in sorted(datasets_built):
         ds = registry[name]
         prov = ds.get("human_provenance") or ("ai only" if not has_human(ds) else "unverified")
-        lines.append(f"| {name} | {prov} | {ds.get('human_note') or '--'} | {ds.get('generator_years') or '--'} |")
+        lines.append(f"| {name} | {prov} | {ds.get('human_note') or 'n/a'} | {ds.get('generator_years') or 'n/a'} |")
     lines.append("")
 
     def summaries(names, heading):
@@ -2604,7 +2604,7 @@ def self_check():
     assert precision(0.0, 4.0) == 1.0
     assert precision_at_prior(0, 0) is None
     assert precision_at_prior(3, 1) == 0.75
-    assert lift(0.0, 0.0) == "--"
+    assert lift(0.0, 0.0) == "n/a"
     assert lift(0.0, 5.0) == "inf"
     assert lift(10.0, 20.0) == 2.0
     assert pct(1, 4) == 25.0 and pct(0, 0) == 0.0
