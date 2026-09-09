@@ -193,6 +193,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
+            image: None,
             natlangs,
         };
         let mut out = Vec::new();

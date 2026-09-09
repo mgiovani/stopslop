@@ -1,3 +1,4 @@
+use crate::image::ImageDoc;
 use crate::imports_data::DepIndex; // re-exported via rules::imports_data
 use crate::lang::{Lang, NatLang};
 use crate::prose::ProseDoc;
@@ -25,6 +26,7 @@ pub struct LintContext<'a> {
     pub is_stub_file: bool,              // .pyi
     pub deps: Option<&'a DepIndex>,      // Some only under --check-imports
     pub prose: Option<&'a ProseDoc<'a>>, // Some only for prose langs (see lang::Lang::is_prose)
+    pub image: Option<&'a ImageDoc>,     // Some only for image langs (see lang::Lang::is_image)
     /// Natural languages the document is assumed to contain, resolved once from config (default:
     /// every supported language). A rule is gated out when its `natlangs` shares nothing with
     /// this set (engine::lint_file, engine::lint_prose); a no-op under the default.
@@ -117,8 +119,9 @@ pub fn extract<'t, 'a>(
             &["line_comment", "block_comment"],
             &["string_literal", "raw_string_literal"],
         ),
-        // Never reached: prose langs bypass this extraction path entirely (engine::lint_prose).
-        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html => (&[], &[]),
+        // Never reached: prose langs bypass this extraction path entirely (engine::lint_prose),
+        // and image langs never build a tree at all (engine::lint_image).
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html | Lang::Image => (&[], &[]),
     };
 
     let mut index = NodeIndex {
@@ -205,8 +208,8 @@ pub(crate) fn is_doc_comment(lang: Lang, text: &str) -> bool {
                 || text.starts_with("/**")
                 || text.starts_with("/*!")
         }
-        // Never reached: prose langs never call extract().
-        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html => false,
+        // Never reached: prose and image langs never call extract().
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html | Lang::Image => false,
     }
 }
 
@@ -259,6 +262,7 @@ mod tests {
                 is_stub_file: false,
                 deps: None,
                 prose: None,
+                image: None,
                 natlangs: crate::lang::ALL_NATLANGS,
             };
             let mut preorder = Vec::new();
@@ -297,6 +301,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
+            image: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         assert!(ctx.nodes(&["paragraph"]).is_empty());

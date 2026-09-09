@@ -170,6 +170,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
+            image: None,
             natlangs,
         };
         let mut out = Vec::new();
@@ -293,6 +294,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
+            image: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut cliche_out = Vec::new();
@@ -321,6 +323,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: Some(&doc),
+            image: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut hedging_out = Vec::new();

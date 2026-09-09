@@ -27,7 +27,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         Lang::Python => check_python(rule, ctx, out),
         Lang::Go => check_go(rule, ctx, out),
         Lang::Rust => {}
-        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html => {} // rule.langs excludes prose; never reached
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html | Lang::Image => {} // rule.langs excludes prose and images; never reached
     }
     check_email_regex(rule, ctx, out);
 }
@@ -504,6 +504,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
+            image: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();

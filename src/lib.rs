@@ -7,6 +7,7 @@ pub mod diagnostic;
 pub mod engine;
 pub mod git;
 pub mod groups;
+pub mod image;
 pub mod lang;
 pub mod output;
 pub mod paths;
@@ -19,7 +20,7 @@ pub mod walk;
 
 pub use baseline::Baseline;
 pub use diagnostic::{Diagnostic, Tier};
-pub use engine::{lint_file, resolve_enabled, Settings};
+pub use engine::{lint_file, lint_image, resolve_enabled, Settings};
 pub use lang::{Lang, NatLang, ALL_NATLANGS};
 pub use rules::imports_data;
 pub use walk::{lint_paths, Stats};

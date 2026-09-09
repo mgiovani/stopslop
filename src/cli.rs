@@ -217,9 +217,9 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
                 let staged = matches!(scope, git::Scope::Staged);
                 walk::lint_files(&files, &config.exclude, &settings, move |p| {
                     if staged {
-                        git::staged_source(Path::new("."), p)
+                        git::staged_bytes(Path::new("."), p)
                     } else {
-                        std::fs::read_to_string(p)
+                        std::fs::read(p)
                     }
                 })
             }
