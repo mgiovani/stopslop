@@ -4,7 +4,7 @@
 
 # stopslop
 
-Like Ruff, but for AI slop.
+Catch the junk AI leaves in your code.
 
 [![CI](https://github.com/mgiovani/stopslop/actions/workflows/ci.yml/badge.svg)](https://github.com/mgiovani/stopslop/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/mgiovani/stopslop/blob/main/LICENSE)
