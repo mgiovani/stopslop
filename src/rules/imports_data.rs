@@ -90,15 +90,14 @@ fn find_manifests(root: &Path, out: &mut Vec<PathBuf>) {
             continue;
         };
         let name = entry.file_name();
-        let Some(name) = name.to_str() else {
-            continue;
-        };
+        // A non-UTF-8 name matches neither list, yet such a directory can still hold manifests.
+        let name = name.to_str();
         if file_type.is_dir() {
-            if SKIP_DIRS.contains(&name) {
+            if name.is_some_and(|n| SKIP_DIRS.contains(&n)) {
                 continue;
             }
             find_manifests(&entry.path(), out);
-        } else if MANIFEST_NAMES.contains(&name) {
+        } else if name.is_some_and(|n| MANIFEST_NAMES.contains(&n)) {
             out.push(entry.path());
         }
     }
