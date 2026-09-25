@@ -397,7 +397,7 @@ mod tests {
 
     fn image_settings() -> Settings {
         Settings {
-            enabled: resolve_enabled(&["SLOP045".to_string()], &[], &[], &[], &[], false),
+            enabled: resolve_enabled(&["SLOP046".to_string()], &[], &[], &[], &[], false),
             deps: None,
             custom_rules: Vec::new(),
             natlangs: crate::lang::ALL_NATLANGS.to_vec(),
@@ -408,7 +408,7 @@ mod tests {
     /// linted file, through the actual walk (`tests/image_fixtures.rs` calls `lint_image`
     /// directly and never exercises this path).
     #[test]
-    fn walk_lints_a_real_png_on_disk_and_finds_slop045() {
+    fn walk_lints_a_real_png_on_disk_and_finds_slop046() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a1111.png"), png_with_a1111_parameters()).unwrap();
 
@@ -416,7 +416,7 @@ mod tests {
             lint_paths(&[dir.path().to_path_buf()], &[], &image_settings(), 0).unwrap();
 
         assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].code, "SLOP045");
+        assert_eq!(diags[0].code, "SLOP046");
         assert_eq!(stats.files, 1);
         assert_eq!(stats.skipped, 0);
     }

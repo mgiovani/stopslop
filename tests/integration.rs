@@ -99,15 +99,15 @@ fn fixtures_match_markers() {
 /// for that language (SLOP037 reaches Rust through its email-regex check, see
 /// fixtures/rust/slop_reinvent.rs). Every entry is checked in both directions below.
 ///
-/// The three `Lang::Image` rules (SLOP045-047) also live here, for a different reason: their
+/// The three `Lang::Image` rules (SLOP046-048) also live here, for a different reason: their
 /// fixtures are binary PNG/JPEG/WebP bytes built in Rust, and a binary file cannot carry an
 /// inline `expect:` marker for this harness's `read_to_string` path to find. Their end-to-end
 /// coverage lives in its own harness, `tests/image_fixtures.rs`, which builds those bytes and
 /// asserts against `stopslop::engine::lint_image` directly.
 const UNEXERCISED_LANGS: &[(&str, Lang)] = &[
-    ("SLOP045", Lang::Image),
     ("SLOP046", Lang::Image),
     ("SLOP047", Lang::Image),
+    ("SLOP048", Lang::Image),
 ];
 
 // ponytail: Tsx shares every dispatch arm with Ts and prose rules never dispatch on lang, so a

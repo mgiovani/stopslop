@@ -5,7 +5,7 @@ use crate::registry::RuleDef;
 use crate::rules::image_prompt;
 
 pub static RULE: RuleDef = RuleDef {
-    code: "SLOP046",
+    code: "SLOP047",
     name: "Declared AI source type",
     tier: Tier::A,
     langs: lang::IMAGE_LANGS,
@@ -39,9 +39,9 @@ pub static RULE: RuleDef = RuleDef {
 const NEEDLE: &str = "trainedalgorithmicmedia";
 const COMPOSITE_NEEDLE: &str = "compositewithtrainedalgorithmicmedia";
 
-/// Exposed for SLOP047 (AGENTS.md panel-disjointness): a field that declares a digital source
-/// type is SLOP046's fact even where the same field's value also names the generator that
-/// produced it -- `Adobe Firefly` is in SLOP047's panel precisely because Firefly signs C2PA
+/// Exposed for SLOP048 (AGENTS.md panel-disjointness): a field that declares a digital source
+/// type is SLOP047's fact even where the same field's value also names the generator that
+/// produced it -- `Adobe Firefly` is in SLOP048's panel precisely because Firefly signs C2PA
 /// manifests, and `digitalSourceType` lives in exactly those manifests. Confirmed on the real
 /// corpus: a C2PA/EXIF field can carry both at the identical offset. `NEEDLE` alone is enough
 /// here too, same as inside `check` below: `COMPOSITE_NEEDLE` contains it as a substring, so one
@@ -60,14 +60,14 @@ pub(crate) fn declares_source_type(value_lower: &str) -> bool {
 /// so `lower.contains(NEEDLE)` never fires. Pinned by
 /// `compressed_source_type_declaration_is_a_known_blind_spot` below.
 ///
-/// One diagnostic per file, first match in `doc.fields` order -- same rationale as SLOP045: this
+/// One diagnostic per file, first match in `doc.fields` order -- same rationale as SLOP046: this
 /// is a file-level fact, and a real file can repeat it across an XMP packet and a C2PA manifest
 /// at once.
 ///
-/// Skips SLOP045's keys first, same disjointness fix SLOP047 already applies and for the same
+/// Skips SLOP046's keys first, same disjointness fix SLOP048 already applies and for the same
 /// reason (see `image_prompt::PROMPT_KEYS`'s doc comment): InvokeAI has been adding
 /// Content-Credentials fields to its own metadata export, so a real `invokeai_metadata` field
-/// (SLOP045's key) can carry `trainedAlgorithmicMedia` inside its own JSON value.
+/// (SLOP046's key) can carry `trainedAlgorithmicMedia` inside its own JSON value.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.image else { return };
     // Lowercased once and carried out of the search, to avoid copying `f.value` a second time.
@@ -223,10 +223,10 @@ mod tests {
     }
 
     /// Disjointness guard (A1): a real InvokeAI export can put Content-Credentials-style JSON
-    /// inside its own `invokeai_metadata` field, so the same field would fire both SLOP045 (the
-    /// key) and SLOP046 (the value) without this skip. That fact is SLOP045's to report.
+    /// inside its own `invokeai_metadata` field, so the same field would fire both SLOP046 (the
+    /// key) and SLOP047 (the value) without this skip. That fact is SLOP046's to report.
     #[test]
-    fn skips_slop045_owned_key_even_when_its_value_declares_source_type() {
+    fn skips_slop046_owned_key_even_when_its_value_declares_source_type() {
         let bytes = png(&[
             (
                 "tEXt",

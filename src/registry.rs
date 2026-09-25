@@ -66,7 +66,7 @@ pub static RULES: &[&'static RuleDef] = &[
     &crate::rules::restate::RULE,           // SLOP042
     &crate::rules::comment_length::RULE,    // SLOP043
     &crate::rules::html_title::RULE,        // SLOP044
-    &crate::rules::image_prompt::RULE,      // SLOP045
-    &crate::rules::image_source_type::RULE, // SLOP046
-    &crate::rules::image_generator::RULE,   // SLOP047
+    &crate::rules::image_prompt::RULE,      // SLOP046
+    &crate::rules::image_source_type::RULE, // SLOP047
+    &crate::rules::image_generator::RULE,   // SLOP048
 ];

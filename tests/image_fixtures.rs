@@ -1,4 +1,4 @@
-//! End-to-end fixtures for the image rules (SLOP045-047), built byte-for-byte in Rust rather
+//! End-to-end fixtures for the image rules (SLOP046-048), built byte-for-byte in Rust rather
 //! than committed as binary files -- no binary asset lives in this repo just to feed a test. A
 //! byte-oriented `LintContext` can't carry an inline `expect:` marker, so this harness plays the
 //! role `tests/integration.rs`'s marker harness plays for text fixtures (see that file's
@@ -9,7 +9,7 @@ use stopslop::{lint_image, resolve_enabled, Settings, ALL_NATLANGS};
 
 /// Selects the whole `"SLOP"` group, same as `tests/integration.rs`'s text-fixture harness, so an
 /// unrelated rule over-firing on one of these fixtures is caught rather than silently masked by
-/// selecting only SLOP045-047.
+/// selecting only SLOP046-048.
 fn settings() -> Settings {
     Settings {
         enabled: resolve_enabled(&["SLOP".to_string()], &[], &[], &[], &[], false),
@@ -129,7 +129,7 @@ fn webp(chunks: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
 // --- positive fixtures ---
 
 #[test]
-fn a1111_parameters_text_flags_slop045_only() {
+fn a1111_parameters_text_flags_slop046_only() {
     let bytes = png(&[
         (
             "tEXt",
@@ -140,21 +140,21 @@ fn a1111_parameters_text_flags_slop045_only() {
         ),
         ("IEND", &[]),
     ]);
-    assert_eq!(codes(&bytes), HashSet::from(["SLOP045"]));
+    assert_eq!(codes(&bytes), HashSet::from(["SLOP046"]));
 }
 
 /// Compressed field, empty value: proves the keyword-only path fires without any usable text.
 #[test]
-fn comfyui_workflow_ztxt_flags_slop045_via_keyword_alone() {
+fn comfyui_workflow_ztxt_flags_slop046_via_keyword_alone() {
     let bytes = png(&[
         ("zTXt", &ztxt_chunk("workflow", b"not-real-zlib-bytes")),
         ("IEND", &[]),
     ]);
-    assert_eq!(codes(&bytes), HashSet::from(["SLOP045"]));
+    assert_eq!(codes(&bytes), HashSet::from(["SLOP046"]));
 }
 
 #[test]
-fn xmp_itxt_trained_algorithmic_media_flags_slop046() {
+fn xmp_itxt_trained_algorithmic_media_flags_slop047() {
     let xmp = "<x:xmpmeta><rdf:RDF><rdf:Description \
                iptcExt:DigitalSourceType=\"http://cv.iptc.org/newscodes/digitalsourcetype/\
                trainedAlgorithmicMedia\"/></rdf:RDF></x:xmpmeta>";
@@ -162,11 +162,11 @@ fn xmp_itxt_trained_algorithmic_media_flags_slop046() {
         ("iTXt", &itxt_chunk("XML:com.adobe.xmp", xmp)),
         ("IEND", &[]),
     ]);
-    assert_eq!(codes(&bytes), HashSet::from(["SLOP046"]));
+    assert_eq!(codes(&bytes), HashSet::from(["SLOP047"]));
 }
 
 #[test]
-fn xmp_itxt_composite_with_trained_algorithmic_media_flags_slop046() {
+fn xmp_itxt_composite_with_trained_algorithmic_media_flags_slop047() {
     let xmp = "<x:xmpmeta><rdf:RDF><rdf:Description \
                iptcExt:DigitalSourceType=\"http://cv.iptc.org/newscodes/digitalsourcetype/\
                compositeWithTrainedAlgorithmicMedia\"/></rdf:RDF></x:xmpmeta>";
@@ -174,7 +174,7 @@ fn xmp_itxt_composite_with_trained_algorithmic_media_flags_slop046() {
         ("iTXt", &itxt_chunk("XML:com.adobe.xmp", xmp)),
         ("IEND", &[]),
     ]);
-    assert_eq!(codes(&bytes), HashSet::from(["SLOP046"]));
+    assert_eq!(codes(&bytes), HashSet::from(["SLOP047"]));
 }
 
 /// `trainedAlgorithmicMedia` sitting between binary framing bytes, inside a `caBX` chunk --
@@ -185,21 +185,21 @@ fn cabx_chunk_carries_trained_algorithmic_media_between_binary_framing() {
     data.extend_from_slice(b"trainedAlgorithmicMedia");
     data.extend_from_slice(&[0x00, 0xBE, 0xEF, 0x01]);
     let bytes = png(&[("caBX", &data), ("IEND", &[])]);
-    assert_eq!(codes(&bytes), HashSet::from(["SLOP046"]));
+    assert_eq!(codes(&bytes), HashSet::from(["SLOP047"]));
 }
 
 #[test]
-fn jpeg_app1_exif_names_midjourney_flags_slop047() {
+fn jpeg_app1_exif_names_midjourney_flags_slop048() {
     let mut payload = b"Exif\0\0".to_vec();
     payload.extend_from_slice(b"Software: Midjourney v6.1");
     let bytes = jpeg(&[(0xE1, &payload)]);
-    assert_eq!(codes(&bytes), HashSet::from(["SLOP047"]));
+    assert_eq!(codes(&bytes), HashSet::from(["SLOP048"]));
 }
 
 #[test]
-fn webp_xmp_chunk_naming_a_generator_flags_slop047() {
+fn webp_xmp_chunk_naming_a_generator_flags_slop048() {
     let bytes = webp(&[(b"XMP ", b"Generated with Stable Diffusion 1.5")]);
-    assert_eq!(codes(&bytes), HashSet::from(["SLOP047"]));
+    assert_eq!(codes(&bytes), HashSet::from(["SLOP048"]));
 }
 
 // --- clean fixtures: each one is a false positive that would otherwise ship ---
@@ -226,7 +226,7 @@ fn imagemagick_icc_and_author_ztxt_is_clean() {
 }
 
 /// A real retouched camera photo: Canon EXIF plus an Adobe Photoshop `Software` tag. Must stay
-/// silent, or SLOP047 would flag every camera-original or Photoshop-touched JPEG in existence.
+/// silent, or SLOP048 would flag every camera-original or Photoshop-touched JPEG in existence.
 #[test]
 fn camera_retouched_jpeg_exif_is_clean() {
     let mut payload = b"Exif\0\0".to_vec();
@@ -235,10 +235,10 @@ fn camera_retouched_jpeg_exif_is_clean() {
     assert!(codes(&bytes).is_empty());
 }
 
-/// The camera-provenance case for SLOP046: a C2PA-shaped manifest naming a real camera and its
+/// The camera-provenance case for SLOP047: a C2PA-shaped manifest naming a real camera and its
 /// own actions, with no AI vocabulary term anywhere in it. No public sample of a real
 /// camera-signed C2PA manifest exists to download, so this synthetic fixture is the only guard
-/// SLOP046 has against flagging every Leica/Sony photo that ships a manifest.
+/// SLOP047 has against flagging every Leica/Sony photo that ships a manifest.
 #[test]
 fn c2pa_camera_provenance_with_no_ai_vocabulary_is_clean() {
     let mut data = vec![0x00, 0x01, 0x02, 0x03];
@@ -251,13 +251,13 @@ fn c2pa_camera_provenance_with_no_ai_vocabulary_is_clean() {
 }
 
 /// The disjointness guard: a ComfyUI PNG's own `prompt` field literally contains "ComfyUI" in
-/// its JSON, but that fact belongs to SLOP045 alone -- SLOP047 must skip any field whose key is
-/// in SLOP045's panel, or the same file double-reports one signal.
+/// its JSON, but that fact belongs to SLOP046 alone -- SLOP048 must skip any field whose key is
+/// in SLOP046's panel, or the same file double-reports one signal.
 #[test]
-fn comfyui_named_inside_its_own_prompt_field_is_slop045_only() {
+fn comfyui_named_inside_its_own_prompt_field_is_slop046_only() {
     let json = r#"{"generator": "ComfyUI", "nodes": []}"#;
     let bytes = png(&[("tEXt", &text_chunk("prompt", json)), ("IEND", &[])]);
-    assert_eq!(codes(&bytes), HashSet::from(["SLOP045"]));
+    assert_eq!(codes(&bytes), HashSet::from(["SLOP046"]));
 }
 
 #[test]
@@ -274,21 +274,21 @@ fn clean_webp_with_no_metadata_chunks_is_clean() {
 
 /// A2: a real C2PA/EXIF field can declare `digitalSourceType` and name the generator that signed
 /// the manifest in the same value, at the same offset -- confirmed on the real corpus
-/// (`c2pa_ai_assertion.png`, `c2pa_ai_assertion_firefly_google.png`). SLOP047 must defer to
-/// SLOP046 here, or the same field double-reports one fact.
+/// (`c2pa_ai_assertion.png`, `c2pa_ai_assertion_firefly_google.png`). SLOP048 must defer to
+/// SLOP047 here, or the same field double-reports one fact.
 #[test]
-fn c2pa_field_declaring_source_type_and_naming_its_signer_is_slop046_only() {
+fn c2pa_field_declaring_source_type_and_naming_its_signer_is_slop047_only() {
     let mut data = vec![0x00, 0x01, 0x02];
     data.extend_from_slice(b"digitalSourceType trainedAlgorithmicMedia");
     data.extend_from_slice(&[0x00, 0x03]);
     data.extend_from_slice(b"claim_generator Adobe Firefly");
     data.extend_from_slice(&[0x00, 0x04]);
     let bytes = png(&[("caBX", &data), ("IEND", &[])]);
-    assert_eq!(codes(&bytes), HashSet::from(["SLOP046"]));
+    assert_eq!(codes(&bytes), HashSet::from(["SLOP047"]));
 }
 
 /// B1: a real false positive a bare `.contains()` produced -- "medalled" contains "dalle". Must
-/// stay silent, or SLOP047 would flag ordinary photo captions mentioning athletes.
+/// stay silent, or SLOP048 would flag ordinary photo captions mentioning athletes.
 #[test]
 fn medalled_athlete_description_is_clean() {
     let bytes = png(&[
@@ -321,7 +321,7 @@ fn recraft_used_as_an_ordinary_verb_is_clean() {
 
 /// D: known blind spot, not a regression -- a zTXt value is always empty (image.rs adds no zlib
 /// dependency), so a `digitalSourceType` declaration inside a compressed chunk is invisible to
-/// SLOP046. Pinned so this negative reads as known rather than untested.
+/// SLOP047. Pinned so this negative reads as known rather than untested.
 #[test]
 fn compressed_source_type_field_is_a_known_blind_spot() {
     let bytes = png(&[
@@ -334,7 +334,7 @@ fn compressed_source_type_field_is_a_known_blind_spot() {
     assert!(codes(&bytes).is_empty());
 }
 
-/// D: same known blind spot for SLOP047 -- a generator name shipped only inside a compressed
+/// D: same known blind spot for SLOP048 -- a generator name shipped only inside a compressed
 /// text chunk is invisible, since the value the rule matches on is always empty.
 #[test]
 fn compressed_generator_name_field_is_a_known_blind_spot() {

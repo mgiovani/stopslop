@@ -7,7 +7,7 @@ use crate::rules::image_source_type;
 use std::sync::LazyLock;
 
 pub static RULE: RuleDef = RuleDef {
-    code: "SLOP047",
+    code: "SLOP048",
     name: "Image metadata names a generator",
     tier: Tier::B,
     langs: lang::IMAGE_LANGS,
@@ -85,18 +85,18 @@ fn contains_word_bounded(haystack: &str, needle: &str) -> bool {
     })
 }
 
-/// Disjointness with SLOP045 is load-bearing, not incidental: a real ComfyUI PNG has the literal
+/// Disjointness with SLOP046 is load-bearing, not incidental: a real ComfyUI PNG has the literal
 /// string "ComfyUI" inside its own `prompt` and `workflow` JSON payloads, so without this skip
-/// the same file would report both SLOP045 (the prompt chunk itself) and SLOP047 (the generator
+/// the same file would report both SLOP046 (the prompt chunk itself) and SLOP048 (the generator
 /// name inside it) for one underlying fact. Importing `image_prompt::PROMPT_KEYS` rather than
 /// re-listing those keys keeps the two panels from drifting apart (AGENTS.md allows sibling-rule
 /// imports for exactly this).
 ///
-/// Disjointness with SLOP046 (A2) is the same fix in the other direction: SLOP047 defers to
-/// SLOP046 rather than the reverse, because the source-type declaration is the more specific,
+/// Disjointness with SLOP047 (A2) is the same fix in the other direction: SLOP048 defers to
+/// SLOP047 rather than the reverse, because the source-type declaration is the more specific,
 /// higher-tier signal, and the generator name inside the same manifest adds no new location.
 /// Confirmed on the real corpus: `c2pa_ai_assertion.png` and
-/// `c2pa_ai_assertion_firefly_google.png` each reported both SLOP046 and SLOP047 on the identical
+/// `c2pa_ai_assertion_firefly_google.png` each reported both SLOP047 and SLOP048 on the identical
 /// `caBX` field at the identical offset before this skip existed, because `Adobe Firefly` is in
 /// `GENERATORS` precisely because Firefly signs C2PA manifests, and `digitalSourceType` lives in
 /// exactly those manifests.
@@ -105,7 +105,7 @@ fn contains_word_bounded(haystack: &str, needle: &str) -> bool {
 /// zTXt chunk, or an iTXt with its compression flag set, always yields an empty
 /// `MetaField::value` (image.rs adds no zlib dependency -- SLOP037/038 exist to say adding one
 /// for what a few lines already avoid needing is a defect). A generator name that ships only
-/// inside a *compressed* text chunk is invisible to this rule the same way it is to SLOP046.
+/// inside a *compressed* text chunk is invisible to this rule the same way it is to SLOP047.
 /// Pinned by `compressed_generator_name_is_a_known_blind_spot` below.
 ///
 /// ponytail: this reads a `printable()` extract (image.rs), so it can't tell which EXIF tag a
@@ -227,10 +227,10 @@ mod tests {
     }
 
     /// Disjointness guard: a ComfyUI PNG's own `prompt`/`workflow` field is skipped even though
-    /// its JSON literally contains "ComfyUI" -- that fact is SLOP045's to report, not this
+    /// its JSON literally contains "ComfyUI" -- that fact is SLOP046's to report, not this
     /// rule's too.
     #[test]
-    fn skips_slop045_owned_keys_even_when_they_name_a_generator() {
+    fn skips_slop046_owned_keys_even_when_they_name_a_generator() {
         let bytes = png(&[
             (
                 "tEXt",
@@ -304,7 +304,7 @@ mod tests {
 
     /// Disjointness guard (A2): a C2PA/EXIF field can declare `digitalSourceType` and name its
     /// signing generator in the same value -- confirmed on the real corpus at an identical offset
-    /// -- and SLOP046 (the more specific, higher-tier signal) owns that fact, not this rule.
+    /// -- and SLOP047 (the more specific, higher-tier signal) owns that fact, not this rule.
     #[test]
     fn skips_field_that_declares_source_type_even_when_it_also_names_a_generator() {
         let bytes = png(&[

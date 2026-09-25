@@ -5,7 +5,7 @@ use crate::lang;
 use crate::registry::RuleDef;
 
 pub static RULE: RuleDef = RuleDef {
-    code: "SLOP045",
+    code: "SLOP046",
     name: "Generation prompt shipped in image",
     tier: Tier::A,
     langs: lang::IMAGE_LANGS,
@@ -43,7 +43,7 @@ pub static PROMPT_KEYS: &[&str] = &[
 /// generic "image metadata field" wording: PNG and WebP metadata lives in length-prefixed RIFF
 /// chunks, JPEG's in APPn segments -- different enough vocabulary that the wrong one reads as
 /// wrong to anyone who has opened a hex editor on either. Shared by all three image rules
-/// (SLOP045-047) rather than duplicated per file, same reasoning as `PROMPT_KEYS` being imported
+/// (SLOP046-048) rather than duplicated per file, same reasoning as `PROMPT_KEYS` being imported
 /// rather than re-listed.
 pub(crate) fn container_label(format: ImageFormat) -> &'static str {
     match format {

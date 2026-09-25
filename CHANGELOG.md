@@ -19,7 +19,7 @@ migration notes live here.
   routes images there directly instead of through the text-oriented
   `lint_file`/`ProseDoc` path, since an image has no text stream and no
   lines to count.
-- **SLOP045** (`provenance`, Tier A, on): flags a metadata field keyed
+- **SLOP046** (`provenance`, Tier A, on): flags a metadata field keyed
   exactly `parameters` (A1111), `prompt`, `workflow` (ComfyUI),
   `sd-metadata`, `invokeai_metadata`, or `invokeai_workflow` (InvokeAI) --
   the image ships its full generation prompt or workflow graph. Exact key
@@ -27,7 +27,7 @@ migration notes live here.
   profile type icc` or an `author` field never trips it. Fires on the
   keyword alone even when the value is zlib-compressed, since the keyword is
   plaintext ahead of the null separator either way.
-- **SLOP046** (`provenance`, Tier A, on): flags a metadata value naming the
+- **SLOP047** (`provenance`, Tier A, on): flags a metadata value naming the
   IPTC digital-source-type vocabulary term `trainedAlgorithmicMedia` (fully
   AI-generated) or `compositeWithTrainedAlgorithmicMedia` (an AI-assisted
   edit of a real photograph), case-insensitively, in an XMP packet or a
@@ -37,11 +37,11 @@ migration notes live here.
   manifest's mere presence is never the signal: camera bodies like the
   Leica M11-P and Sony Alpha sign every frame they take, so only this
   vocabulary value distinguishes an AI-authored manifest from a
-  camera-authored one. Skips any field SLOP045 already owns, since InvokeAI
+  camera-authored one. Skips any field SLOP046 already owns, since InvokeAI
   has been adding Content-Credentials fields to its own metadata export and
   a real `invokeai_metadata` field can carry the vocabulary term inside its
   own JSON value.
-- **SLOP047** (`provenance`, Tier B, on): flags a metadata value naming a
+- **SLOP048** (`provenance`, Tier B, on): flags a metadata value naming a
   known image generator (`Midjourney`, `Stable Diffusion`, `ComfyUI`, `Adobe
   Firefly`, and others from a fixed panel). Matches require a word-boundary
   guard, not a bare substring: plain `.contains()` matched `DALLE` inside
@@ -50,7 +50,7 @@ migration notes live here.
   removed from the panel entirely rather than merely guarded, since
   `DALL-E`/`DALL·E` already cover the real spelling and a boundary guard
   cannot save a whole-word match like "recraft" used as an ordinary verb.
-  Skips any field SLOP045 or SLOP046 already owns: a real ComfyUI file's own
+  Skips any field SLOP046 or SLOP047 already owns: a real ComfyUI file's own
   `prompt`/`workflow` JSON contains the literal string "ComfyUI", and a
   C2PA/EXIF field can declare `digitalSourceType` and name its signing
   generator (e.g. Adobe Firefly) in the same value at the same offset.
