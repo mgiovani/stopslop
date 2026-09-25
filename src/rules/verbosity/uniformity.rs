@@ -16,9 +16,16 @@
 //! narrowly technical documents legitimately reuse the same nouns (an API reference that says
 //! "the client" and "the request" forty times is not slop, it's precise). Two independent gates
 //! keep this rule from over-firing: a document-length floor (`MIN_DOC_WORDS`) before any signal
-//! is even trusted, and a 2-of-3 signal requirement before the rule fires at all. A single tripped
-//! signal on a long document — low TTR alone in a terse technical doc, say — stays silent; only
-//! when two independent measures agree does the pattern get reported.
+//! is even trusted, and a 2-of-3 signal requirement, ONE OF WHICH MUST BE BURSTINESS, before the
+//! rule fires at all. A single tripped signal on a long document — low TTR alone in a terse
+//! technical doc, say — stays silent; only when burstiness agrees with a second measure does the
+//! pattern get reported.
+//!
+//! The burstiness requirement (issue #61) comes from the corpus per-message file rates: TTR +
+//! trigram repetition WITHOUT burstiness is 11.88% (515/4,334) human vs 3.41% (184/5,388) AI files
+//! (lift 0.29 — carried by human prose, not AI's), while the two burstiness-inclusive pairings
+//! lean AI (burstiness+trigram: lift 4.3; all three: lift 5.7). Requiring burstiness drops the
+//! human-leaning pairing entirely and keeps only the two that actually separate the classes.
 //!
 //! Deliberate overlap with SLOP030 (`fragmentation::robotic_rhythm`, around line 204 of that
 //! file): that check already flags uniform sentence length, but PER PARAGRAPH and using a raw
@@ -196,9 +203,11 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let burst = coefficient_of_variation(&all_sentence_word_counts(doc));
 
     let mut tripped = Vec::new();
+    let mut burstiness_tripped = false;
     if let Some(b) = burst {
         if b < BURSTINESS_THRESHOLD {
             tripped.push(format!("burstiness {b:.2} (< {BURSTINESS_THRESHOLD})"));
+            burstiness_tripped = true;
         }
     }
     if ttr < TTR_THRESHOLD {
@@ -210,7 +219,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         ));
     }
 
-    if tripped.len() >= 2 {
+    if tripped.len() >= 2 && burstiness_tripped {
         let message = format!(
             "mechanical uniformity: {} signals tripped ({})",
             tripped.len(),
@@ -356,6 +365,47 @@ mod tests {
             src.split_whitespace().count() >= MIN_DOC_WORDS,
             "fixture too short"
         );
+        assert!(diagnostics_for(&src).is_empty());
+    }
+
+    #[test]
+    fn ttr_and_trigram_trip_without_burstiness_stays_silent() {
+        // Alternating very short and very long sentences (huge sentence-length spread, so
+        // burstiness must NOT trip) built from a 5-word cycling vocabulary (so type-token ratio
+        // and trigram repetition both trip easily regardless).
+        const CYCLE: [&str; 5] = ["alpha", "beta", "gamma", "delta", "epsilon"];
+        let mut words = (0..300usize).map(|i| CYCLE[i % 5]);
+        let mut src = String::new();
+        'outer: loop {
+            for &len in &[2usize, 58] {
+                let mut sentence = Vec::new();
+                for _ in 0..len {
+                    match words.next() {
+                        Some(w) => sentence.push(w),
+                        None => break 'outer,
+                    }
+                }
+                src.push_str(&sentence.join(" "));
+                src.push_str(". ");
+            }
+        }
+
+        let doc = ProseDoc::parse(&src);
+        let burst = coefficient_of_variation(&all_sentence_word_counts(&doc)).unwrap();
+        assert!(
+            burst >= BURSTINESS_THRESHOLD,
+            "fixture must not trip burstiness: {burst}"
+        );
+        let masked = masked_words(&doc);
+        assert!(
+            type_token_ratio(&masked) < TTR_THRESHOLD,
+            "fixture must trip type-token ratio"
+        );
+        assert!(
+            trigram_repetition(&masked) > TRIGRAM_REPETITION_THRESHOLD,
+            "fixture must trip trigram repetition"
+        );
+
         assert!(diagnostics_for(&src).is_empty());
     }
 
