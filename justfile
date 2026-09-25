@@ -62,7 +62,7 @@ corpus: corpus-fetch corpus-score corpus-analyze corpus-html
 # per cell to 500. `just --list` shows the line directly above a recipe, so summaries go last.
 # Synthesize the AI splits no public dataset covers (calls the Anthropic API, costs money).
 corpus-generate:
-    uv run bench/generate_corpus.py --dir {{corpus}} --cells pt-wiki,pt-essay,tsx,rust,en-readme --limit {{gen_limit}}
+    uv run bench/generate_corpus.py --dir {{corpus}} --cells pt-wiki,pt-essay,tsx,ts,rust,en-readme --limit {{gen_limit}}
 
 # The find below is an unguarded rm -rf of that directory's children, so the guard refuses
 # when `corpus` has been overridden away from target/corpus.

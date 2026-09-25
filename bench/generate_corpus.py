@@ -148,6 +148,15 @@ def tsx_prompt(seed):
     )
 
 
+def ts_prompt(seed):
+    brief = seed["row"]["brief"]
+    return (
+        f"Write a complete, standalone TypeScript module for: {brief}\n\n"
+        "Return a single .ts file. No JSX, no React, and no UI framework -- plain "
+        "TypeScript only."
+    )
+
+
 def readme_prompt(seed):
     brief = seed["row"]["brief"]
     return (
@@ -171,6 +180,7 @@ CELLS = {
     "synth-pt-wiki": {"seeds": pt_wiki_seeds, "prompt": pt_wiki_prompt, "ext": "md", "lang": "prose"},
     "synth-pt-essay": {"seeds": pt_essay_seeds, "prompt": pt_essay_prompt, "ext": "md", "lang": "prose"},
     "synth-tsx": {"seeds": lambda _cache: brief_seeds(TSX_BRIEFS), "prompt": tsx_prompt, "ext": "tsx", "lang": "tsx"},
+    "synth-ts": {"seeds": lambda _cache: brief_seeds(TS_BRIEFS), "prompt": ts_prompt, "ext": "ts", "lang": "typescript"},
     "synth-en-readme": {"seeds": lambda _cache: brief_seeds(README_BRIEFS), "prompt": readme_prompt, "ext": "md", "lang": "prose"},
     "synth-rust": {"seeds": lambda _cache: brief_seeds(RUST_BRIEFS), "prompt": rust_prompt, "ext": "rs", "lang": "rust"},
 }
@@ -181,6 +191,7 @@ CELL_ALIASES = {
     "pt-wiki": "synth-pt-wiki",
     "pt-essay": "synth-pt-essay",
     "tsx": "synth-tsx",
+    "ts": "synth-ts",
     "en-readme": "synth-en-readme",
     "rust": "synth-rust",
 }
@@ -740,6 +751,71 @@ TSX_BRIEFS = [
     "a table with expandable row details",
     "a form wizard summary step that lists all previously entered values",
     "a responsive navbar that collapses into a hamburger menu on mobile",
+]
+
+# Plain .ts modules -- utilities, services, parsers, CLI helpers, data models -- the kind of
+# file a TypeScript repo has outside its React components. No JSX, no React, no UI framework.
+TS_BRIEFS = [
+    "a debounce and throttle utility pair",
+    "a small typed event emitter class",
+    "a retry-with-exponential-backoff wrapper for async functions",
+    "a JSON schema validator for a small subset of schema keywords",
+    "a minimal dependency-injection container",
+    "a typed environment-variable loader with validation",
+    "a state machine implementation using discriminated unions",
+    "a token-bucket rate limiter class",
+    "a streaming CSV parser that handles quoted fields and embedded commas",
+    "an LRU cache implemented with a Map",
+    "a fetch wrapper with timeout and automatic retry",
+    "a URL query-string builder and parser",
+    "a typed publish/subscribe event bus",
+    "a typed wrapper around localStorage with JSON serialization",
+    "a currency formatting utility built on Intl.NumberFormat",
+    "a slug generator utility for titles",
+    "a minimal template-string renderer with variable substitution",
+    "a deep-clone utility for plain objects and arrays",
+    "a deep-equal comparison utility",
+    "an in-memory priority job queue",
+    "a fluent validation builder for plain objects",
+    "an async mutex implementation",
+    "a binary search utility library for sorted arrays",
+    "a markdown-to-plaintext converter",
+    "a JWT payload decoder that does not verify signatures",
+    "a minimal observable value class with subscribe/unsubscribe",
+    "a config loader that merges JSON files with environment overrides",
+    "a typed wrapper around Node's fs/promises for atomic file writes",
+    "a dependency-free command-line argument parser",
+    "a logger utility with levels and colored terminal output",
+    "an in-memory cache with per-entry TTL eviction",
+    "a date-range utility library for overlap and duration checks",
+    "a recursive-descent parser for arithmetic expressions",
+    "an array-diffing utility that reports added, removed and changed items",
+    "a typed Result/Either utility for error handling without exceptions",
+    "a generic singly linked list with an iterator",
+    "a graph adjacency-list implementation with topological sort",
+    "a generic hash map with a custom equality function",
+    "an email address validation utility",
+    "a phone number formatting utility for a fixed set of locales",
+    "a task scheduler that limits how many jobs run per second",
+    "a feature-flag loader driven by environment variables",
+    "a streaming CSV writer utility",
+    "a parser for a small subset of XML",
+    "a dependency-free UUID v4 generator",
+    "a generic binary search tree with in-order traversal",
+    "a promise pool that limits concurrent async tasks",
+    "a typed HTTP client wrapper around fetch with request/response interceptors",
+    "a request-payload validation service for a small REST API",
+    "a query-builder service class for a users table",
+    "a repository class implementing CRUD over an in-memory store",
+    "a WebSocket client wrapper with automatic reconnect and backoff",
+    "a text-wrapping utility for fixed-width terminal output",
+    "a Levenshtein distance utility for fuzzy string matching",
+    "a shopping-cart data model with add, remove and total methods",
+    "a data model class representing a paginated API response",
+    "a generic object-pool implementation for reusable instances",
+    "a circuit-breaker implementation for wrapping unreliable async calls",
+    "a typed builder for constructing SQL WHERE clauses from filter objects",
+    "a semantic-version comparison and sorting utility",
 ]
 
 README_BRIEFS = [
