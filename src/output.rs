@@ -360,6 +360,8 @@ mod tests {
         let a = body.find("Tier A").expect("Tier A heading");
         let b = body.find("Tier B").expect("Tier B heading");
         assert!(a < b, "blocking tier must come first:\n{body}");
+        // fail-on-tier = "B" makes Tier B gate, so its heading must never say it can't.
+        assert!(body.contains("gates only with fail-on-tier"), "{body}");
         assert!(body.contains("`b.rs:1:2` **SLOP001**"), "{body}");
         assert!(body.contains("`a.md:1:2` **SLOP018**"), "{body}");
     }
