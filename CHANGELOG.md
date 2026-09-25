@@ -7,12 +7,27 @@ migration notes live here.
 
 ### Added
 
-- `bench/score_corpus.py` scores the Python rules against AIGCodeSet, the
-  labelled human-vs-machine corpus from issue #39, and prints a markdown table
-  of per-rule hit rate on each side, precision at a 1:1 prior, and findings per
-  KLoC. Twelve rules can produce a number on a `.py` corpus; the report names
-  what the corpus cannot measure. CI does not run it: it needs the network and
-  gates nothing.
+- **`bench/score_corpus.py` scores every rule against a multi-dataset,
+  multi-language corpus registry** covering several code and prose languages,
+  replacing the earlier AIGCodeSet/Python-only pass. `bench/generate_corpus.py`
+  (`uv run`, PEP 723, Anthropic SDK, `claude-opus-5-5` default) synthesizes
+  the AI split for the five cells no public dataset covers. Datasets are
+  never committed and CI runs neither script. README's "Measured on labelled
+  corpora" has the dataset list and every flag.
+- **The corpus benchmark becomes four `just` commands** (`corpus-fetch`,
+  `corpus-score`, `corpus-analyze`, `corpus-html`, chained by `just corpus`),
+  splitting fetch from scoring so nothing past the fetch step touches the
+  network. A human split counts toward the pooled rate only when it is dated
+  2019 or earlier or was written by identified people under controlled
+  conditions; everything else still gets reported, just never pooled.
+  README's "Measured on labelled corpora" has the rest.
+- **`bench/analyze_corpus.py`, `bench/candidates.toml` and
+  `bench/report_template.html`** find and record a rule candidate before it
+  becomes a rule, with no model call involved: `candidates.toml` holds each
+  proposed tell's measurement, tried or shipped either way, and
+  `bench/render_report.py` renders it to an uncommitted
+  `target/corpus/report.html`. Details in README's "Measured on labelled
+  corpora".
 - **SLOP045** (`format`, Tier C, off): flags a source file whose formatting
   barely varies, the code twin of SLOP041. Two signals, both required: the
   coefficient of variation of content line lengths (under 0.30) and of the
