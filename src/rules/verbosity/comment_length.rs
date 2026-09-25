@@ -4,13 +4,16 @@ use crate::lang::{self, Lang};
 use crate::registry::RuleDef;
 use crate::suppress::comment_body;
 
+/// Off by default (issue #61): pinned 2019 standard libraries write long rationale comments on
+/// purpose, so 20.38% (450/2,208) of verified human files cross the cap against 0.50% (25/5,000)
+/// AI, and length-matched codemirage Python inverts the same way (5.80% vs 0.20%).
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP043",
     name: "Comment that runs long",
     tier: Tier::B,
     langs: &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust],
     natlangs: lang::ALL_NATLANGS,
-    default_on: true,
+    default_on: false,
     path_gated: true,
     check,
 };
