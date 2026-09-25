@@ -20,23 +20,29 @@ pub static RULE: RuleDef = RuleDef {
 /// of the three dash forms below tripped it.
 const FIX: &str = "rewrite the sentence, or use a comma, colon, or parentheses";
 
-/// Flags every U+2014 (em dash), U+2013 (en dash), and spaced ASCII double hyphen (` -- `) in the
-/// masked prose stream that isn't block-initial -- both the tight form (word--word, for the
-/// em/en-dash characters) and the spaced form (word -- word) count. Frontmatter is skipped
-/// (metadata, not prose); headings are in scope. Code is already blanked in `doc.masked`, so a
-/// dash inside a fence or inline span never reaches this scan. `---` thematic-break/frontmatter
-/// fence lines are bare hyphen runs with no interior space, so they never match U+2014/U+2013 (not
-/// the same character at all) and never match the SPACED ascii form either (see
-/// `spaced_ascii_dashes` below for why a longer hyphen run can't produce a false ` -- ` match). The
-/// en dash gets one extra exemption: a numeric range (`2020--2024`, `120--140ms`) is legitimate
-/// typography, not a rewritten em dash, so an en dash flanked on BOTH sides by an ASCII digit is
-/// silently allowed, tight or evenly spaced (see `digit_flanked`). The one allowed dash form (all three characters/forms alike) is the
-/// attribution/quote convention -- a dash that opens a *block* (after optional
-/// whitespace/blockquote `>` markers), as in `-- Oscar Wilde` -- since that's a typographic
-/// convention, not mid-sentence punctuation. A dash opening a line that merely continues the
-/// preceding one (wrapped prose, list-item continuation) is ordinary punctuation that happened to
-/// land at a wrap point, so it is flagged. Each qualifying occurrence gets its own diagnostic (not
-/// deduped per line): a line with two mid-prose dashes is two problems to fix, not one.
+/// Flags every U+2014 (em dash) and U+2013 (en dash) in the masked prose stream that isn't
+/// block-initial -- both the tight form (word—word) and the spaced form (word — word) count.
+/// Frontmatter is skipped (metadata, not prose); headings are in scope. Code is already blanked
+/// in `doc.masked`, so a dash inside a fence or inline span never reaches this scan. `---`
+/// thematic-break/frontmatter fence lines are bare hyphen runs, never U+2014/U+2013 (not the same
+/// character at all), so they never match. The en dash gets one extra exemption: a numeric range
+/// (`2020–2024`, `120–140ms`) is legitimate typography, not a rewritten em dash, so an en dash
+/// flanked on BOTH sides by an ASCII digit is silently allowed, tight or evenly spaced (see
+/// `digit_flanked`). The one allowed dash form otherwise is the attribution/quote convention -- a
+/// dash that opens a *block* (after optional whitespace/blockquote `>` markers), as in `—
+/// Oscar Wilde` -- since that's a typographic convention, not mid-sentence punctuation. A dash
+/// opening a line that merely continues the preceding one (wrapped prose, list-item continuation)
+/// is ordinary punctuation that happened to land at a wrap point, so it is flagged. Each
+/// qualifying occurrence gets its own diagnostic (not deduped per line): a line with two
+/// mid-prose dashes is two problems to fix, not one.
+///
+/// The spaced ASCII double hyphen (` -- `) used to be scanned here too. Removed (issue #61):
+/// measured against the corpus, it carried the rule's human-leaning signal -- rust-book and
+/// diplomatrix's editorial `--` use, not an AI tell -- while contributing almost nothing on the AI
+/// side. Dropping it moved SLOP018's file-rate lift from 0.87 to 1.66 (human 12.99% -> 6.53%, AI
+/// 11.36% -> 10.86%), the largest single-step lift gain of this issue's whole prose sweep. A
+/// document that still types a literal `--` for an em dash keeps getting no signal from this rule;
+/// it wasn't separating the classes here either.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
     let mut block_initial = HashMap::new();
@@ -72,21 +78,6 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             FIX,
         ));
     }
-
-    for byte in spaced_ascii_dashes(&doc.masked) {
-        if doc.in_frontmatter(byte) || is_block_initial(doc, byte, &mut block_initial) {
-            continue;
-        }
-        let (line, col) = doc.line_col(byte);
-        out.push(Diagnostic::at_fix(
-            rule,
-            ctx,
-            line,
-            col,
-            "em/en dash in prose; rewrite the sentence",
-            FIX,
-        ));
-    }
 }
 
 /// True if the char at `byte` (whose encoded length is `ch.len_utf8()`) sits between two ASCII
@@ -103,29 +94,6 @@ fn digit_flanked(masked: &str, byte: usize, ch: char) -> bool {
     }
     matches!(before.chars().next_back(), Some(c) if c.is_ascii_digit())
         && matches!(after.chars().next(), Some(c) if c.is_ascii_digit())
-}
-
-/// Byte offsets (pointing at the first of the two hyphens) of every SPACED ascii double hyphen
-/// (literal ` -- `, i.e. space-hyphen-hyphen-space) in `masked`. A search over the literal 4-byte
-/// needle, advancing past just the two hyphens (not the full 4-byte match) each time, so a chained
-/// run like `a -- -- b` still finds both dashes -- the naive non-overlapping `match_indices` would
-/// consume the second dash's leading space along with the first match and miss it. A longer hyphen
-/// run (`---`, `----`, a thematic break or frontmatter fence) never produces this exact 4-byte
-/// needle: splitting a 3+-hyphen run into any two adjacent hyphens always leaves a THIRD hyphen
-/// immediately before or after that pair, never a space, so the needle search can't land on it.
-fn spaced_ascii_dashes(masked: &str) -> Vec<usize> {
-    let mut out = Vec::new();
-    let mut search_from = 0usize;
-    while search_from < masked.len() {
-        let Some(rel) = masked[search_from..].find(" -- ") else {
-            break;
-        };
-        let match_start = search_from + rel;
-        let dash_byte = match_start + 1;
-        out.push(dash_byte);
-        search_from = dash_byte + 2; // past the two hyphens; the trailing space is reusable
-    }
-    out
 }
 
 /// True if this em dash opens a block: nothing but whitespace and blockquote `>` markers precede
@@ -443,47 +411,6 @@ mod tests {
     fn allows_en_dash_block_initial_attribution() {
         let diags = diagnostics_for("\u{2013} Oscar Wilde\n");
         assert!(diags.is_empty());
-    }
-
-    #[test]
-    fn flags_spaced_ascii_double_hyphen() {
-        let diags = diagnostics_for("The rollout went fine -- nobody expected any issues.\n");
-        assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].code, "SLOP018");
-    }
-
-    #[test]
-    fn flags_two_chained_ascii_double_hyphens() {
-        let diags =
-            diagnostics_for("The rollout went fine -- truly fine -- across every region.\n");
-        assert_eq!(diags.len(), 2);
-    }
-
-    #[test]
-    fn allows_ascii_double_hyphen_block_initial_attribution() {
-        let diags = diagnostics_for("-- Oscar Wilde\n");
-        assert!(diags.is_empty());
-    }
-
-    #[test]
-    fn allows_ascii_double_hyphen_blockquote_attribution() {
-        let diags = diagnostics_for("> -- Oscar Wilde\n");
-        assert!(diags.is_empty());
-    }
-
-    #[test]
-    fn allows_thematic_break_and_hyphen_range() {
-        let src = "Body text.\n\n---\n\nMore body text, using a hyphen range like 10-20 items.\n";
-        assert!(diagnostics_for(src).is_empty());
-    }
-
-    #[test]
-    fn allows_longer_hyphen_rule_surrounded_by_spaces() {
-        // A longer hyphen run flanked by spaces must not be mistaken for the exact two-hyphen
-        // spaced-dash needle: splitting any 3+ run always leaves a third hyphen adjacent to any
-        // two-hyphen slice, so no ` -- ` substring can ever be found inside it.
-        let src = "Section divider below.\n\n ---- \n\nMore body text follows here today.\n";
-        assert!(diagnostics_for(src).is_empty());
     }
 
     #[test]
