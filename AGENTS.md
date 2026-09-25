@@ -75,7 +75,11 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 - Panel disjointness: no span may be flagged by two rules. Grep first, then drop the phrase whose owner already exists.
 - Cross-language disjointness: a token spelled the same in two languages lives in exactly one panel, the English one when it's slop in both. A pt-BR entry whose head word is also an English word must be a multi-word phrase.
 - `groups.rs` partitions `RULES` exactly. `ALL` is special-cased inside `groups::expand` and never joins the table.
-- Tier and `default_on` are separate axes: A plus on blocks CI, B plus on warns, B plus off is opt-in.
+- Tier and `default_on` are separate axes: A plus on blocks CI, B plus on warns, B plus off is
+  opt-in. Tier C is the one exception: it means the threshold has not been scored against a
+  labelled corpus yet, so it is always `default_on: false`, enforced by
+  `registry::tier_c_rules_are_default_off`. Custom rules keep their own rule: the user wrote
+  them, so they are on whatever tier they declare.
 - Custom codes (`SLOP900` and up) come from user config, so they never appear in `RULES` or `GROUPS`.
 - Call `paths::strip_dot_slash` on every new glob surface, because `.` and `docs` yield different display paths.
 - Parse every `ai-slop-ignore` directive through `suppress::comment_body`, never with an ad-hoc prefix strip.

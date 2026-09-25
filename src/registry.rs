@@ -66,4 +66,34 @@ pub static RULES: &[&'static RuleDef] = &[
     &crate::rules::restate::RULE,          // SLOP042
     &crate::rules::comment_length::RULE,   // SLOP043
     &crate::rules::html_title::RULE,       // SLOP044
+    &crate::rules::code_uniformity::RULE,  // SLOP045
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tier C means "the threshold is still provisional" (see `Tier`'s doc comment). A rule
+    /// that says so and switches itself on anyway is noise in every user's default run, so the
+    /// two are coupled here even though tier and `default_on` are otherwise separate axes.
+    #[test]
+    fn tier_c_rules_are_default_off() {
+        for r in RULES {
+            if r.tier == Tier::C {
+                assert!(
+                    !r.default_on,
+                    "{} is Tier C and must not be on by default",
+                    r.code
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn rule_codes_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for r in RULES {
+            assert!(seen.insert(r.code), "duplicate rule code {}", r.code);
+        }
+    }
+}
