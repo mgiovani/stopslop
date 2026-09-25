@@ -73,10 +73,12 @@ static RE_REASONING_CHAIN_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
 ///
 /// A markdown structure marker is *required* (`+`, not `*`): the exemption is for `Step N:` that
 /// heads a section or list item, so a bare line-initial `Step 1: parse the config` -- which heads
-/// nothing -- stays residue. `(?m)` makes `^` a line anchor. In HTML the tag that made it a
-/// heading or list item is blanked, so `ProseDoc::block_initial` is the equivalent test there.
+/// nothing -- stays residue. `(?m)` makes `^` a line anchor. Leading whitespace is unbounded
+/// (issue #62): a `- Step N:` item nested four or more spaces deep is still a list item, not a
+/// residue-shaped paragraph. In HTML the tag that made it a heading or list item is blanked, so
+/// `ProseDoc::block_initial` is the equivalent test there.
 static RE_NUMBERED_STEP: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?im)^[ \t]{0,3}(?:#{1,6}[ \t]+|[-*+][ \t]+|\d+\.[ \t]+|\*\*)+step \d+:").unwrap()
+    Regex::new(r"(?im)^[ \t]*(?:#{1,6}[ \t]+|[-*+][ \t]+|\d+\.[ \t]+|\*\*)+step \d+:").unwrap()
 });
 
 /// The residue form: `Step N:` with real text before it on the same line.
@@ -315,6 +317,11 @@ mod tests {
                 "structure flagged as residue: {src:?}"
             );
         }
+    }
+
+    #[test]
+    fn numbered_step_nested_four_spaces_deep_is_still_structure() {
+        assert!(diagnostics_for("    - Step 2: run the migration\n").is_empty());
     }
 
     #[test]
