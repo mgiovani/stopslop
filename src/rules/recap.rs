@@ -1,11 +1,10 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{NatLang, PROSE_LANGS};
-use crate::prose::ProseDoc;
-use crate::registry::RuleDef;
-use crate::rules::fragmentation::{
-    is_blank, is_horizontal_rule, COMMENT_LINE, HEADING_LINE, REF_DEF_LINE,
+use crate::prose::{
+    is_blank, is_horizontal_rule, ProseDoc, COMMENT_LINE, HEADING_LINE, REF_DEF_LINE,
 };
+use crate::registry::RuleDef;
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -132,12 +131,13 @@ struct Block {
 fn final_prose_block(doc: &ProseDoc) -> Option<Block> {
     if doc.paragraphs.is_some() {
         // The ending is the last paragraph outside the page's footer, aside, and nav.
-        return crate::rules::fragmentation::paragraph_blocks(doc)
-            .into_iter()
+        return doc
+            .paragraph_blocks()
+            .iter()
             .rev()
             .find(|b| !doc.in_footer(b.first_byte))
             .map(|b| Block {
-                text: b.text,
+                text: b.text.clone(),
                 first_byte: b.first_byte,
             });
     }

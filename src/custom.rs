@@ -61,7 +61,7 @@ fn build_one(index: usize, c: &CustomRuleConfig) -> anyhow::Result<CustomRule> {
     })?;
     let Some(tier) = Tier::parse(&c.tier) else {
         anyhow::bail!(
-            "custom-rule[{index}] (pattern {:?}): invalid tier {:?}, expected \"A\" or \"B\"",
+            "custom-rule[{index}] (pattern {:?}): invalid tier {:?}, expected \"A\", \"B\" or \"C\"",
             c.pattern,
             c.tier
         )
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn bad_tier_is_a_config_error() {
         let mut c = cfg("x", "m");
-        c.tier = "C".to_string();
+        c.tier = "X".to_string();
         let err = err_string(load(&[c]));
         assert!(err.contains("invalid tier"));
     }

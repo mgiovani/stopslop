@@ -7,6 +7,27 @@ migration notes live here.
 
 ### Added
 
+- `bench/score_corpus.py` scores the Python rules against AIGCodeSet, the
+  labelled human-vs-machine corpus from issue #39, and prints a markdown table
+  of per-rule hit rate on each side, precision at a 1:1 prior, and findings per
+  KLoC. Twelve rules can produce a number on a `.py` corpus; the report names
+  what the corpus cannot measure. CI does not run it: it needs the network and
+  gates nothing.
+- **SLOP045** (`format`, Tier C, off): flags a source file whose formatting
+  barely varies, the code twin of SLOP041. Two signals, both required: the
+  coefficient of variation of content line lengths (under 0.30) and of the
+  lengths of runs of consecutive non-blank lines (under 0.25). Files with any
+  trailing whitespace, files under three indent depths, generated files, test
+  paths and Go are exempt. Measured on 5085 eligible human files across
+  crates.io Rust, CPython site-packages, node_modules TypeScript and this
+  repo: 1 finding, 0.02%. Those thresholds are fitted to the human side only
+  and stay provisional until issue #39 scores them, which is what Tier C says.
+- **Tier C.** A third severity meaning "advisory, and the threshold has not
+  been validated against a labelled corpus yet". Tier C rules are always off
+  by default (enforced by `registry::tier_c_rules_are_default_off`) and never
+  affect the exit code unless you set `fail-on-tier = "C"`. `[[custom-rule]] tier = "C"` is
+  accepted too, though a custom rule stays on by default whatever its tier. `fail-on-tier` now orders the tiers A > B > C,
+  so `"B"` still admits A and B and `"C"` admits every finding.
 - **Image linting.** `Lang::Image` covers PNG, JPEG, and WebP, resolved from
   a file's magic bytes rather than its extension (a `.png` whose bytes are
   really a JPEG lints as a JPEG). `image::ImageDoc::parse` walks each
@@ -21,8 +42,8 @@ migration notes live here.
   lines to count.
 - **SLOP046** (`provenance`, Tier A, on): flags a metadata field keyed
   exactly `parameters` (A1111), `workflow` (ComfyUI), `sd-metadata`,
-  `invokeai_metadata`, or `invokeai_workflow` (InvokeAI) -- the image ships
-  its full generation prompt or workflow graph. Exact key equality only,
+  `invokeai_metadata`, or `invokeai_workflow` (InvokeAI), which ships the
+  image's full generation prompt or workflow graph. Exact key equality only,
   never a substring match, so an ICC profile chunk keyed `Raw profile type
   icc` or an `author` field never trips it. Fires on the keyword alone even
   when the value is zlib-compressed, since the keyword is plaintext ahead of
@@ -271,6 +292,30 @@ migration notes live here.
 
 ### Changed
 
+- **Paragraph blocks are built once per document.** Five default-on rules
+  asked `fragmentation::paragraph_blocks` for the same list on every Markdown
+  file: SLOP030, SLOP034, SLOP041, and SLOP011 twice, once per natlang panel.
+  Each call walked every line and allocated a `String` per paragraph. The block model moved to `ProseDoc` behind a `OnceCell`, next to
+  the `line_col` memo and for the same reason. The 20 MB stress file goes from
+  1.90 s to 1.73 s and the 8 MB prose files from 0.85 s to 0.80 s.
+- **SARIF output streams its results.** `emit_sarif` built one
+  `serde_json::Value` per finding and held them all until the document was
+  written. The format CI uploads therefore cost 2.8x the memory of
+  `--format json` on the same run. Peak RSS on the 20 MB stress file drops
+  from 400 MB to 135 MB, and wall from 2.14 s to 1.88 s. The emitted document
+  is unchanged as JSON; key order within each object now follows the struct
+  rather than being sorted.
+- **SLOP037 binary-searches comment and string spans.** The rule asked
+  `in_comment_or_string` once per regex match and that scanned every span per
+  call. On generated `.ts` files the old path took 13 ms at 500 matches and
+  632 ms at 16,000, climbing towards the 4x per doubling of a clean quadratic.
+  The new path holds at 1.95x, which is the file itself doubling. The spans are merged first because they nest: a template
+  literal contains the strings inside its `${}`.
+- **`--check-imports` reads directory entry types.** Manifest discovery
+  allocated a `PathBuf` and issued a `stat(2)` for every entry in the tree;
+  `readdir` had already returned both. The flag's cost on a 307 MB corpus goes
+  from 1.47 s to 1.32 s. A symlinked directory is no longer descended, which
+  matches the lint walk itself; a symlinked manifest file still counts.
 - **SLOP034** binary-searches its prose scope. The per-match check against
   every paragraph block was O(matches x blocks) and half the wall time on the
   20 MB stress file; `partition_point` over the sorted blocks takes the rule
@@ -318,6 +363,15 @@ migration notes live here.
 
 ### Fixed
 
+- **A panicking rule no longer ends the run.** Each file's lint runs inside
+  `catch_unwind`. The panic used to unwind out of the parallel walker and
+  poison the diagnostics lock, losing every finding from every file. The file
+  is now reported and skipped and the walk continues. The run exits 2, so a
+  crashed rule cannot read as a clean lint.
+- **Files over 64 MB are skipped with a message** rather than linted.
+- **The update check carries an explicit 2 s timeout.** It runs after output,
+  on the way out, so a half-open network held the process open long after the
+  lint had finished.
 - **Deterministic messages.** SLOP015, 027, 028, 030, 031, and 032 tallied
   phrases in a `HashMap` and named whichever qualifying entry came out first,
   so the message changed between identical runs and a `--baseline`

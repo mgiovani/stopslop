@@ -2,6 +2,7 @@ pub mod attribution;
 pub mod boldface;
 pub mod citation;
 pub mod cliche;
+pub mod code_uniformity;
 pub mod colon_reveal;
 pub mod comment_length;
 pub mod contrast;
