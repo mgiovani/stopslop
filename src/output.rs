@@ -32,7 +32,10 @@ fn emit_markdown(diags: &[Diagnostic], w: &mut impl Write) -> std::io::Result<()
 
     for (tier, heading) in [
         (Tier::A, "Tier A -- these fail the build"),
-        (Tier::B, "Tier B -- advisory, they do not fail the build"),
+        (
+            Tier::B,
+            "Tier B -- advisory, gates only with fail-on-tier = \"B\" or \"C\"",
+        ),
         (
             Tier::C,
             "Tier C -- experimental, opt-in, gates only with fail-on-tier = \"C\"",
@@ -357,6 +360,8 @@ mod tests {
         let a = body.find("Tier A").expect("Tier A heading");
         let b = body.find("Tier B").expect("Tier B heading");
         assert!(a < b, "blocking tier must come first:\n{body}");
+        // fail-on-tier = "B" makes Tier B gate, so its heading must never say it can't.
+        assert!(body.contains("gates only with fail-on-tier"), "{body}");
         assert!(body.contains("`b.rs:1:2` **SLOP001**"), "{body}");
         assert!(body.contains("`a.md:1:2` **SLOP018**"), "{body}");
     }

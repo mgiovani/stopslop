@@ -519,8 +519,8 @@ Honest caveats:
 - It's a static namecheck, not a resolver. It can still false-positive or
   false-negative on workspace/path dependencies and dynamic imports. Unusual
   build setups can do the same.
-- It never fails the build on its own (Tier B): treat it as a lead to
-  investigate, not a hard gate.
+- It is Tier B, so it fails the build only under `fail-on-tier = "B"` or
+  `"C"`: treat it as a lead to investigate, not a hard gate.
 
 ## Exit codes
 
