@@ -7,6 +7,12 @@ migration notes live here.
 
 ### Added
 
+- `bench/score_corpus.py` scores the Python rules against AIGCodeSet, the
+  labelled human-vs-machine corpus from issue #39, and prints a markdown table
+  of per-rule hit rate on each side, precision at a 1:1 prior, and findings per
+  KLoC. Twelve rules can produce a number on a `.py` corpus; the report names
+  what the corpus cannot measure. CI does not run it: it needs the network and
+  gates nothing.
 - **pt-BR witnesses for code-language rules.** `tests/natlang_witness.rs`
   now requires a `slop_*_pt_br` fixture per language family for the code
   rules whose comment panels carry Portuguese (SLOP001, 002, 004, 009, 042);
