@@ -2,8 +2,8 @@ use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang;
 use crate::registry::RuleDef;
-use crate::rules::image_prompt;
-use crate::rules::image_source_type;
+use crate::rules::provenance::image_prompt;
+use crate::rules::provenance::image_source_type;
 use std::sync::LazyLock;
 
 pub static RULE: RuleDef = RuleDef {

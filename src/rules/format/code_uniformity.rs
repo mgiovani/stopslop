@@ -31,8 +31,8 @@ use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{self, Lang};
 use crate::registry::RuleDef;
-use crate::rules::comment_length::is_generated;
-use crate::rules::uniformity::coefficient_of_variation;
+use crate::rules::verbosity::comment_length::is_generated;
+use crate::rules::verbosity::uniformity::coefficient_of_variation;
 
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP045",
