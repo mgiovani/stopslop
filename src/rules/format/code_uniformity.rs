@@ -81,9 +81,9 @@ const MIN_NONBLANK_LINES: usize = 60;
 const MIN_BLOCKS: usize = 5;
 /// The flat-file exclusion, and the floor that earns its keep most. A file that is one long
 /// list at a single indent -- a module table, a re-export list, a const table -- is uniform by
-/// nature, and such files are the entire low tail of both signals in human code. This crate's
-/// own `src/rules/mod.rs` is exactly that shape: 45 lines, zero blank lines, line-length
-/// variation 0.166, and hand-written.
+/// nature, and such files are the entire low tail of both signals in human code. Before the
+/// rules moved into group directories (#56), this crate's flat `src/rules/mod.rs` was exactly
+/// that shape: 45 lines, zero blank lines, line-length variation 0.166, and hand-written.
 const MIN_INDENT_DEPTHS: usize = 3;
 /// Delimiter-only lines (`}`, `};`, `),`) measure brace density, not uniformity, and TypeScript
 /// has far more of them than Python. Counting them gives TS a structural floor no single
@@ -329,7 +329,7 @@ mod tests {
 
     #[test]
     fn flat_file_stays_silent() {
-        // A flat list is uniform by nature; src/rules/mod.rs is this shape and hand-written.
+        // A flat `pub mod` list is uniform by nature and usually hand-written.
         // Blank lines every 16 entries clear MIN_BLOCKS, so indent depth is the only gate left.
         let src: String = (0..5)
             .map(|g| {

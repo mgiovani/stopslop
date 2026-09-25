@@ -32,7 +32,10 @@ fn emit_markdown(diags: &[Diagnostic], w: &mut impl Write) -> std::io::Result<()
 
     for (tier, heading) in [
         (Tier::A, "Tier A -- these fail the build"),
-        (Tier::B, "Tier B -- advisory, they do not fail the build"),
+        (
+            Tier::B,
+            "Tier B -- advisory, gates only with fail-on-tier = \"B\" or \"C\"",
+        ),
         (
             Tier::C,
             "Tier C -- experimental, opt-in, gates only with fail-on-tier = \"C\"",

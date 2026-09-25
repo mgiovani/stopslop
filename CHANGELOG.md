@@ -369,6 +369,9 @@ migration notes live here.
 
 ### Fixed
 
+- **The Markdown report's Tier B heading no longer claims Tier B never fails
+  the build.** It now says Tier B gates only under `fail-on-tier = "B"` or
+  `"C"`, matching the Tier C heading.
 - **A panicking rule no longer ends the run.** Each file's lint runs inside
   `catch_unwind`. The panic used to unwind out of the parallel walker and
   poison the diagnostics lock, losing every finding from every file. The file
