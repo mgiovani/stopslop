@@ -3,7 +3,7 @@
 Notable changes per release. The README describes current behavior only;
 migration notes live here.
 
-## Unreleased
+## 0.6.0
 
 ### Added
 
@@ -522,7 +522,7 @@ migration notes live here.
   warning.
 
   To get the old blocking behavior back, either set `fail-on-tier = "B"`
-  (added in Unreleased, above) to gate on every finding, or keep using
+  (added in 0.6.0, above) to gate on every finding, or keep using
   `--format json` / `--format sarif`, whose output still carries each
   finding's code, and fail a CI step that greps for one of these seven.
 
