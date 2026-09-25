@@ -307,6 +307,33 @@ migration notes live here.
 
 ### Changed
 
+- **Eleven rules tightened against the labelled corpus** (issue
+  [#61](https://github.com/mgiovani/stopslop/issues/61)). Rates below are
+  files flagged, verified human vs plain AI, before -> after:
+  - SLOP041 fires only when flat burstiness is one of the tripped signals;
+    type-token ratio plus trigram repetition alone was the human-side
+    carrier. 15.21%/18.65% -> 3.85%/15.24%, lift 1.23 -> 3.95.
+  - SLOP018 no longer flags a spaced ASCII `--`; only `—` and `–` count.
+    12.99%/11.36% -> 6.53%/10.86%, lift 0.87 -> 1.66.
+  - SLOP006 counts a pass- or log-only handler as a swallow only when it is
+    bare or catches `Exception`/`BaseException`; `except KeyError: pass` is a
+    recovery. 15.82%/4.63% -> 2.80%/2.80%, lift 0.29 -> 1.00.
+  - Paragraph blocks drop reST explicit-markup (`.. note::`) and doctest
+    (`>>>`) lines, and SLOP030 no longer counts repeated `I`/`If` openers as
+    robotic rhythm. SLOP030 25.10%/13.07% -> 18.07%/11.92%.
+  - SLOP034 pools synonyms inside a 200-word window within a section, not the
+    whole section, so heading-less reST files stop reading as one long
+    section. 5.70%/0.95% -> 2.51%/0.46%.
+  - SLOP033 ends a sentence at a terminator followed by a closing quote or
+    bracket (`"stop."`). 17.93%/13.85% -> 15.41%/12.18%.
+  - SLOP008 treats a Python docstring followed by `pass`/`...` as a
+    documented no-op hook; SLOP039 skips a method forwarding `self`/`cls`.
+  - SLOP036 exempts files under a `whatsnew/`, `changelog/` or
+    `release-notes/` directory (cpython-doc projected 11.85% -> 8.52%).
+  - SLOP020 (smart quotes) and SLOP043 (long comments) are now off by
+    default, tier unchanged: both fire on human text about as often as on AI
+    text. Re-enable with `--extend-select SLOP020,SLOP043`.
+
 - **SLOP001 now runs on HTML.** `<!--` joins the comment-opener alternation, so
   an elision comment (`<!-- ... rest of page unchanged -->`) is caught the
   same way as `//`/`#`/`*`; it defers to SLOP013 on a comment the two rules

@@ -84,13 +84,25 @@ const EXEMPT_FILE_PREFIXES: &[&str] = &[
     "UPGRADING",
 ];
 
+/// Directory components that exempt the whole file, alongside the basename-prefix check: cpython-
+/// doc ships its release notes as `Doc/whatsnew/3.8.rst`, whose version-number basename escapes
+/// every `EXEMPT_FILE_PREFIXES` entry (issue #61) even though the directory itself says exactly
+/// what the basename doesn't.
+const EXEMPT_DIRS: &[&str] = &["whatsnew", "changelog", "release-notes"];
+
 fn file_exempt(display_path: &str) -> bool {
-    let base = Path::new(display_path)
+    let path = Path::new(display_path);
+    let base = path
         .file_name()
         .and_then(|f| f.to_str())
         .unwrap_or("")
         .to_uppercase();
     EXEMPT_FILE_PREFIXES.iter().any(|p| base.starts_with(p))
+        || path.components().any(|c| {
+            c.as_os_str()
+                .to_str()
+                .is_some_and(|s| EXEMPT_DIRS.iter().any(|d| d.eq_ignore_ascii_case(s)))
+        })
 }
 
 /// True if the nearest heading at or before `byte` is one of the exempt "this document narrates
@@ -228,6 +240,14 @@ mod tests {
         let src = "The retry option was added to the client last quarter.\n";
         assert!(diagnostics_for_path(src, "docs/CHANGELOG.md").is_empty());
         assert!(diagnostics_for_path(src, "release-notes/RELEASE.md").is_empty());
+    }
+
+    #[test]
+    fn file_exempt_by_whatsnew_directory() {
+        let src = "The retry option was added to the client last quarter.\n";
+        assert!(diagnostics_for_path(src, "Doc/whatsnew/3.8.rst").is_empty());
+        assert!(diagnostics_for_path(src, "docs/changelog/2024.md").is_empty());
+        assert!(diagnostics_for_path(src, "docs/release-notes/v2.md").is_empty());
     }
 
     #[test]

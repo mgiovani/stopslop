@@ -36,12 +36,15 @@ const RHYTHM_SPREAD: usize = 2;
 /// applied together (`--select SLOP030`, distinct-file counts), `ptbr-human` went from 226 to 163
 /// of 323 files, `en-human` from 98 to 79 of 100 files, `ptbr-generated2` from 20 to 15 of 94, and
 /// `ptbr-generated` from 5 to 0 of 60 -- see the crate's CHANGELOG for the full table. Pronouns
-/// are deliberately NOT included (`it`, `this`, `ele`, `ela`, ...): three sentences opening on the
-/// same pronoun is exactly the anaphora this signal exists to catch.
+/// are otherwise deliberately NOT included (`it`, `this`, `ele`, `ela`, ...): three sentences
+/// opening on the same pronoun is exactly the anaphora this signal exists to catch. `i` and `if`
+/// are the one exception (issue #61, corpus per-message file rates): sentences opening with "i"
+/// are 3.46% (150) human vs 1.35% (73) AI, and with "if" 2.38% (103) vs 0.37% (20) -- first-person
+/// narration and conditional instructions both repeat their opener naturally, unlike anaphora.
 const OPENER_FUNCTION_WORDS: &[&str] = &[
     // English
     "the", "a", "an", "in", "on", "at", "of", "to", "for", "by", "with", "from", "as", "into",
-    "over", "under", // Portuguese
+    "over", "under", "i", "if", // Portuguese
     "o", "a", "os", "as", "um", "uma", "uns", "umas", "em", "no", "na", "nos", "nas", "de", "do",
     "da", "dos", "das", "ao", "à", "aos", "às", "com", "por", "para", "pelo", "pela", "pelos",
     "pelas", "sem", "sob", "sobre", "entre",
@@ -418,6 +421,18 @@ mod tests {
     #[test]
     fn clean_repeated_determiner_opener_is_not_robotic_rhythm() {
         let src = "The service starts quickly. The service scales well. The service costs little to run every month for most teams.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn clean_repeated_i_opener_is_not_robotic_rhythm() {
+        let src = "I started the migration last week. I tested every downstream consumer myself. I shipped the change to production this morning.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn clean_repeated_if_opener_is_not_robotic_rhythm() {
+        let src = "If the build fails, check the logs first. If the tests pass, merge without waiting. If a reviewer objects, open a follow-up discussion instead.\n";
         assert!(diagnostics_for(src).is_empty());
     }
 

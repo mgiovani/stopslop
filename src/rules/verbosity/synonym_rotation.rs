@@ -3,7 +3,7 @@ use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{NatLang, PROSE_LANGS};
 use crate::registry::RuleDef;
 use regex::Regex;
-use std::collections::BTreeMap;
+use std::collections::VecDeque;
 use std::sync::LazyLock;
 
 pub static RULE: RuleDef = RuleDef {
@@ -172,24 +172,45 @@ fn in_prose_blocks(blocks: &[crate::prose::Block], byte: usize) -> bool {
     idx > 0 && byte < blocks[idx - 1].end_byte
 }
 
-/// For each closed concept set, counts occurrences per member within one SECTION's running prose.
-/// A member "qualifies" once it occurs `>= 2` times there. Fires at most one diagnostic per set,
-/// only when two or more distinct members qualify in the same section, anchored at the first
-/// occurrence of the second-seen qualifying member (chronologically, by first occurrence).
+/// Words pooled per set before a member's occurrences stop counting as "the same passage" --
+/// issue #61. Section scoping alone (the rule's previous design) collapses to whole-file scoping
+/// on a `.rst` document with zero ATX headings, since `section_of` never advances: cpython-doc and
+/// rust-book are both `.rst`, and cpython-doc's own file rate was 31.19% (150/481 files) under
+/// that collapse. A window-within-section keeps the true positive that motivated section scoping
+/// in the first place (`rotation_pools_across_paragraphs_within_one_section`: two members spread
+/// over four consecutive paragraphs) while no longer pooling occurrences pages apart in the same
+/// headerless file. Swept 150/200/300 against the full corpus (pooled file rates): 150 -> human
+/// 2.12% (92/4334), AI 0.45% (24/5388), lift 0.21; 200 -> human 2.51% (109/4334), AI 0.46%
+/// (25/5388), lift 0.18; 300 -> human 3.23% (140/4334), AI 0.69% (37/5388), lift 0.21. The lift
+/// difference between the three is within corpus noise at this sample size (SLOP034 was never
+/// claimed to separate the classes, see issue #61's "Out of scope"); 200 is kept as the default
+/// per the sweep's own tie-breaking rule, and it drops cpython-doc from 31.19% to 11.02%
+/// (unchanged AI baseline).
+const WINDOW_WORDS: usize = 200;
+
+/// For each closed concept set, counts occurrences per member within a `WINDOW_WORDS`-wide,
+/// section-bounded sliding window over the document's running prose. A member "qualifies" once it
+/// occurs `>= 2` times inside the current window. Fires at most one diagnostic per set, at the
+/// earliest window where two or more distinct members qualify simultaneously, anchored at the
+/// first (in-window) occurrence of the second-seen qualifying member (chronologically).
 ///
-/// Scope is a section rather than the whole file because a document that enumerates
-/// differently-named things gets its "competing" words from unrelated entries -- a skill catalog
-/// flagged `generate, create` where the two words described two different skills. Two scope
-/// decisions, and both are load-bearing:
+/// The window never crosses a heading, for the same reason section scoping originally existed: a
+/// document that enumerates differently-named things gets its "competing" words from unrelated
+/// entries -- a skill catalog flagged `generate, create` where the two words described two
+/// different skills (`sections_are_counted_separately`). Occurrences are read from
+/// `ProseDoc::paragraph_blocks` only, which already drops headings, list items, tables, rules,
+/// link-reference definitions, and comment lines -- "bullet lists, tables, and headings must never
+/// be treated as sentences", per its own doc comment. This also subsumes the separate "skip tokens
+/// in headings" concern.
 ///
-/// - **Sections, not paragraphs.** Genuine rotation is one author drifting across a passage; the
-///   rule's own fixture spreads `check` x2 and `verify` x2 over four consecutive paragraphs.
-///   Paragraph scoping would delete that true positive.
-/// - **Only `ProseDoc::paragraph_blocks`.** That helper already drops headings, list items,
-///   tables, rules, link-reference definitions, and comment lines -- "bullet lists, tables, and
-///   headings must never be treated as sentences", per its own doc comment. Both known false
-///   positives were list items, and a 17-bullet catalog under one heading is not fixed by section
-///   scoping alone. This also subsumes the separate "skip tokens in headings" concern.
+/// Implementation: every matching occurrence becomes one `(byte, member index, section)` hit,
+/// sorted by byte, with a parallel running word position (`masked[prev_byte..byte].split_whitespace().count()`
+/// summed as the hits are walked in byte order -- O(hits), never a `Vec` of every word start, which
+/// would be O(words) memory on a 20 MB file). A two-pointer scan slides the window's right edge
+/// across `hits`, tracking each member's still-in-window occurrences in a small `VecDeque`
+/// (indices into `hits`) so membership and "first in-window occurrence" are both O(1) amortized;
+/// the left edge advances whenever the window's word span reaches `WINDOW_WORDS` or the section
+/// changes.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
 
@@ -209,10 +230,9 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         .chain(SETS_PT_BR.iter().filter(|_| pt_br));
 
     for set in sets {
-        // section -> [(member name, first byte in that section)]
-        let mut by_section: BTreeMap<usize, Vec<(&str, usize)>> = BTreeMap::new();
-        for member in set {
-            let mut per_section: BTreeMap<usize, (usize, usize)> = BTreeMap::new();
+        // (byte, member index, section), ascending by byte.
+        let mut hits: Vec<(usize, usize, usize)> = Vec::new();
+        for (idx, member) in set.iter().enumerate() {
             for m in member.re.find_iter(&doc.masked) {
                 let byte = m.start();
                 if doc.in_frontmatter(byte)
@@ -222,26 +242,54 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
                 {
                     continue;
                 }
-                per_section.entry(section_of(byte)).or_insert((0, byte)).0 += 1;
-            }
-            for (section, (count, first_byte)) in per_section {
-                if count >= 2 {
-                    by_section
-                        .entry(section)
-                        .or_default()
-                        .push((member.name, first_byte));
-                }
+                hits.push((byte, idx, section_of(byte)));
             }
         }
-        // At most one diagnostic per set, as before: the earliest section that rotates.
-        let Some(mut qualifying) = by_section.into_values().find(|members| members.len() >= 2)
-        else {
+        if hits.len() < 2 {
+            continue;
+        }
+        hits.sort_unstable_by_key(|&(byte, _, _)| byte);
+
+        let mut positions = Vec::with_capacity(hits.len());
+        let mut pos = 0usize;
+        let mut prev = 0usize;
+        for &(byte, _, _) in &hits {
+            pos += doc.masked[prev..byte].split_whitespace().count();
+            positions.push(pos);
+            prev = byte;
+        }
+
+        let mut member_window: Vec<VecDeque<usize>> = vec![VecDeque::new(); set.len()];
+        let mut left = 0usize;
+        let mut qualifying: Option<Vec<(usize, usize)>> = None;
+        for right in 0..hits.len() {
+            let (_, ridx, rsection) = hits[right];
+            member_window[ridx].push_back(right);
+            while positions[right] - positions[left] >= WINDOW_WORDS || hits[left].2 != rsection {
+                let (_, lidx, _) = hits[left];
+                if member_window[lidx].front() == Some(&left) {
+                    member_window[lidx].pop_front();
+                }
+                left += 1;
+            }
+            let members: Vec<(usize, usize)> = member_window
+                .iter()
+                .enumerate()
+                .filter(|(_, w)| w.len() >= 2)
+                .map(|(idx, w)| (idx, hits[*w.front().unwrap()].0))
+                .collect();
+            if members.len() >= 2 {
+                qualifying = Some(members);
+                break;
+            }
+        }
+        let Some(mut qualifying) = qualifying else {
             continue;
         };
         qualifying.sort_by_key(|&(_, byte)| byte);
-        let first_member = qualifying[0].0;
+        let first_member = set[qualifying[0].0].name;
         let anchor_byte = qualifying[1].1;
-        let names: Vec<&str> = qualifying.iter().map(|&(name, _)| name).collect();
+        let names: Vec<&str> = qualifying.iter().map(|&(idx, _)| set[idx].name).collect();
         let (line, col) = doc.line_col(anchor_byte);
         out.push(Diagnostic::at_fix(
             rule,
@@ -369,6 +417,21 @@ mod tests {
         let doc = ProseDoc::parse(src);
         let (line, col) = doc.line_col(verify_byte);
         assert_eq!((diags[0].line, diags[0].col), (line, col));
+    }
+
+    /// Two members qualify (2x each), but the last "check" and the first "verify" are more than
+    /// `WINDOW_WORDS` apart with no heading between them: no single window ever holds both
+    /// members' two occurrences at once, so this must stay silent -- section scoping alone (the
+    /// rule's previous design) would have pooled them across the whole file.
+    #[test]
+    fn far_apart_occurrences_outside_the_window_do_not_pool() {
+        let filler = std::iter::repeat_n("word", WINDOW_WORDS + 50)
+            .collect::<Vec<_>>()
+            .join(" ");
+        let src = format!(
+            "Check the response. Check it twice. {filler}. Now verify the response. Verify it again.\n"
+        );
+        assert!(diagnostics_for(&src).is_empty());
     }
 
     #[test]

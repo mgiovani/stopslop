@@ -1233,6 +1233,16 @@ pub(crate) static HEADING_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s{0,3}#{1,6}\s+\S").unwrap());
 static LIST_ITEM_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s{0,3}(?:[-*+]|\d{1,9}[.)])\s+\S").unwrap());
+/// reST explicit markup: `.. directive::`, `.. comment text`, `.. _target:`, `.. |sub|`. cpython-doc
+/// and rust-book ship as `.rst`, and gluing a directive line into the same block as the prose
+/// around it read as one run-on sentence to SLOP030's fragmentation check (issue #61).
+static RST_EXPLICIT_MARKUP_LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*\.\.(?:\s|$)").unwrap());
+/// A doctest prompt line (`>>> x`); same rationale as `RST_EXPLICIT_MARKUP_LINE`. A Markdown
+/// triple-nested blockquote (`>>> quoted reply`) has the same shape, so `build_blocks` only
+/// trusts it in a block where some line does not open with `>`: a doctest's output line.
+static DOCTEST_PROMPT_LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*>>>(?:\s|$)").unwrap());
 
 /// A piped table row, or a table separator row (`|---|:--:|`).
 fn is_table_line(line: &str) -> bool {
@@ -1252,9 +1262,10 @@ pub(crate) struct Block {
 /// Builds what [`ProseDoc::paragraph_blocks`] memoizes: all paragraph blocks in the document, maximal contiguous non-blank line runs, excluding
 /// anything that isn't ordinary prose -- code fences (already blanked to blank-looking lines in
 /// `doc.masked`), frontmatter, headings, list items, table rows, horizontal rules, link-reference
-/// definitions, and HTML-comment-only lines. A block containing even one such line is dropped
-/// entirely rather than partially salvaged: bullet lists, tables, and headings must never be
-/// treated as sentences (spec requirement), and a block that mixes prose with one of these is
+/// definitions, HTML-comment-only lines, reST explicit-markup lines (directives, comments,
+/// targets, substitutions), and doctest prompt lines. A block containing even one such line is
+/// dropped entirely rather than partially salvaged: bullet lists, tables, and headings must never
+/// be treated as sentences (spec requirement), and a block that mixes prose with one of these is
 /// rare enough that skipping it whole is the conservative, low-risk choice.
 fn build_blocks(doc: &ProseDoc) -> Vec<Block> {
     if let Some(ranges) = &doc.paragraphs {
@@ -1277,6 +1288,7 @@ fn build_blocks(doc: &ProseDoc) -> Vec<Block> {
         let lines: Vec<&str> = (start..end)
             .map(|j| &masked[spans[j].0..spans[j].1])
             .collect();
+        let all_quoted = lines.iter().all(|l| l.trim_start().starts_with('>'));
         let disqualified = lines.iter().enumerate().any(|(k, l)| {
             doc.in_heading(spans[start + k].0)
                 || LIST_ITEM_LINE.is_match(l)
@@ -1284,6 +1296,8 @@ fn build_blocks(doc: &ProseDoc) -> Vec<Block> {
                 || is_horizontal_rule(l)
                 || REF_DEF_LINE.is_match(l)
                 || COMMENT_LINE.is_match(l)
+                || RST_EXPLICIT_MARKUP_LINE.is_match(l)
+                || (!all_quoted && DOCTEST_PROMPT_LINE.is_match(l))
                 || doc.in_frontmatter(spans[start + k].0)
         });
         if disqualified {
@@ -1854,6 +1868,50 @@ mod tests {
     fn real_ignore_comment_outside_code_is_still_recognized() {
         let doc = ProseDoc::parse("Body text. <!-- ai-slop-ignore -->\nMore text.\n");
         assert_eq!(doc.comments.len(), 1);
+    }
+
+    #[test]
+    fn block_with_a_directive_line_is_dropped() {
+        // No blank line between the directive marker and its indented body -- the shape cpython-doc
+        // actually ships (issue #61), which glues the two into one block for `build_blocks`.
+        let src = "Sentence one. Sentence two.\n\n.. note::\n   Sentence one. Sentence two. Sentence three.\n";
+        let doc = ProseDoc::parse(src);
+        let blocks = build_blocks(&doc);
+        assert!(
+            blocks.iter().all(|b| !b.text.contains("Sentence three")),
+            "block containing a directive line must be dropped: {:?}",
+            blocks.iter().map(|b| &b.text).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn block_with_a_doctest_prompt_is_dropped() {
+        let src =
+            "Sentence one. Sentence two.\n\n>>> x = 1\n>>> x\n1\n\nOrdinary prose stays kept.\n";
+        let doc = ProseDoc::parse(src);
+        let blocks = build_blocks(&doc);
+        assert!(blocks
+            .iter()
+            .any(|b| b.text.contains("Ordinary prose stays kept")));
+        assert!(blocks.iter().all(|b| !b.text.contains(">>> x")));
+    }
+
+    #[test]
+    fn triple_nested_blockquote_is_not_read_as_a_doctest() {
+        let src = ">>> Quoted reply from the thread.\n>>> It spans two lines.\n";
+        let doc = ProseDoc::parse(src);
+        assert!(build_blocks(&doc)
+            .iter()
+            .any(|b| b.text.contains("Quoted reply")));
+    }
+
+    #[test]
+    fn ordinary_prose_block_is_still_kept() {
+        let src = "This is a perfectly ordinary paragraph with several words in it.\n";
+        let doc = ProseDoc::parse(src);
+        let blocks = build_blocks(&doc);
+        assert_eq!(blocks.len(), 1);
+        assert!(blocks[0].text.contains("ordinary paragraph"));
     }
 
     #[test]

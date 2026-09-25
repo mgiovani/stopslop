@@ -228,6 +228,12 @@ fn check_python(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnos
         let Some(params) = python_params(ctx, params_node) else {
             continue;
         };
+        // A method whose sole body forwards `self`/`cls` along with the rest of its params is a
+        // call-site adapter, not a wrapper worth deleting: cpython-lib's 9 SLOP039 findings in 5
+        // files are all this shape.
+        if params.first().is_some_and(|&p| p == "self" || p == "cls") {
+            continue;
+        }
         let Some(call) = python_sole_return_call(body_node) else {
             continue;
         };
@@ -501,6 +507,12 @@ mod tests {
     #[test]
     fn python_decorated_clean() {
         let src = "@lru_cache\ndef f(a, b):\n    return g(a, b)\n";
+        assert_eq!(lint(Lang::Python, src).len(), 0);
+    }
+
+    #[test]
+    fn python_self_forward_method_clean() {
+        let src = "def f(self, x):\n    return g(self, x)\n";
         assert_eq!(lint(Lang::Python, src).len(), 0);
     }
 

@@ -3,13 +3,18 @@ use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{self, PROSE_LANGS};
 use crate::registry::RuleDef;
 
+/// `default_on: false` (issue #61): rust-book (98.10%, 103/105 files) and diplomatrix (65.91%
+/// human vs 2.05% AI) are genuine editorial curly-quote house style, not an AI tell, and the
+/// pooled AI rate has since risen to 6.61% vs 7.29% human (lift 0.91, effectively chance) as newer
+/// AI datasets increasingly type real curly quotes too. Tier stays B: this remains a legitimate
+/// opt-in style check for a project that wants straight quotes, just not a default-on slop signal.
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP020",
     name: "Typographic (smart) quotes in source",
     tier: Tier::B,
     langs: PROSE_LANGS,
     natlangs: lang::ALL_NATLANGS,
-    default_on: true,
+    default_on: false,
     path_gated: false,
     check,
 };

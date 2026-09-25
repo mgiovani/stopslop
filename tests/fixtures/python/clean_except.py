@@ -25,3 +25,10 @@ def process(data):
         return handle(data)
     except Exception:
         return None
+
+
+def lookup(table, key):
+    try:
+        return table[key]
+    except KeyError:
+        pass

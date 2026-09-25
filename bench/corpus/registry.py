@@ -710,6 +710,7 @@ SYNTH_CELLS = {
     "synth-pt-wiki": {"lang": "prose", "natlang": "pt"},
     "synth-pt-essay": {"lang": "prose", "natlang": "pt"},
     "synth-tsx": {"lang": "tsx", "natlang": None},
+    "synth-ts": {"lang": "typescript", "natlang": None},
     "synth-en-readme": {"lang": "prose", "natlang": "en"},
     "synth-rust": {"lang": "rust", "natlang": None},
 }
