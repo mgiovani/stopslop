@@ -239,14 +239,18 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP043 | verbosity | Comment that runs long | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | A plain comment block (consecutive comment lines count as one) of more than 40 words. A reason fits in a sentence or two; a comment that needs three full lines is narrating the code or carrying a design note that belongs in a doc comment, the README or the commit message. Doc comments, godoc (any Go comment outside a function body), license headers, generated files and commented-out code are exempt |
 | SLOP044 | artifact | Boilerplate or empty page title | B, on  | HTML | en, pt-BR | A `<title>Document</title>` (the editor's `!` expansion left in place) or an empty `<title>` |
 | SLOP045 | format | Mechanical uniformity (code formatting) | C, off | TS, TSX, Python, Rust | en, pt-BR | A source file of 60+ non-blank lines whose line lengths AND block lengths both barely vary: stddev/mean under 0.30 across content lines and under 0.25 across runs of consecutive non-blank lines. Both must trip. Files with any trailing whitespace (never formatter-touched), flat files under three indent depths, generated files, test paths and Go (gofmt is not optional) are exempt. Thresholds are fitted to human code only and are provisional until issue #39 scores them against a labelled corpus, which is why this is the one Tier C rule |
+| SLOP046 | provenance | Generation prompt shipped in image | A, on | PNG, JPEG, WebP | en, pt-BR | A metadata field keyed exactly `parameters`, `workflow`, `sd-metadata`, `invokeai_metadata`, or `invokeai_workflow` ships the image's full generation prompt or workflow graph; fires on the keyword alone even when the value itself is zlib-compressed. Bare `prompt` is not a key: any app can name its own text that way |
+| SLOP047 | provenance | Declared AI source type | A, on | PNG, JPEG, WebP | en, pt-BR | A metadata value names the IPTC digital-source-type vocabulary term `trainedAlgorithmicMedia` (fully AI-generated) or `compositeWithTrainedAlgorithmicMedia` (an AI-assisted edit of a real photograph), whether it surfaces in an XMP packet, an IPTC block, or a C2PA manifest. A C2PA manifest's mere presence is never flagged on its own: camera bodies like the Leica M11-P and Sony Alpha sign every frame they take |
+| SLOP048 | provenance | Image metadata names a generator | B, on | PNG, JPEG, WebP | en, pt-BR | A metadata value names a known image generator (`Midjourney`, `Stable Diffusion`, `ComfyUI`, `Adobe Firefly`, and others), matched with a word-boundary guard so it never trips inside an ordinary word (`medalled`, `we recraft your brand`). Skips any field SLOP046 or SLOP047 already owns, so a ComfyUI file's own `prompt`/`workflow` JSON and a C2PA manifest's own `digitalSourceType` declaration aren't double-reported |
 
 Every rule is exactly one of four states, `--list-rules` prints the TIER and
 DEFAULT columns so you can check any given rule at a glance:
 
-- **Tier A, on by default (12 rules)**: mechanical artifacts (SLOP001–009,
-  SLOP011–013) with no legitimate reading. A finding here fails the run
-  (exit 1) and blocks CI.
-- **Tier B, on by default (28 rules)**: everything else except SLOP010.
+- **Tier A, on by default (14 rules)**: mechanical artifacts (SLOP001–009,
+  SLOP011–013, SLOP046–047) with no legitimate reading. A finding here fails
+  the run (exit 1) and blocks CI.
+- **Tier B, on by default (32 rules)**: everything else except SLOP010 and
+  SLOP045.
   Judgment calls (density and style checks on prose, stdlib/structure
   heuristics) that warn without ever exiting 1. Expect some noise; silence
   what you don't want with `ignore`/`--ignore` by code or group.
@@ -397,6 +401,11 @@ stopslop: warning: src/util.ts:14: ai-slop-ignore (SLOP018) suppressed nothing
 ```
 
 ![suppressing a finding with ai-slop-ignore](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/suppress.gif)
+
+An image carries no comment syntax, so `ai-slop-ignore` doesn't apply to
+SLOP046–048: silence a specific file with `[per-file-ignores]` or an
+`exclude` glob in `stopslop.toml`, `--ignore` for the whole run, or the
+baseline file to grandfather what's already shipped.
 
 ## Path exemptions
 

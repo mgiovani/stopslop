@@ -600,7 +600,8 @@ fn is_comment_kind(lang: Lang, kind: &str) -> bool {
     match lang {
         Lang::Rust => kind == "line_comment" || kind == "block_comment",
         Lang::Ts | Lang::Tsx | Lang::Python | Lang::Go => kind == "comment",
-        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html => false,
+        // Never reached: SLOP042's `langs: CODE_LANGS` excludes prose and image langs.
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html | Lang::Image => false,
     }
 }
 
@@ -757,6 +758,7 @@ mod tests {
             is_stub_file: false,
             deps: None,
             prose: None,
+            image: None,
             natlangs,
         };
         let mut out = Vec::new();
