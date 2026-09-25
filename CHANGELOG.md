@@ -376,6 +376,14 @@ migration notes live here.
 
 ### Fixed
 
+- **A bullet nested four or more spaces deep is now a real list item.**
+  The list scan capped leading whitespace at three columns. A third- or
+  fourth-level bullet read as continuation text: it neither ended the
+  sentence before it nor joined a list block, and the sentence-length rule
+  measured a nested list as one long sentence. A bullet now nests up to its
+  parent's content column + 3, CommonMark's relative-indent rule. The
+  step-heading exemption in the residue rule accepts the same depth.
+  Fixes issue #62.
 - **The mid-prose dash rule no longer flags a spaced numeric range.** An en
   dash with one space on each side between two digits, like `3 – 5` in a table
   cell, is now exempt, the same as the tight `3–5`. Lopsided spacing

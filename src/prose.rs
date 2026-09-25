@@ -160,7 +160,8 @@ impl<'a> ProseDoc<'a> {
             String::from_utf8(masked_bytes).expect("masking only overwrites char-boundary spans");
 
         let headings = scan_headings(&masked, &line_spans, &is_code_line, &is_fm_line);
-        let list_blocks = scan_list_blocks(&masked, &line_spans, &is_code_line, &is_fm_line);
+        let list_blocks =
+            scan_list_blocks(source, &masked, &line_spans, &is_code_line, &is_fm_line);
         let url_spans = scan_url_spans(&masked);
 
         let fm_end = frontmatter.map(|(_, e)| e).unwrap_or(0);
@@ -669,12 +670,22 @@ fn heading_match(line: &str) -> Option<(usize, String)> {
     Some((level, trailing_stripped.to_string()))
 }
 
-/// List-item marker: `^\s{0,3}([-*+]|\d{1,9}[.)])\s+\S`. Returns (local marker byte, ordered).
-fn list_item_marker(line: &str) -> Option<(usize, bool)> {
-    let bytes = line.as_bytes();
+/// List-item marker: `^\s{0,max_indent}([-*+]|\d{1,9}[.)])\s+\S`. `max_indent` is the caller's
+/// nesting ceiling (3 at top level, a nested item's `content column + 3` below it -- CommonMark's
+/// relative-indent rule, issue #62). Leading whitespace is counted on `source`, not `masked`:
+/// blanking an inline `code` span turns real characters into spaces, which would otherwise read
+/// as extra indent and let a marker past a code span (`` `-v` - verbose ``) pass as a nested item.
+/// The marker itself and its tail are read from `masked`, matching every other structural scan in
+/// this module. Returns (local marker byte, ordered, content column: the byte offset the item's
+/// content starts at, which becomes the ceiling for anything nested under it).
+/// ponytail: a tab counts as one column, and CommonMark rule 2b (5+ spaces after the marker
+/// collapse to a single one) isn't implemented -- no fixture has needed either yet.
+fn list_item_marker(source: &str, masked: &str, max_indent: usize) -> Option<(usize, bool, usize)> {
+    let sbytes = source.as_bytes();
+    let bytes = masked.as_bytes();
     let mut i = 0usize;
     let mut ws = 0usize;
-    while ws < 3 && i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+    while ws < max_indent && i < sbytes.len() && (sbytes[i] == b' ' || sbytes[i] == b'\t') {
         i += 1;
         ws += 1;
     }
@@ -683,7 +694,7 @@ fn list_item_marker(line: &str) -> Option<(usize, bool)> {
     }
     if matches!(bytes[i], b'-' | b'*' | b'+') {
         let marker = i;
-        return has_marker_tail(bytes, i + 1).then_some((marker, false));
+        return has_marker_tail(bytes, i + 1).map(|content| (marker, false, content));
     }
     let digit_start = i;
     let mut j = i;
@@ -691,21 +702,22 @@ fn list_item_marker(line: &str) -> Option<(usize, bool)> {
         j += 1;
     }
     if j > digit_start && j < bytes.len() && matches!(bytes[j], b'.' | b')') {
-        return has_marker_tail(bytes, j + 1).then_some((digit_start, true));
+        return has_marker_tail(bytes, j + 1).map(|content| (digit_start, true, content));
     }
     None
 }
 
-/// After the marker char: requires `\s+\S` (at least one ws char, then a non-ws char).
-fn has_marker_tail(bytes: &[u8], after: usize) -> bool {
+/// After the marker char: requires `\s+\S` (at least one ws char, then a non-ws char). Returns
+/// the content byte's offset.
+fn has_marker_tail(bytes: &[u8], after: usize) -> Option<usize> {
     if after >= bytes.len() || !(bytes[after] == b' ' || bytes[after] == b'\t') {
-        return false;
+        return None;
     }
     let mut k = after;
     while k < bytes.len() && (bytes[k] == b' ' || bytes[k] == b'\t') {
         k += 1;
     }
-    k < bytes.len() && bytes[k] != b' ' && bytes[k] != b'\t'
+    (k < bytes.len() && bytes[k] != b' ' && bytes[k] != b'\t').then_some(k)
 }
 
 fn scan_headings(
@@ -739,24 +751,38 @@ fn scan_headings(
 enum LineKind {
     Boundary, // inside a fence or frontmatter: hard-breaks any open list run
     Blank,
-    Item(usize, bool), // (local marker byte, ordered)
+    Item(usize, bool, usize), // (local marker byte, ordered, content column)
     Other,
 }
 
-fn classify_line(line: &str, fenced: bool, frontmatter: bool) -> LineKind {
+fn classify_line(
+    source_line: &str,
+    masked_line: &str,
+    max_indent: usize,
+    fenced: bool,
+    frontmatter: bool,
+) -> LineKind {
     if fenced || frontmatter {
         return LineKind::Boundary;
     }
-    if line.trim().is_empty() {
+    if masked_line.trim().is_empty() {
         return LineKind::Blank;
     }
-    match list_item_marker(line) {
-        Some((marker, ordered)) => LineKind::Item(marker, ordered),
+    match list_item_marker(source_line, masked_line, max_indent) {
+        Some((marker, ordered, content_col)) => LineKind::Item(marker, ordered, content_col),
         None => LineKind::Other,
     }
 }
 
+/// `nest_limit` is CommonMark's relative-indent ceiling (issue #62): 3 at the top level, or the
+/// open item's `content column + 3` once one is open, so a third- or fourth-level bullet at 4-8
+/// spaces still reads as an item instead of falling to continuation text. It resets to 3 on a
+/// fence/frontmatter `Boundary`, and a paragraph after a `Blank` clamps it to that paragraph's
+/// indent + 3: CommonMark closes every item the paragraph is not indented into, so
+/// `- a\n\nPlain.\n    - x` stays lazy text. It is independent of the `current`/`streak` split,
+/// which closes a `ListBlock` after two wrapped lines while a wrapped parent can still nest.
 fn scan_list_blocks(
+    source: &str,
     masked: &str,
     line_spans: &[(usize, usize)],
     is_fenced_line: &[bool],
@@ -765,10 +791,20 @@ fn scan_list_blocks(
     let mut blocks = Vec::new();
     let mut current: Vec<ListItem> = Vec::new();
     let mut streak = 0usize; // consecutive non-blank, non-list "Other" lines
+    let mut nest_limit = 3usize;
+    let mut prev_blank = false;
 
     for (i, &(ls, le)) in line_spans.iter().enumerate() {
-        let line = &masked[ls..le];
-        match classify_line(line, is_fenced_line[i], is_fm_line[i]) {
+        let source_line = &source[ls..le];
+        let masked_line = &masked[ls..le];
+        let kind = classify_line(
+            source_line,
+            masked_line,
+            nest_limit,
+            is_fenced_line[i],
+            is_fm_line[i],
+        );
+        match kind {
             LineKind::Boundary => {
                 if !current.is_empty() {
                     blocks.push(ListBlock {
@@ -776,23 +812,38 @@ fn scan_list_blocks(
                     });
                 }
                 streak = 0;
+                nest_limit = 3;
+                prev_blank = false;
             }
-            LineKind::Blank => streak = 0,
-            LineKind::Item(marker, ordered) => {
+            LineKind::Blank => {
+                streak = 0;
+                prev_blank = true;
+            }
+            LineKind::Item(marker, ordered, content_col) => {
                 current.push(ListItem {
                     line: i + 1,
                     marker_byte: ls + marker,
                     ordered,
                 });
                 streak = 0;
+                nest_limit = content_col + 3;
+                prev_blank = false;
             }
             LineKind::Other => {
+                if prev_blank {
+                    let indent = source_line
+                        .bytes()
+                        .take_while(|&b| b == b' ' || b == b'\t')
+                        .count();
+                    nest_limit = nest_limit.min(indent + 3);
+                }
                 streak += 1;
                 if streak >= 2 && !current.is_empty() {
                     blocks.push(ListBlock {
                         items: std::mem::take(&mut current),
                     });
                 }
+                prev_blank = false;
             }
         }
     }
@@ -1338,6 +1389,10 @@ mod tests {
         doc.masked.split_whitespace().collect()
     }
 
+    fn list_item_count(doc: &ProseDoc) -> usize {
+        doc.list_blocks.iter().map(|b| b.items.len()).sum()
+    }
+
     #[test]
     fn html_masks_tags_and_restores_text() {
         let src = "<!doctype html>\n<p class=\"lead\">Hello <em>world</em>.</p>\n";
@@ -1585,6 +1640,78 @@ mod tests {
         let doc = ProseDoc::parse("para\n\n- item\n");
         assert!(doc.block_starts.is_empty());
         assert!(!doc.block_initial(0));
+    }
+
+    // Issue #62: a bullet nested 4+ spaces deep was read as continuation text, not a list item.
+    #[test]
+    fn tight_nested_list_at_2_4_6_spaces_yields_one_block_of_four_items() {
+        let src = "- top\n  - second\n    - third\n      - fourth\n";
+        let doc = ProseDoc::parse(src);
+        assert_eq!(doc.list_blocks.len(), 1);
+        assert_eq!(doc.list_blocks[0].items.len(), 4);
+    }
+
+    #[test]
+    fn wrapped_parent_still_recognizes_a_nested_item() {
+        let src = "- a\n  wrap one\n  wrap two\n    - nested\n";
+        let doc = ProseDoc::parse(src);
+        assert_eq!(list_item_count(&doc), 2);
+    }
+
+    #[test]
+    fn over_indented_tight_child_is_not_an_item() {
+        let src = "- item\n      - x\n"; // 6 spaces > "- item"'s content col (2) + 3
+        let doc = ProseDoc::parse(src);
+        assert_eq!(list_item_count(&doc), 1);
+    }
+
+    #[test]
+    fn blank_then_indented_child_is_blanked_as_code_not_an_item() {
+        let src = "- item\n\n      - x\n";
+        let doc = ProseDoc::parse(src);
+        assert_eq!(list_item_count(&doc), 1);
+    }
+
+    #[test]
+    fn lazy_paragraph_after_blank_ends_the_list() {
+        let src = "- a\n\nPlain.\n    - x\n";
+        let doc = ProseDoc::parse(src);
+        assert_eq!(list_item_count(&doc), 1);
+    }
+
+    #[test]
+    fn paragraph_of_a_shallower_item_keeps_that_items_nesting() {
+        let src = "- a\n  - b\n\n  more of a\n    - c\n";
+        let doc = ProseDoc::parse(src);
+        assert_eq!(list_item_count(&doc), 3);
+    }
+
+    #[test]
+    fn inline_code_faking_indent_is_not_an_item() {
+        let src = "- a\n  - b\n      `-v` - verbose\n";
+        let doc = ProseDoc::parse(src);
+        assert_eq!(list_item_count(&doc), 2);
+    }
+
+    #[test]
+    fn fence_then_indented_bullet_is_not_an_item() {
+        let src = "```\ncode\n```\n    - x\n";
+        let doc = ProseDoc::parse(src);
+        assert!(doc.list_blocks.is_empty());
+    }
+
+    #[test]
+    fn ordered_parent_with_four_space_child_is_an_item() {
+        let src = "10. foo\n    - bar\n";
+        let doc = ProseDoc::parse(src);
+        assert_eq!(list_item_count(&doc), 2);
+    }
+
+    #[test]
+    fn tab_nested_child_is_an_item() {
+        let src = "- a\n\t- b\n";
+        let doc = ProseDoc::parse(src);
+        assert_eq!(list_item_count(&doc), 2);
     }
 
     #[test]
