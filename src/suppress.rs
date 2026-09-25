@@ -14,7 +14,7 @@ type Scope = Option<HashSet<String>>;
 /// Anchored: the directive must OPEN the comment body. Matching it anywhere in the text made
 /// this project's own source emit eleven dead-suppression warnings, every one from a comment
 /// that merely *names* the token while documenting the feature. Prose gets the same protection
-/// one layer up -- `prose::scan_ignore_comments` already drops HTML comments inside code spans.
+/// one layer up -- `prose::scan_visible_comments` already drops HTML comments inside code spans.
 static DIRECTIVE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^ai-slop-ignore(-file)?(?::[ \t]*([A-Za-z0-9_,\t ]*))?").unwrap()
 });

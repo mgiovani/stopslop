@@ -255,8 +255,8 @@ fn lint_prose(
         source,
         index: None,
         lang,
-        comments: &doc.ignore_comments, // only used by suppress::apply; prose rules read ctx.prose
-        strings: &doc.attr_values,      // HTML attributes; empty for the Markdown family
+        comments: &doc.comments, // suppress::apply picks out directives; SLOP001 reads the rest on Html
+        strings: &doc.attr_values, // HTML attributes; empty for the Markdown family
         is_test_path: is_test,
         is_stub_file: false,
         deps: None,

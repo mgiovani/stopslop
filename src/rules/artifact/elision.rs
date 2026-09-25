@@ -1,15 +1,27 @@
+use super::template::{RE_HTML_COMMENT, RE_HTML_COMMENT_PT_BR};
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::lang::{NatLang, CODE_LANGS};
+use crate::lang::{Lang, NatLang};
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::sync::LazyLock;
+
+/// `CODE_LANGS` plus `Html`: an elision comment shows up in a generated page's `<!-- ... -->` the
+/// same way it shows up in a `//`/`#` code comment (issue #29).
+const LANGS: &[Lang] = &[
+    Lang::Ts,
+    Lang::Tsx,
+    Lang::Python,
+    Lang::Go,
+    Lang::Rust,
+    Lang::Html,
+];
 
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP001",
     name: "Elision / \"rest unchanged\" comment",
     tier: Tier::A,
-    langs: CODE_LANGS,
+    langs: LANGS,
     natlangs: &[NatLang::En, NatLang::PtBr],
     default_on: true,
     path_gated: false,
@@ -18,7 +30,7 @@ pub static RULE: RuleDef = RuleDef {
 
 static RE_A: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?im)^\s*(?://|#|\*+)\s*\.\.\.?\s*(rest|existing|other|remaining|unchanged|keep)(?-u:\b)",
+        r"(?im)^\s*(?://|#|\*+|<!--)\s*\.\.\.?\s*(rest|existing|other|remaining|unchanged|keep)(?-u:\b)",
     )
     .unwrap()
 });
@@ -34,7 +46,7 @@ static RE_B: LazyLock<Regex> = LazyLock::new(|| {
 /// alternative ends on an ASCII letter, none borders an accented one.
 static RE_A_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?im)^\s*(?://|#|\*+)\s*\.\.\.?\s*(?:o |a |os |as )?(?:resto|restante|demais|existente|inalterad[oa]s?|manter|mant[ée]m|continua|permanece|sem altera[çc][ãa]o|sem altera[çc][õo]es|sem mudan[çc]as?)(?-u:\b)",
+        r"(?im)^\s*(?://|#|\*+|<!--)\s*\.\.\.?\s*(?:o |a |os |as )?(?:resto|restante|demais|existente|inalterad[oa]s?|manter|mant[ée]m|continua|permanece|sem altera[çc][ãa]o|sem altera[çc][õo]es|sem mudan[çc]as?)(?-u:\b)",
     )
     .unwrap()
 });
@@ -63,6 +75,14 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let pt = ctx.natlangs.contains(&NatLang::PtBr);
     for c in ctx.comments {
         if c.is_doc || !is_first_on_line(ctx.source, c.start_byte) {
+            continue;
+        }
+        // Panel disjointness: an HTML comment SLOP013 already reads as an unfilled template
+        // placeholder (`<!-- TODO ... rest of form -->`) must fire only SLOP013, not also this
+        // rule on the "rest of" it also contains.
+        if (en && RE_HTML_COMMENT.is_match(c.text))
+            || (pt && RE_HTML_COMMENT_PT_BR.is_match(c.text))
+        {
             continue;
         }
         let hit = (en && (RE_A.is_match(c.text) || RE_B.is_match(c.text)))
@@ -201,5 +221,54 @@ mod tests {
         let diags = diagnostics_for_natlangs(src, crate::lang::ALL_NATLANGS);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "SLOP001");
+    }
+
+    fn diagnostics_for_html(src: &str) -> Vec<Diagnostic> {
+        let doc = crate::prose::ProseDoc::parse_html(src);
+        let ctx = LintContext {
+            display_path: "test.html".to_string(),
+            source: src,
+            index: None,
+            lang: Lang::Html,
+            comments: &doc.comments,
+            strings: &doc.attr_values,
+            is_test_path: false,
+            is_stub_file: false,
+            deps: None,
+            prose: Some(&doc),
+            image: None,
+            natlangs: crate::lang::ALL_NATLANGS,
+        };
+        let mut out = Vec::new();
+        check(&RULE, &ctx, &mut out);
+        out
+    }
+
+    #[test]
+    fn html_elision_comment_fires() {
+        let diags =
+            diagnostics_for_html("<div>x</div>\n<!-- ... rest of page unchanged -->\n<p>y</p>\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "SLOP001");
+    }
+
+    #[test]
+    fn html_trailing_comment_after_markup_is_quiet() {
+        let diags =
+            diagnostics_for_html("<div></div> <!-- ... rest of page unchanged -->\n<p>y</p>\n");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn html_todo_comment_defers_to_slop013() {
+        let diags = diagnostics_for_html("<!-- TODO ... rest of form -->\n<p>y</p>\n");
+        assert!(diags.is_empty(), "{diags:?}");
+    }
+
+    #[test]
+    fn html_elision_comment_inside_pre_is_quiet() {
+        let diags =
+            diagnostics_for_html("<pre>\n<!-- ... rest of page unchanged -->\n</pre>\n<p>y</p>\n");
+        assert!(diags.is_empty());
     }
 }

@@ -66,7 +66,9 @@ static RE_DATE: LazyLock<Regex> = LazyLock::new(|| {
 /// generated pages leave in the body (`<!-- Your content here -->`, `<!-- put your logo here -->`).
 /// The slot form is the whole comment: an optional verb, `your`, one to three words, `here`.
 /// `<!-- if your build fails here, see docs -->` is prose and must not match.
-static RE_HTML_COMMENT: LazyLock<Regex> = LazyLock::new(|| {
+/// `pub(crate)`: elision.rs reads this (and its pt-BR twin below) to skip an HTML comment that
+/// SLOP013 already owns, keeping the two rules' panels disjoint on a shared `<!-- ... -->` span.
+pub(crate) static RE_HTML_COMMENT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)<!--\s*(?:(?:add|insert|todo|fill in|replace|describe)(?-u:\b)[^>]*|(?:\w+\s+)?your\s+(?:\w+\s+){1,3}here[.!]?\s*)-->").unwrap()
 });
 
@@ -95,7 +97,7 @@ static RE_DATE_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Brazilian-Portuguese twin of `RE_HTML_COMMENT`.
-static RE_HTML_COMMENT_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static RE_HTML_COMMENT_PT_BR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)<!--\s*(?:(?:adicionar|adicione|inserir|insira|preencher|preencha|substituir|substitua|descrever|descreva)(?-u:\b)[^>]*|(?:\w+\s+)?(?:seu|sua)\s+(?:\w+\s+){1,3}aqui[.!]?\s*)-->").unwrap()
 });
 
@@ -172,7 +174,7 @@ mod tests {
             source: src,
             index: None,
             lang: Lang::Md,
-            comments: &doc.ignore_comments,
+            comments: &doc.comments,
             strings: &[],
             is_test_path: false,
             is_stub_file: false,
