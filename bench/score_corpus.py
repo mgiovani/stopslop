@@ -123,7 +123,10 @@ def run_lint(binary, root, expected):
     )
     if proc.returncode not in (0, 1):
         raise SystemExit(f"{binary} exited {proc.returncode}\n{proc.stderr}")
-    payload = json.loads(proc.stdout)
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as err:
+        raise SystemExit(f"{binary} printed no parseable JSON: {err}\n{proc.stderr}") from err
     stats = payload["stats"]
     if stats["files"] != expected or stats["skipped"]:
         raise SystemExit(f"{root}: walk saw {stats} for {expected} files")
