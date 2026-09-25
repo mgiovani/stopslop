@@ -117,17 +117,33 @@ fn sole_body_stmt(body: Node) -> Option<Node> {
     (stmts.len() == 1).then(|| stmts[0])
 }
 
-/// The body must be exactly one of: pass / `...` / `raise NotImplementedError(...)`.
+/// The body must be exactly one of: pass / `...` / `raise NotImplementedError(...)`. A
+/// docstring followed by `pass`/`...` is a documented no-op hook, not a stub -- cpython-lib
+/// (pinned 2019 human stdlib) puts 42 of 135 SLOP008 findings on a body whose first statement
+/// is a docstring. A docstring in front of `raise NotImplementedError` still flags: it documents
+/// the interface, not an intentional no-op.
 fn is_stub_body_python(ctx: &LintContext, body: Node) -> bool {
     let Some(stmt) = sole_body_stmt(body) else {
         return false;
     };
-    match stmt.kind() {
-        "pass_statement" => true,
-        "expression_statement" => stmt.named_child(0).map(|c| c.kind()) == Some("ellipsis"),
-        "raise_statement" => ctx.node_text(&stmt).contains("NotImplementedError"),
-        _ => false,
+    let is_noop = stmt.kind() == "pass_statement"
+        || (stmt.kind() == "expression_statement"
+            && stmt.named_child(0).map(|c| c.kind()) == Some("ellipsis"));
+    if is_noop {
+        return !has_leading_docstring(body);
     }
+    stmt.kind() == "raise_statement" && ctx.node_text(&stmt).contains("NotImplementedError")
+}
+
+/// The same leading-docstring shape `sole_body_stmt` strips before counting the remainder,
+/// checked again here because that helper (shared with `is_exempt_python`) discards the fact.
+fn has_leading_docstring(body: Node) -> bool {
+    let mut cursor = body.walk();
+    let first = body.named_children(&mut cursor).next();
+    first.is_some_and(|first| {
+        first.kind() == "expression_statement"
+            && first.named_child(0).map(|c| c.kind()) == Some("string")
+    })
 }
 
 /// `raise NotImplementedError("explains why")` — a non-empty string-literal argument is
@@ -325,6 +341,24 @@ mod tests {
         // Sanity: a message-less raise on a plain (non-Base/Mixin) class is still flagged.
         let src2 = "class C:\n    def f(self):\n        raise NotImplementedError\n";
         assert_eq!(lint(Lang::Python, src2).len(), 1);
+    }
+
+    #[test]
+    fn python_docstring_pass_exempt() {
+        let src = "def f():\n    \"\"\"Intentionally left blank for now.\"\"\"\n    pass\n";
+        assert_eq!(lint(Lang::Python, src).len(), 0);
+    }
+
+    #[test]
+    fn python_docstring_ellipsis_exempt() {
+        let src = "def f():\n    \"\"\"Intentionally left blank for now.\"\"\"\n    ...\n";
+        assert_eq!(lint(Lang::Python, src).len(), 0);
+    }
+
+    #[test]
+    fn python_docstring_raise_not_implemented_still_flagged() {
+        let src = "def f():\n    \"\"\"Subclasses must override this.\"\"\"\n    raise NotImplementedError\n";
+        assert_eq!(lint(Lang::Python, src).len(), 1);
     }
 
     #[test]
