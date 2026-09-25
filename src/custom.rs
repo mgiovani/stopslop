@@ -214,7 +214,7 @@ mod tests {
             source: "",
             index: None,
             lang: Lang::Md,
-            comments: &doc.ignore_comments,
+            comments: &doc.comments,
             strings: &[],
             is_test_path: false,
             is_stub_file: false,

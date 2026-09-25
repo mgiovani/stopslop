@@ -292,6 +292,13 @@ migration notes live here.
 
 ### Changed
 
+- **SLOP001 now runs on HTML.** `<!--` joins the comment-opener alternation, so
+  an elision comment (`<!-- ... rest of page unchanged -->`) is caught the
+  same way as `//`/`#`/`*`; it defers to SLOP013 on a comment the two rules
+  would otherwise both flag. `ProseDoc.ignore_comments` (a public field of
+  the library) is renamed to `comments` and now holds every visible HTML
+  comment rather than only `ai-slop-ignore` ones, since SLOP001 needs to read
+  the rest of them too.
 - **Rule modules grouped by directory.** `src/rules/` now has one subdirectory
   per group (`artifact/`, `structure/`, `stdlib/`, `rhetoric/`, `verbosity/`,
   `sourcing/`, `format/`, `provenance/`), so a rule's library path is

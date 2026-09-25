@@ -32,7 +32,7 @@ pub struct ListBlock {
     pub items: Vec<ListItem>, // contiguous run (see masking rules for "contiguous")
 }
 
-// ponytail: the spec's ProseDoc has no lifetime, but `ignore_comments: Vec<TextNode>` borrows
+// ponytail: the spec's ProseDoc has no lifetime, but `comments: Vec<TextNode>` borrows
 // `&str` slices of the source, and structs can't elide a borrowed lifetime like fn signatures
 // can. `ProseDoc<'a>` tied to `LintContext<'a>` is the smallest change that compiles.
 /// One inline `code` span: its byte range in the source, and how many whitespace-separated
@@ -64,9 +64,11 @@ pub struct ProseDoc<'a> {
     /// Word count of `masked` EXCLUDING the frontmatter span. Denominator for every density
     /// rule. (Code is already blanked -> contributes 0 words.)
     pub words: usize,
-    /// `<!-- ai-slop-ignore -->` / `<!-- ai-slop-ignore-file -->` HTML comments, as TextNodes,
-    /// for `suppress::apply`. (All HTML comments whose text contains "ai-slop-ignore".)
-    pub ignore_comments: Vec<TextNode<'a>>,
+    /// Every HTML comment in the document, as TextNodes, excluding ones inside a fenced/inline
+    /// code span (a `` `<!-- ai-slop-ignore -->` `` code example must not act as a real comment).
+    /// `suppress::apply` reads these for `ai-slop-ignore` directives; SLOP001 reads them on Html
+    /// to catch an elision comment the same way it reads code comments on every other lang.
+    pub comments: Vec<TextNode<'a>>,
     /// (start, end) byte span per line of `masked`, end exclusive of the line's own trailing
     /// '\n'. Computed once here so rules that need to walk the document line by line (e.g.
     /// SLOP029/030/033) don't each rebuild their own copy with a private newline scan.
@@ -164,7 +166,7 @@ impl<'a> ProseDoc<'a> {
         let fm_end = frontmatter.map(|(_, e)| e).unwrap_or(0);
         let words = masked[fm_end..].split_whitespace().count();
 
-        let ignore_comments = scan_ignore_comments(source, &masked, &line_starts);
+        let comments = scan_visible_comments(source, &masked, &line_starts);
 
         ProseDoc {
             masked,
@@ -174,7 +176,7 @@ impl<'a> ProseDoc<'a> {
             url_spans,
             code_spans,
             words,
-            ignore_comments,
+            comments,
             line_spans,
             block_starts: Vec::new(),
             attr_values: Vec::new(),
@@ -225,7 +227,7 @@ impl<'a> ProseDoc<'a> {
         url_spans.sort_unstable_by_key(|&(s, _)| s);
         let url_spans = merge_overlapping(url_spans);
         let words = masked.split_whitespace().count();
-        let ignore_comments = scan_ignore_comments(source, &masked, &line_starts);
+        let comments = scan_visible_comments(source, &masked, &line_starts);
         let attr_values = scan
             .attrs
             .iter()
@@ -266,7 +268,7 @@ impl<'a> ProseDoc<'a> {
             url_spans,
             code_spans: scan.code_spans,
             words,
-            ignore_comments,
+            comments,
             line_spans,
             block_starts: scan.blocks.iter().map(|b| b.0).collect(),
             attr_values,
@@ -1114,23 +1116,23 @@ fn html_headings(
     out
 }
 
-static IGNORE_COMMENT_RE: LazyLock<Regex> =
+static HTML_COMMENT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<!--([\s\S]*?)-->").unwrap());
 
-/// All HTML comments in `source` whose text contains "ai-slop-ignore", excluding ones that live
-/// inside a fenced/inline code span (documenting the suppression syntax with a literal
-/// `` `<!-- ai-slop-ignore -->` `` code example must not self-suppress the whole file). A byte
-/// range that code-masking touched reads back differently in `masked` than in `source`
-/// (blanked to spaces); unchanged means it's real prose, not a code example.
-fn scan_ignore_comments<'a>(
+/// Every HTML comment in `source`, excluding ones that live inside a fenced/inline code span
+/// (documenting the suppression syntax with a literal `` `<!-- ai-slop-ignore -->` `` code
+/// example must not self-suppress the whole file, and a `<!-- ... -->` code sample must not read
+/// as prose either). A byte range that code-masking touched reads back differently in `masked`
+/// than in `source` (blanked to spaces); unchanged means it's real prose, not a code example.
+fn scan_visible_comments<'a>(
     source: &'a str,
     masked: &str,
     line_starts: &[usize],
 ) -> Vec<TextNode<'a>> {
     let mut out = Vec::new();
-    for caps in IGNORE_COMMENT_RE.captures_iter(source) {
+    for caps in HTML_COMMENT_RE.captures_iter(source) {
         let whole = caps.get(0).unwrap();
-        if caps[1].contains("ai-slop-ignore") && masked[whole.range()] == source[whole.range()] {
+        if masked[whole.range()] == source[whole.range()] {
             let (line, col) = compute_line_col(line_starts, source, whole.start());
             out.push(TextNode {
                 text: whole.as_str(),
@@ -1389,9 +1391,9 @@ mod tests {
             "<p>x</p> <!-- ai-slop-ignore -->\n<script>// <!-- ai-slop-ignore-file --></script>\n";
         let doc = ProseDoc::parse_html(src);
         assert!(doc.masked.contains("<!-- ai-slop-ignore -->"));
-        assert_eq!(doc.ignore_comments.len(), 1);
-        assert_eq!(doc.ignore_comments[0].text, "<!-- ai-slop-ignore -->");
-        assert_eq!(doc.ignore_comments[0].line, 1);
+        assert_eq!(doc.comments.len(), 1);
+        assert_eq!(doc.comments[0].text, "<!-- ai-slop-ignore -->");
+        assert_eq!(doc.comments[0].line, 1);
     }
 
     #[test]
@@ -1718,13 +1720,13 @@ mod tests {
         let doc = ProseDoc::parse(
             "Use `<!-- ai-slop-ignore-file -->` to suppress everything.\n\nReal body text.\n",
         );
-        assert!(doc.ignore_comments.is_empty());
+        assert!(doc.comments.is_empty());
     }
 
     #[test]
     fn real_ignore_comment_outside_code_is_still_recognized() {
         let doc = ProseDoc::parse("Body text. <!-- ai-slop-ignore -->\nMore text.\n");
-        assert_eq!(doc.ignore_comments.len(), 1);
+        assert_eq!(doc.comments.len(), 1);
     }
 
     #[test]

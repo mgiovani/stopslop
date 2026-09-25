@@ -67,7 +67,7 @@ mod tests {
             source: src,
             index: None,
             lang: Lang::Html,
-            comments: &doc.ignore_comments,
+            comments: &doc.comments,
             strings: &doc.attr_values,
             is_test_path: false,
             is_stub_file: false,
