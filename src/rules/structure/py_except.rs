@@ -20,9 +20,17 @@ pub static RULE: RuleDef = RuleDef {
 static LOG_CALL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(print|log)$|^logging\.").unwrap());
 
+/// A swallowing body only counts against a broad handler: bare `except:`, or a caught type
+/// named `Exception`/`BaseException` (alone, among several types, or wrapped in a tuple/
+/// parenthesized expression). cpython-lib (pinned 2019 human stdlib): 147 files / 465 SLOP006
+/// findings before this change, 421 of them (90.5%) a narrow named exception such as
+/// `except KeyError: pass` recovering on purpose, not swallowing an error.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     for node in ctx.nodes(&["except_clause"]) {
         let bare = node.child_by_field_name("value").is_none();
+        if !bare && !is_broad_except(ctx, node) {
+            continue;
+        }
         let mut cursor = node.walk();
         let Some(body) = node
             .named_children(&mut cursor)
@@ -47,6 +55,47 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             out.push(Diagnostic::at(rule, ctx, line, col, msg));
         }
     }
+}
+
+/// tree-sitter-python 0.25's `except_clause.value` field is `multiple: true` (the old
+/// `except A, B:` two-value shape); `except A as e:` wraps the type in an `as_pattern` whose own
+/// `alias` field carries the binding, so `except_clause` never populates its own (vestigial)
+/// `alias` field for that syntax. `except (A, B) as e:` nests a `tuple` inside the `as_pattern`.
+fn is_broad_except(ctx: &LintContext, except_clause: Node) -> bool {
+    let mut cursor = except_clause.walk();
+    let mut types = Vec::new();
+    for value in except_clause.children_by_field_name("value", &mut cursor) {
+        collect_exception_types(value, &mut types);
+    }
+    types.iter().any(|t| is_broad_type_name(ctx.node_text(t)))
+}
+
+fn collect_exception_types<'a>(node: Node<'a>, out: &mut Vec<Node<'a>>) {
+    match node.kind() {
+        "as_pattern" => {
+            let alias = node.child_by_field_name("alias");
+            let mut cursor = node.walk();
+            for child in node.named_children(&mut cursor) {
+                if Some(child) != alias {
+                    collect_exception_types(child, out);
+                }
+            }
+        }
+        "tuple" | "parenthesized_expression" => {
+            let mut cursor = node.walk();
+            for child in node.named_children(&mut cursor) {
+                collect_exception_types(child, out);
+            }
+        }
+        _ => out.push(node),
+    }
+}
+
+fn is_broad_type_name(name: &str) -> bool {
+    name == "Exception"
+        || name == "BaseException"
+        || name.ends_with(".Exception")
+        || name.ends_with(".BaseException")
 }
 
 fn is_swallow_statement(ctx: &LintContext, stmt: &Node) -> bool {
@@ -133,5 +182,30 @@ mod tests {
         let diags = run(src);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].line, 5);
+    }
+
+    #[test]
+    fn narrow_named_except_pass_clean() {
+        assert_eq!(run("try:\n    f()\nexcept KeyError:\n    pass\n").len(), 0);
+    }
+
+    #[test]
+    fn tuple_with_broad_type_as_alias_flags() {
+        let src = "try:\n    f()\nexcept (ValueError, Exception) as e:\n    pass\n";
+        assert_eq!(run(src).len(), 1);
+    }
+
+    #[test]
+    fn broad_named_except_as_alias_pass_flags() {
+        assert_eq!(
+            run("try:\n    f()\nexcept Exception as e:\n    pass\n").len(),
+            1
+        );
+    }
+
+    #[test]
+    fn narrow_named_except_log_only_clean() {
+        let src = "try:\n    f()\nexcept ValueError:\n    logging.warning(x)\n";
+        assert_eq!(run(src).len(), 0);
     }
 }
