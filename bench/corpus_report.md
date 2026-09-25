@@ -31,6 +31,7 @@
 - rust-std revision: 1.40.0
 - semeval13 revision: df2aec18238a
 - semeval24-m4 revision: 509a1a6a33f9
+- synth-ts revision: local
 - typescript-src revision: v3.7.2
 - wetbench-pt revision: n/a
 
@@ -81,6 +82,7 @@ A split is read as human only when its text is dated 2019 or earlier (`pinned-20
 | rust-std | pinned-2019 | Rust 1.40.0 libstd, libcore and liballoc, tagged December 2019 | n/a |
 | semeval13 | unverified | Droid-derived GitHub, LeetCode and Codeforces code collected 2024-25 | Qwen2.5-Coder, DeepSeek-Coder, Llama 3.x, GPT-4o and other 2024-25 models (generator column) |
 | semeval24-m4 | pinned-2019 | PeerRead (2007-2017) plus pre-2020 arXiv, Reddit and WikiHow text; the wikipedia human rows are dropped, their machine rows kept, the same treatment HC3's wiki_csai config gets | ChatGPT, GPT-3 davinci, Cohere, Dolly (2023) |
+| synth-ts | ai only | n/a | n/a |
 | typescript-src | pinned-2019 | TypeScript 3.7.2 compiler sources, tagged November 2019 | n/a |
 | wetbench-pt | unverified | Portuguese Wikipedia paragraphs from 2024 revisions | GPT-4o mini, Gemini 2.0 Flash, Qwen2.5-7B, Mistral-7B (2024) |
 
@@ -290,25 +292,25 @@ Plain ai Rust in this table, when present, comes only from the synthesized `synt
 
 #### typescript
 
-| rule | codemirage (js proxy) H% | codemirage (js proxy) A% | droid (js proxy) H% | droid (js proxy) A% | hairosetta (js proxy) H% | hairosetta (js proxy) A% | rosetta H% | rosetta A% | semeval13 (js proxy) H% | semeval13 (js proxy) A% |
-|---|---|---|---|---|---|---|---|---|---|---|
-| SLOP001 | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |
-| SLOP002 | 0.00% | 0.40% | 0.00% | 0.20% | 0.00% |  | 0.00% |  | 0.00% | 0.40% |
-| SLOP003 | 0.00% | 5.20% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |
-| SLOP004 | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |
-| SLOP005 | 0.63% | 4.20% | 1.20% | 5.00% | 0.00% |  | 0.00% |  | 0.60% | 3.80% |
-| SLOP007 | 0.00% | 0.20% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.40% | 0.00% |
-| SLOP008 | 0.00% | 0.00% | 0.00% | 0.00% | 0.20% |  | 0.00% |  | 0.20% | 0.00% |
-| SLOP009 | 0.63% | 8.60% | 0.80% | 9.80% | 0.20% |  | 0.00% |  | 0.60% | 5.80% |
-| SLOP037 | 1.04% | 2.40% | 0.20% | 1.40% | 1.00% |  | 0.00% |  | 0.40% | 2.00% |
-| SLOP038 | 2.51% | 4.00% | 1.40% | 1.80% | 0.00% |  | 0.00% |  | 1.20% | 1.00% |
-| SLOP039 | 0.21% | 0.60% | 0.20% | 0.00% | 0.20% |  | 0.00% |  | 0.00% | 0.20% |
-| SLOP040 | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |
-| SLOP042 | 1.88% | 13.00% | 3.80% | 20.80% | 10.62% |  | 5.13% |  | 2.80% | 15.80% |
-| SLOP043 | 3.34% | 0.60% | 0.80% | 0.80% | 1.60% |  | 0.00% |  | 1.00% | 1.00% |
-| SLOP045 | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |
-| **any Tier A rule** | 1.25% | 17.20% | 2.00% | 13.60% | 0.40% |  | 0.00% |  | 1.60% | 9.40% |
-| **any rule** | 9.81% | 33.00% | 8.40% | 32.60% | 12.83% |  | 5.13% |  | 6.00% | 25.20% |
+| rule | codemirage (js proxy) H% | codemirage (js proxy) A% | droid (js proxy) H% | droid (js proxy) A% | hairosetta (js proxy) H% | hairosetta (js proxy) A% | rosetta H% | rosetta A% | semeval13 (js proxy) H% | semeval13 (js proxy) A% | synth-ts (synthesized) H% | synth-ts (synthesized) A% |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| SLOP001 | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |  | 0.00% |
+| SLOP002 | 0.00% | 0.40% | 0.00% | 0.20% | 0.00% |  | 0.00% |  | 0.00% | 0.40% |  | 0.00% |
+| SLOP003 | 0.00% | 5.20% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |  | 80.00% |
+| SLOP004 | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |  | 0.00% |
+| SLOP005 | 0.63% | 4.20% | 1.20% | 5.00% | 0.00% |  | 0.00% |  | 0.60% | 3.80% |  | 0.00% |
+| SLOP007 | 0.00% | 0.20% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.40% | 0.00% |  | 0.00% |
+| SLOP008 | 0.00% | 0.00% | 0.00% | 0.00% | 0.20% |  | 0.00% |  | 0.20% | 0.00% |  | 0.00% |
+| SLOP009 | 0.63% | 8.60% | 0.80% | 9.80% | 0.20% |  | 0.00% |  | 0.60% | 5.80% |  | 4.00% |
+| SLOP037 | 1.04% | 2.40% | 0.20% | 1.40% | 1.00% |  | 0.00% |  | 0.40% | 2.00% |  | 6.00% |
+| SLOP038 | 2.51% | 4.00% | 1.40% | 1.80% | 0.00% |  | 0.00% |  | 1.20% | 1.00% |  | 0.00% |
+| SLOP039 | 0.21% | 0.60% | 0.20% | 0.00% | 0.20% |  | 0.00% |  | 0.00% | 0.20% |  | 0.00% |
+| SLOP040 | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |  | 0.00% |
+| SLOP042 | 1.88% | 13.00% | 3.80% | 20.80% | 10.62% |  | 5.13% |  | 2.80% | 15.80% |  | 2.00% |
+| SLOP043 | 3.34% | 0.60% | 0.80% | 0.80% | 1.60% |  | 0.00% |  | 1.00% | 1.00% |  | 2.00% |
+| SLOP045 | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |  | 0.00% |
+| **any Tier A rule** | 1.25% | 17.20% | 2.00% | 13.60% | 0.40% |  | 0.00% |  | 1.60% | 9.40% |  | 80.00% |
+| **any rule** | 9.81% | 33.00% | 8.40% | 32.60% | 12.83% |  | 5.13% |  | 6.00% | 25.20% |  | 84.00% |
 
 #### prose
 
@@ -2165,6 +2167,45 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | --- | --- | --- | --- |
 | SLOP009 | 7.1% | 19.1% | 9.1% |
 | SLOP042 | 3.6% | 51.7% | 4.5% |
+
+
+### synth-ts
+
+- License: not stated on the dataset card
+- Natural language: n/a (code)
+- Revision: local
+- Files fetched: 50
+  - typescript:
+    - ai: 50 (0 blank dropped).
+- synthesized by bench/generate_corpus.py, not a real-world sample.
+
+#### synth-ts / typescript
+
+| rule | ai hits |
+|---|---|
+| SLOP003 | 40 (80.00%) |
+| SLOP037 | 3 (6.00%) |
+| SLOP009 | 2 (4.00%) |
+| SLOP042 | 1 (2.00%) |
+| SLOP043 | 1 (2.00%) |
+| SLOP001 | 0 (0.00%) |
+| SLOP002 | 0 (0.00%) |
+| SLOP004 | 0 (0.00%) |
+| SLOP005 | 0 (0.00%) |
+| SLOP007 | 0 (0.00%) |
+| SLOP008 | 0 (0.00%) |
+| SLOP038 | 0 (0.00%) |
+| SLOP039 | 0 (0.00%) |
+| SLOP040 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
+| **any Tier A rule** | 40 (80.00%) |
+| **any rule** | 42 (84.00%) |
+
+Per-generator (ai, >= 20 files, rule >= 20 hits):
+
+| rule | ai |
+| --- | --- |
+| SLOP003 | 80.0% |
 
 
 ### wetbench-pt
