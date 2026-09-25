@@ -320,7 +320,7 @@ function verdict(h, a) {
   if (lift < 0.67) return 'inv';
   return 'chance';
 }
-const sbRows = Object.keys(RULES).filter(c => c !== 'SLOP010' && c !== 'SLOP044').map(code => {
+const sbRows = Object.keys(RULES).filter(c => Object.values(D.applicable).some(l => l.includes(c))).map(code => {
   const h = pooled(code, HUMAN), a = pooled(code, AI);
   const b = pooled(code, HUMAN.filter(c => !PAIRED.has(c.dataset + '/' + c.lang)));
   const lift = h.r ? a.r / h.r : (a.r ? Infinity : NaN);

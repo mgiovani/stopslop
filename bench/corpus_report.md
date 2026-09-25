@@ -43,7 +43,7 @@
 - A `*` marks a precision built from fewer than 20 hits in total. Read those off the counts, not the ratio.
 - The `any rule` row is the OR of every applicable rule for that lang, so its precision tracks the noisiest member rather than the best one; `any Tier A rule` is the same OR restricted to rules CI actually fails on.
 - A hit rate is evidence that the tells appear in that corpus. It is not a claim that any file is AI-written, and this crate ships no such claim.
-- SLOP010 names every code `Lang` too, but its check needs a dependency manifest a per-file corpus cell has no reason to carry, so it can never fire here and the tables leave it out rather than show a rule that structurally cannot score.
+- SLOP010 names every code `Lang` too, but its check needs a dependency manifest a per-file corpus cell has no reason to carry, so it can never fire here and the tables leave it out rather than show a rule that structurally cannot score. SLOP044 (HTML) and SLOP046-SLOP048 (images) are left out for the plainer reason that no registered dataset carries an HTML or image cell. SLOP045 reads only files of 60+ non-blank lines, which excludes nearly every file in the snippet and contest corpora (2.6% of AIGCodeSet's human `.py` files clear it): its 0% there means it barely ran, not that it found nothing. The pinned standard libraries clear it (67% of rust-std).
 - Hugging Face cells are sampled through `/filter` when the datasets-server index answers and through a spread `/rows` scan when it does not. Both are deterministic, and a `scan_*` marker in the page cache pins a scanned cell to the scan on later runs, so reruns reproduce this file byte for byte; a cold cache under the other path draws a different sample of the same population.
 
 ### Which human splits count as human
@@ -102,6 +102,7 @@ A split is read as human only when its text is dated 2019 or earlier (`pinned-20
 | SLOP040 | 0.80% |  | 0.00% | 0.00% |
 | SLOP042 | 8.02% |  | n/a | n/a |
 | SLOP043 | 30.26% |  | n/a | n/a |
+| SLOP045 | 0.00% |  | n/a | n/a |
 | **any Tier A rule** | 34.67% |  | 2.20% | 7.00% |
 | **any rule** | 48.70% |  | 7.40% | 14.40% |
 
@@ -138,6 +139,7 @@ A split is read as human only when its text is dated 2019 or earlier (`pinned-20
 | SLOP039 | 3.20% |  |
 | SLOP042 | 1.20% |  |
 | SLOP043 | 24.20% |  |
+| SLOP045 | 0.00% |  |
 | **any Tier A rule** | 3.40% |  |
 | **any rule** | 27.40% |  |
 
@@ -161,6 +163,7 @@ Plain ai Rust in this table, when present, comes only from the synthesized `synt
 | SLOP040 | 2.87% |  |
 | SLOP042 | 16.75% |  |
 | SLOP043 | 34.93% |  |
+| SLOP045 | 0.00% |  |
 | **any Tier A rule** | 11.00% |  |
 | **any rule** | 39.71% |  |
 
@@ -182,6 +185,7 @@ Plain ai Rust in this table, when present, comes only from the synthesized `synt
 | SLOP040 | 0.00% |  |
 | SLOP042 | 0.40% |  |
 | SLOP043 | 0.00% |  |
+| SLOP045 | 0.00% |  |
 | **any Tier A rule** | 5.40% |  |
 | **any rule** | 7.40% |  |
 
@@ -196,7 +200,7 @@ Plain ai Rust in this table, when present, comes only from the synthesized `synt
 | SLOP015 | 0.00% | 0.80% | 1.04% |  | 0.00% | 2.31% | 0.60% | 2.20% | 0.40% | 0.60% | 0.40% | 0.40% | 0.80% |  | 14.29% |  | 0.80% | 0.40% | 1.11% |  | 0.95% |  | 1.40% | 2.20% |
 | SLOP016 | 0.20% | 0.60% | 0.00% |  | 0.00% | 0.51% | 0.00% | 12.00% | 0.20% | 0.00% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.60% |
 | SLOP017 | 1.80% | 6.20% | 11.23% |  | 7.95% | 22.05% | 1.80% | 22.20% | 3.20% | 2.00% | 0.00% | 3.80% | 4.00% |  | 12.86% |  | 0.40% | 1.40% | 8.89% |  | 7.62% |  | 9.80% | 9.80% |
-| SLOP018 | 5.40% | 1.80% | 19.96% |  | 14.77% | 2.05% | 23.20% | 14.00% | 35.00% | 41.20% | 5.00% | 0.20% | 3.20% |  | 11.43% |  | 0.00% | 0.00% | 26.67% |  | 20.95% |  | 8.80% | 6.60% |
+| SLOP018 | 5.20% | 1.80% | 19.96% |  | 14.77% | 2.05% | 23.20% | 14.00% | 34.80% | 41.20% | 4.80% | 0.20% | 3.20% |  | 11.43% |  | 0.00% | 0.00% | 26.67% |  | 20.95% |  | 8.80% | 6.60% |
 | SLOP019 | 0.00% | 3.80% | 0.00% |  | 0.00% | 0.77% | 0.40% | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% | 1.20% |  | 0.00% |  | 0.00% | 0.00% | 2.22% |  | 0.00% |  | 0.00% | 0.00% |
 | SLOP020 | 8.40% | 1.60% | 0.42% |  | 65.91% | 2.05% | 1.20% | 14.00% | 0.00% | 0.00% | 0.40% | 0.00% | 3.80% |  | 27.14% |  | 0.00% | 0.00% | 7.78% |  | 98.10% |  | 11.60% | 21.60% |
 | SLOP021 | 0.00% | 0.00% | 0.00% |  | 0.00% | 1.54% | 0.00% | 0.00% | 0.00% | 0.20% | 0.00% | 0.00% | 24.40% |  | 0.00% |  | 0.00% | 0.00% | 7.78% |  | 55.24% |  | 0.00% | 0.00% |
@@ -211,13 +215,13 @@ Plain ai Rust in this table, when present, comes only from the synthesized `synt
 | SLOP030 | 12.80% | 6.80% | 46.15% |  | 29.55% | 1.28% | 65.00% | 34.00% | 16.00% | 14.00% | 9.00% | 9.00% | 3.20% |  | 55.71% |  | 22.60% | 30.60% | 7.78% |  | 15.24% |  | 27.00% | 23.40% |
 | SLOP031 | 0.20% | 0.60% | 0.00% |  | 0.00% | 0.26% | 0.00% | 0.40% | 0.00% | 0.40% | 0.00% | 0.00% | 0.20% |  | 0.00% |  | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.80% |
 | SLOP032 | 0.00% | 0.20% | 1.04% |  | 0.00% | 0.00% | 0.00% | 2.20% | 0.60% | 0.00% | 0.20% | 0.40% | 0.20% |  | 0.00% |  | 0.00% | 0.00% | 1.11% |  | 0.00% |  | 0.20% | 0.20% |
-| SLOP033 | 2.60% | 2.20% | 26.20% |  | 38.64% | 6.41% | 22.40% | 5.60% | 29.40% | 36.40% | 9.80% | 21.80% | 5.20% |  | 91.43% |  | 10.00% | 31.40% | 5.56% |  | 17.14% |  | 27.00% | 15.00% |
+| SLOP033 | 2.60% | 2.20% | 26.20% |  | 38.64% | 6.41% | 22.40% | 5.60% | 29.40% | 36.40% | 9.80% | 21.80% | 4.80% |  | 91.43% |  | 10.00% | 31.40% | 5.56% |  | 17.14% |  | 27.00% | 15.00% |
 | SLOP034 | 0.00% | 0.40% | 31.19% |  | 0.00% | 0.00% | 2.20% | 0.60% | 1.60% | 1.40% | 0.60% | 0.00% | 4.20% |  | 1.43% |  | 0.40% | 1.20% | 2.22% |  | 19.05% |  | 5.80% | 5.00% |
 | SLOP035 | 0.00% | 0.00% | 0.00% |  | 0.00% | 0.77% | 0.00% | 1.00% | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |
 | SLOP036 | 1.40% | 0.40% | 11.85% |  | 0.00% | 0.00% | 2.00% | 1.00% | 0.80% | 2.40% | 0.40% | 0.40% | 2.00% |  | 0.00% |  | 0.60% | 1.60% | 2.22% |  | 0.95% |  | 1.00% | 0.40% |
 | SLOP041 | 2.20% | 10.20% | 46.15% |  | 25.00% | 71.79% | 3.40% | 31.40% | 5.80% | 2.60% | 2.80% | 19.20% | 32.20% |  | 12.86% |  | 0.80% | 14.00% | 34.44% |  | 61.90% |  | 14.80% | 55.60% |
 | **any Tier A rule** | 1.60% | 26.00% | 2.70% |  | 0.00% | 0.00% | 1.20% | 0.00% | 2.40% | 1.20% | 0.40% | 1.20% | 0.20% |  | 0.00% |  | 0.00% | 0.00% | 5.56% |  | 1.90% |  | 0.80% | 3.60% |
-| **any rule** | 29.40% | 47.00% | 78.38% |  | 92.05% | 87.95% | 83.40% | 70.40% | 60.20% | 64.60% | 23.00% | 42.80% | 57.60% |  | 98.57% |  | 30.40% | 59.20% | 65.56% |  | 98.10% |  | 60.80% | 83.00% |
+| **any rule** | 29.40% | 47.00% | 78.38% |  | 92.05% | 87.95% | 83.40% | 70.40% | 60.20% | 64.60% | 22.80% | 42.80% | 57.60% |  | 98.57% |  | 30.40% | 59.20% | 65.56% |  | 98.10% |  | 60.80% | 83.00% |
 
 ---
 
@@ -241,6 +245,7 @@ The splits below were collected after coding assistants and chat models came int
 | SLOP040 | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% | 0.40% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |
 | SLOP042 | 0.20% | 0.40% | 6.40% | 13.60% | n/a | n/a | 1.60% | 13.20% | 1.60% |  | 1.20% |  | 0.80% | 13.80% |
 | SLOP043 | 0.00% | 0.00% | 5.80% | 0.20% | n/a | n/a | 0.40% | 1.20% | 0.40% |  | 0.20% |  | 0.00% | 0.40% |
+| SLOP045 | 0.00% | 0.00% | 0.00% | 0.00% | n/a | n/a | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |
 | **any Tier A rule** | 0.20% | 0.60% | 10.00% | 24.60% | 2.60% | 2.80% | 3.60% | 12.80% | 4.00% |  | 4.20% |  | 3.40% | 14.60% |
 | **any rule** | 6.80% | 5.60% | 22.80% | 37.40% | 8.80% | 15.20% | 10.00% | 26.60% | 7.40% |  | 7.20% |  | 7.60% | 27.80% |
 
@@ -277,6 +282,7 @@ The splits below were collected after coding assistants and chat models came int
 | SLOP039 | 0.00% |  | 0.60% |  | 0.40% |  |
 | SLOP042 | 3.80% |  | 3.20% |  | 3.00% |  |
 | SLOP043 | 5.40% |  | 2.00% |  | 2.20% |  |
+| SLOP045 | 0.00% |  | 0.00% |  | 0.00% |  |
 | **any Tier A rule** | 0.20% |  | 1.00% |  | 0.80% |  |
 | **any rule** | 9.20% |  | 6.80% |  | 6.40% |  |
 
@@ -300,6 +306,7 @@ Plain ai Rust in this table, when present, comes only from the synthesized `synt
 | SLOP040 | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |
 | SLOP042 | 1.88% | 13.00% | 3.80% | 20.80% | 10.62% |  | 5.13% |  | 2.80% | 15.80% |
 | SLOP043 | 3.34% | 0.60% | 0.80% | 0.80% | 1.60% |  | 0.00% |  | 1.00% | 1.00% |
+| SLOP045 | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |  | 0.00% |  | 0.00% | 0.00% |
 | **any Tier A rule** | 1.25% | 17.20% | 2.00% | 13.60% | 0.40% |  | 0.00% |  | 1.60% | 9.40% |
 | **any rule** | 9.81% | 33.00% | 8.40% | 32.60% | 12.83% |  | 5.13% |  | 6.00% | 25.20% |
 
@@ -368,6 +375,7 @@ Plain ai Rust in this table, when present, comes only from the synthesized `synt
 | SLOP039 | 0 (0.00%) |
 | SLOP040 | 0 (0.00%) |
 | SLOP043 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
 | **any Tier A rule** | 27 (5.40%) |
 | **any rule** | 37 (7.40%) |
 
@@ -405,7 +413,7 @@ Plain ai Rust in this table, when present, comes only from the synthesized `synt
 | SLOP014 | 3 (0.60%) | 14 (2.80%) | 0.82* | 0.82* | 4.67 | 0.05 | 0.17 |
 | SLOP033 | 13 (2.60%) | 11 (2.20%) | 0.46 | 0.46 | 0.85 | 0.26 | 0.12 |
 | SLOP013 | 3 (0.60%) | 10 (2.00%) | 0.77* | 0.77* | 3.33 | 0.08 | 0.12 |
-| SLOP018 | 27 (5.40%) | 9 (1.80%) | 0.25 | 0.25 | 0.33 | 0.73 | 0.16 |
+| SLOP018 | 26 (5.20%) | 9 (1.80%) | 0.26 | 0.26 | 0.35 | 0.72 | 0.16 |
 | SLOP020 | 42 (8.40%) | 8 (1.60%) | 0.16 | 0.16 | 0.19 | 0.64 | 0.08 |
 | SLOP024 | 0 (0.00%) | 6 (1.20%) | 1.00* | 1.00* | inf | 0.00 | 0.06 |
 | SLOP028 | 0 (0.00%) | 5 (1.00%) | 1.00* | 1.00* | inf | 0.00 | 0.05 |
@@ -512,6 +520,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP001 | 0 (0.00%) |
 | SLOP003 | 0 (0.00%) |
 | SLOP004 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
 | **any Tier A rule** | 173 (34.67%) |
 | **any rule** | 243 (48.70%) |
 
@@ -683,7 +692,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 
 | rule | human hits | ai hits | precision @1:1 | precision @prior | lift | human /1k words | ai /1k words |
 |---|---|---|---|---|---|---|---|
-| SLOP018 | 175 (35.00%) | 206 (41.20%) | 0.54 | 0.54 | 1.18 | 2.64 | 3.49 |
+| SLOP018 | 174 (34.80%) | 206 (41.20%) | 0.54 | 0.54 | 1.18 | 2.62 | 3.47 |
 | SLOP033 | 147 (29.40%) | 182 (36.40%) | 0.55 | 0.55 | 1.24 | 1.01 | 1.43 |
 | SLOP030 | 80 (16.00%) | 70 (14.00%) | 0.47 | 0.47 | 0.88 | 0.41 | 0.41 |
 | SLOP022 | 13 (2.60%) | 21 (4.20%) | 0.62 | 0.62 | 1.62 | 0.06 | 0.10 |
@@ -756,7 +765,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP032 | 1 (0.20%) | 2 (0.40%) | 0.67* | 0.67* | 2.00 | 0.02 | 0.02 |
 | SLOP036 | 2 (0.40%) | 2 (0.40%) | 0.50* | 0.50* | 1.00 | 0.03 | 0.05 |
 | SLOP013 | 0 (0.00%) | 1 (0.20%) | 1.00* | 1.00* | inf | 0.00 | 0.01 |
-| SLOP018 | 25 (5.00%) | 1 (0.20%) | 0.04 | 0.04 | 0.04 | 0.74 | 0.01 |
+| SLOP018 | 24 (4.80%) | 1 (0.20%) | 0.04 | 0.04 | 0.04 | 0.73 | 0.01 |
 | SLOP022 | 0 (0.00%) | 1 (0.20%) | 1.00* | 1.00* | inf | 0.00 | 0.01 |
 | SLOP012 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP014 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
@@ -771,7 +780,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP034 | 3 (0.60%) | 0 (0.00%) | 0.00* | 0.00* | 0.00 | 0.05 | 0.00 |
 | SLOP035 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | **any Tier A rule** | 2 (0.40%) | 6 (1.20%) | 0.75 | 0.75 | 3.00 |  |  |
-| **any rule** | 115 (23.00%) | 214 (42.80%) | 0.65 | 0.65 | 1.86 |  |  |
+| **any rule** | 114 (22.80%) | 214 (42.80%) | 0.65 | 0.65 | 1.88 |  |  |
 
 Per-generator (ai, >= 20 files, rule >= 20 hits):
 
@@ -800,7 +809,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 |---|---|
 | SLOP041 | 161 (32.20%) |
 | SLOP021 | 122 (24.40%) |
-| SLOP033 | 26 (5.20%) |
+| SLOP033 | 24 (4.80%) |
 | SLOP034 | 21 (4.20%) |
 | SLOP017 | 20 (4.00%) |
 | SLOP027 | 20 (4.00%) |
@@ -951,10 +960,10 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
     - ai: 500 (0 blank dropped).
     - human: 500 (0 blank dropped).
     - ai generators: dsc 181, qwen 161, chatgpt 158.
-- `docstring` ships as its own column, separate from `human_code`, so SLOP001-SLOP004, SLOP042 and SLOP043 print `n/a` here the same way they do on codet_m4: the extraction pass strips comments and docstrings out of the code columns, not the model.
+- `docstring` ships as its own column, separate from `human_code`, so SLOP001-SLOP004, SLOP042, SLOP043 and SLOP045 print `n/a` here the same way they do on codet_m4: the extraction pass strips comments and docstrings out of the code columns, not the model.
 - The file is 651 MB; `fetch_naples_code` streams it and stops once both samples are full, so this is a head sample of file order rather than the spread sample every HF-backed dataset above gets through `/filter`.
 - The Java half of this Zenodo record is not registered: stopslop has no Java lang.
-- `n/a` rules on this dataset: SLOP001, SLOP002, SLOP003, SLOP004, SLOP042, SLOP043
+- `n/a` rules on this dataset: SLOP001, SLOP002, SLOP003, SLOP004, SLOP042, SLOP043, SLOP045
 
 #### naples-code / python
 
@@ -972,6 +981,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP040 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP042 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | SLOP043 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| SLOP045 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | **any Tier A rule** | 11 (2.20%) | 35 (7.00%) | 0.76 | 0.76 | 3.18 |  |  |
 | **any rule** | 37 (7.40%) | 72 (14.40%) | 0.66 | 0.66 | 1.95 |  |  |
 
@@ -1102,6 +1112,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP004 | 0 (0.00%) |
 | SLOP008 | 0 (0.00%) |
 | SLOP037 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
 | **any Tier A rule** | 17 (3.40%) |
 | **any rule** | 137 (27.40%) |
 
@@ -1131,7 +1142,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP020 | 58 (11.60%) | 108 (21.60%) | 0.65 | 0.65 | 1.86 | 0.22 | 0.52 |
 | SLOP033 | 135 (27.00%) | 75 (15.00%) | 0.36 | 0.36 | 0.56 | 1.16 | 0.50 |
 | SLOP017 | 49 (9.80%) | 49 (9.80%) | 0.50 | 0.50 | 1.00 | 0.19 | 0.24 |
-| SLOP018 | 44 (8.80%) | 33 (6.60%) | 0.43 | 0.43 | 0.75 | 0.73 | 0.28 |
+| SLOP018 | 44 (8.80%) | 33 (6.60%) | 0.43 | 0.43 | 0.75 | 0.72 | 0.27 |
 | SLOP027 | 15 (3.00%) | 26 (5.20%) | 0.63 | 0.63 | 1.73 | 0.06 | 0.13 |
 | SLOP034 | 29 (5.80%) | 25 (5.00%) | 0.46 | 0.46 | 0.86 | 0.12 | 0.13 |
 | SLOP011 | 4 (0.80%) | 17 (3.40%) | 0.81 | 0.81 | 4.25 | 0.02 | 0.58 |
@@ -1199,6 +1210,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP004 | 0 (0.00%) |
 | SLOP009 | 0 (0.00%) |
 | SLOP038 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
 | **any Tier A rule** | 23 (11.00%) |
 | **any rule** | 83 (39.71%) |
 
@@ -1301,6 +1313,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP009 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP040 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP043 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
+| SLOP045 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | **any Tier A rule** | 1 (0.20%) | 3 (0.60%) | 0.75 | 0.75 | 3.00 |  |  |
 | **any rule** | 34 (6.80%) | 28 (5.60%) | 0.45 | 0.45 | 0.82 |  |  |
 
@@ -1437,6 +1450,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP002 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP004 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP040 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
+| SLOP045 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | **any Tier A rule** | 50 (10.00%) | 123 (24.60%) | 103 (20.64%) | 0.71 | 0.71 | 2.46 |  |  |
 | **any rule** | 114 (22.80%) | 187 (37.40%) | 192 (38.48%) | 0.62 | 0.62 | 1.64 |  |  |
 
@@ -1468,6 +1482,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP004 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP008 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP040 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
+| SLOP045 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | **any Tier A rule** | 6 (1.25%) | 86 (17.20%) | 61 (12.20%) | 0.93 | 0.93 | 13.73 |  |  |
 | **any rule** | 47 (9.81%) | 165 (33.00%) | 148 (29.60%) | 0.77 | 0.78 | 3.36 |  |  |
 
@@ -1496,8 +1511,8 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
     - ai: 500 (0 blank dropped).
     - human: 500 (0 blank dropped).
     - ai generators: llama3.1 155, codellama 145, qwen1.5 131, gpt 39, nxcode 30.
-- Comments and docstrings are stripped by the publisher's extraction pass, so SLOP001-SLOP004, SLOP042 and SLOP043 print `n/a` here instead of a number that would just measure the extraction, not the code.
-- `n/a` rules on this dataset: SLOP001, SLOP002, SLOP003, SLOP004, SLOP042, SLOP043
+- Comments and docstrings are stripped by the publisher's extraction pass, so SLOP001-SLOP004, SLOP042 and SLOP043 print `n/a` here instead of a number that would just measure the extraction, not the code. SLOP045 too: deleting comment lines rewrites the line and block lengths it measures.
+- `n/a` rules on this dataset: SLOP001, SLOP002, SLOP003, SLOP004, SLOP042, SLOP043, SLOP045
 
 #### codet_m4 / python
 
@@ -1515,6 +1530,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP040 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP042 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | SLOP043 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| SLOP045 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | **any Tier A rule** | 13 (2.60%) | 14 (2.80%) | 0.52 | 0.52 | 1.08 |  |  |
 | **any rule** | 44 (8.80%) | 76 (15.20%) | 0.63 | 0.63 | 1.73 |  |  |
 
@@ -1601,6 +1617,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP003 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | 64 (12.80%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP004 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP039 | 1 (0.20%) | 0 (0.00%) | 1 (0.20%) | 0 (0.00%) | 0.00* | 0.00* | 0.00 | 0.07 | 0.00 |
+| SLOP045 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | **any Tier A rule** | 18 (3.60%) | 64 (12.80%) | 37 (7.40%) | 96 (19.20%) | 0.78 | 0.78 | 3.56 |  |  |
 | **any rule** | 50 (10.00%) | 133 (26.60%) | 94 (18.80%) | 138 (27.60%) | 0.73 | 0.73 | 2.66 |  |  |
 
@@ -1628,6 +1645,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP009 | 0 (0.00%) | 6 (1.20%) |
 | SLOP037 | 0 (0.00%) | 0 (0.00%) |
 | SLOP039 | 0 (0.00%) | 3 (0.60%) |
+| SLOP045 | 0 (0.00%) | 0 (0.00%) |
 | **any Tier A rule** | 1 (0.20%) | 63 (12.60%) |
 | **any rule** | 46 (9.20%) | 95 (19.00%) |
 
@@ -1649,6 +1667,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP008 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP039 | 1 (0.20%) | 0 (0.00%) | 0.00* | 0.00* | 0.00 | 0.04 | 0.00 |
 | SLOP040 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
+| SLOP045 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | **any Tier A rule** | 10 (2.00%) | 68 (13.60%) | 0.87 | 0.87 | 6.80 |  |  |
 | **any rule** | 42 (8.40%) | 163 (32.60%) | 0.80 | 0.80 | 3.88 |  |  |
 
@@ -1833,6 +1852,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP004 | 0 (0.00%) |
 | SLOP039 | 0 (0.00%) |
 | SLOP040 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
 | **any Tier A rule** | 20 (4.00%) |
 | **any rule** | 37 (7.40%) |
 
@@ -1851,6 +1871,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP005 | 0 (0.00%) |
 | SLOP008 | 0 (0.00%) |
 | SLOP037 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
 | **any Tier A rule** | 5 (1.00%) |
 | **any rule** | 34 (6.80%) |
 
@@ -1872,6 +1893,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP007 | 0 (0.00%) |
 | SLOP038 | 0 (0.00%) |
 | SLOP040 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
 | **any Tier A rule** | 2 (0.40%) |
 | **any rule** | 64 (12.83%) |
 
@@ -1996,6 +2018,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP003 | 0 (0.00%) |
 | SLOP004 | 0 (0.00%) |
 | SLOP040 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
 | **any Tier A rule** | 21 (4.20%) |
 | **any rule** | 36 (7.20%) |
 
@@ -2014,6 +2037,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP005 | 0 (0.00%) |
 | SLOP008 | 0 (0.00%) |
 | SLOP037 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
 | **any Tier A rule** | 4 (0.80%) |
 | **any rule** | 32 (6.40%) |
 
@@ -2035,6 +2059,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP039 | 0 (0.00%) |
 | SLOP040 | 0 (0.00%) |
 | SLOP043 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
 | **any Tier A rule** | 0 (0.00%) |
 | **any rule** | 2 (5.13%) |
 
@@ -2110,6 +2135,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP003 | 0 (0.00%) | 0 (0.00%) | 36 (7.20%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP004 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | SLOP040 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
+| SLOP045 | 0 (0.00%) | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | **any Tier A rule** | 17 (3.40%) | 73 (14.60%) | 65 (13.00%) | 0.81 | 0.81 | 4.29 |  |  |
 | **any rule** | 38 (7.60%) | 139 (27.80%) | 126 (25.20%) | 0.79 | 0.79 | 3.66 |  |  |
 
@@ -2139,6 +2165,7 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP007 | 2 (0.40%) | 0 (0.00%) | 0.00* | 0.00* | 0.00 | 0.27 | 0.00 |
 | SLOP008 | 1 (0.20%) | 0 (0.00%) | 0.00* | 0.00* | 0.00 | 0.04 | 0.00 |
 | SLOP040 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
+| SLOP045 | 0 (0.00%) | 0 (0.00%) | n/a | n/a | n/a | 0.00 | 0.00 |
 | **any Tier A rule** | 8 (1.60%) | 47 (9.40%) | 0.85 | 0.85 | 5.88 |  |  |
 | **any rule** | 30 (6.00%) | 126 (25.20%) | 0.81 | 0.81 | 4.20 |  |  |
 

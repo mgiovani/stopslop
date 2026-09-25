@@ -3,7 +3,11 @@
 Deterministic linter for AI slop in code and prose.
 
 ```bash
-just check                  # fmt, clippy, test, dogfood: the three CI gates plus the dogfood run
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+cargo run -- .              # dogfood this repo; Tier A findings exit 1
+just check                  # the four lines above, in CI's order
 cargo run -- . --list-rules # code, group, tier, default state
 cargo install --path .      # rebuild the binary before dogfooding a new rule
 just corpus                 # fetch, score, analyse and render the labelled-corpus benchmark

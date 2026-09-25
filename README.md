@@ -289,7 +289,7 @@ the type checker.
 ## Measured on labelled corpora
 
 `just corpus` runs every rule against labelled human-vs-AI corpora and
-rebuilds the report. For every rule, code language, and natural language it
+rebuilds the report. For every rule, per code language and per natural language, it
 prints the hit rate on the human split (a false-positive proxy), the hit rate
 on the AI split (a recall proxy), precision at a 1:1 human/AI prior, and
 findings per KLoC or per thousand words.
@@ -324,8 +324,8 @@ Splits that clear the bar are `pinned-2019` (a 2019 release tag, or a corpus
 built from pre-2020 sources) or `verified-authors` (exam essays written under
 supervision, professional annotators writing to a brief). Splits that do not
 are `unverified`: they are still fetched, scored and reported in full, but
-below a divider that says why, and they never enter the pooled human rates,
-the lift, the precision, or the takeaways.
+below a divider that says why, and they never enter any pooled number or
+takeaway.
 
 Every AI split carries the years of the models that wrote it, so a 2022 result
 is never read as a statement about a 2025 model.

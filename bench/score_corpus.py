@@ -126,13 +126,13 @@ KEEP_BACKTICKS = ("SLOP037", "SLOP038")
 EXT = {"python": "py", "go": "go", "rust": "rs", "typescript": "ts", "tsx": "tsx", "prose": "md"}
 JS_PROXY = "javascript written as .ts; SLOP007 cannot fire"
 
-# Applicable rules per lang, hand-transcribed from each RuleDef.langs in src/rules/*.rs.
+# Applicable rules per lang, hand-transcribed from each RuleDef.langs in src/rules/<group>/*.rs.
 # SLOP010 needs a manifest no cell carries, so it never fires; left out on purpose.
 # ponytail: add a langs column to `--list-rules`, read it here once that exists.
 APPLICABLE = {
     "python": (
         "SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP006", "SLOP008",
-        "SLOP009", "SLOP037", "SLOP039", "SLOP040", "SLOP042", "SLOP043",
+        "SLOP009", "SLOP037", "SLOP039", "SLOP040", "SLOP042", "SLOP043", "SLOP045",
     ),
     "go": (
         "SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP005", "SLOP008",
@@ -140,15 +140,17 @@ APPLICABLE = {
     ),
     "rust": (
         "SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP005", "SLOP008",
-        "SLOP009", "SLOP037", "SLOP039", "SLOP042", "SLOP043",
+        "SLOP009", "SLOP037", "SLOP039", "SLOP042", "SLOP043", "SLOP045",
     ),
     "typescript": (
         "SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP005", "SLOP007", "SLOP008",
         "SLOP009", "SLOP037", "SLOP038", "SLOP039", "SLOP040", "SLOP042", "SLOP043",
+        "SLOP045",
     ),
     "tsx": (
         "SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP005", "SLOP007", "SLOP008",
         "SLOP009", "SLOP037", "SLOP038", "SLOP039", "SLOP040", "SLOP042", "SLOP043",
+        "SLOP045",
     ),
     "prose": (
         "SLOP011", "SLOP012", "SLOP013", "SLOP014", "SLOP015", "SLOP016", "SLOP017",
@@ -160,7 +162,12 @@ APPLICABLE = {
 UNSCOREABLE_NOTE = (
     "SLOP010 names every code `Lang` too, but its check needs a dependency manifest a "
     "per-file corpus cell has no reason to carry, so it can never fire here and the "
-    "tables leave it out rather than show a rule that structurally cannot score."
+    "tables leave it out rather than show a rule that structurally cannot score. SLOP044 "
+    "(HTML) and SLOP046-SLOP048 (images) are left out for the plainer reason that no "
+    "registered dataset carries an HTML or image cell. SLOP045 reads only files of 60+ "
+    "non-blank lines, which excludes nearly every file in the snippet and contest corpora "
+    "(2.6% of AIGCodeSet's human `.py` files clear it): its 0% there means it barely ran, "
+    "not that it found nothing. The pinned standard libraries clear it (67% of rust-std)."
 )
 
 
@@ -1452,11 +1459,13 @@ DATASETS = {
         "generator_years": "GPT-4o, Llama 3, Qwen and other 2024 models (model column)",
         "human_provenance": "unverified",
         "human_note": "LeetCode and Codeforces solutions, undated, plus CodeSearchNet (2019)",
-        "na_rules": {"SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP042", "SLOP043"},
+        "na_rules": {"SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP042", "SLOP043",
+                     "SLOP045"},
         "caveats": [
             "Comments and docstrings are stripped by the publisher's extraction pass, so "
             "SLOP001-SLOP004, SLOP042 and SLOP043 print `n/a` here instead of a number that "
-            "would just measure the extraction, not the code.",
+            "would just measure the extraction, not the code. SLOP045 too: deleting comment "
+            "lines rewrites the line and block lengths it measures.",
         ],
         "fetch": fetch_hf_filter_cell,
         "cells": [
@@ -1476,10 +1485,11 @@ DATASETS = {
         "human_provenance": "pinned-2019",
         "human_note": "HMCorp: 16,928 non-forked GitHub repos sorted by stars, filtered from "
                       "CodeSearchNet (2019)",
-        "na_rules": {"SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP042", "SLOP043"},
+        "na_rules": {"SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP042", "SLOP043",
+                     "SLOP045"},
         "caveats": [
             "`docstring` ships as its own column, separate from `human_code`, so "
-            "SLOP001-SLOP004, SLOP042 and SLOP043 print `n/a` here the same way they do on "
+            "SLOP001-SLOP004, SLOP042, SLOP043 and SLOP045 print `n/a` here the same way they do on "
             "codet_m4: the extraction pass strips comments and docstrings out of the code "
             "columns, not the model.",
             "The file is 651 MB; `fetch_naples_code` streams it and stops once both samples "
@@ -2498,7 +2508,7 @@ def build_report(datasets_built, revisions, registry, args, not_fetched):
 # --------------------------------------------------------------------------------------
 
 README_RULE_ROW = re.compile(
-    r"^\| (SLOP\d{3}) \| (\w+) \| (.+?) \| ([AB]), (on|off)\s*\| (.+?) \| (.+?) \| (.+?) \|$")
+    r"^\| (SLOP\d{3}) \| (\w+) \| (.+?) \| ([ABC]), (on|off)\s*\| (.+?) \| (.+?) \| (.+?) \|$")
 
 
 def parse_rules(readme_text):
@@ -2799,6 +2809,7 @@ def self_check():
     assert parse_rules("| SLOP001 | artifact | Elision | A, on | Python, Go | en | drops code |\n") == {
         "SLOP001": {"group": "artifact", "name": "Elision", "tier": "A", "default": "on",
                     "langs": "Python, Go", "natlangs": "en", "desc": "drops code"}}
+    assert parse_rules("| SLOP045 | format | Uniform | C, off | Rust | en | flat |\n")["SLOP045"]["tier"] == "C"
 
     with tempfile.TemporaryDirectory() as tmp:
         # read_cell counts exactly what the walk will see: a dotfile is skipped by both, and
