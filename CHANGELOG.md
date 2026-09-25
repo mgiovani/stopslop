@@ -369,6 +369,10 @@ migration notes live here.
 
 ### Fixed
 
+- **The mid-prose dash rule no longer flags a spaced numeric range.** An en
+  dash with one space on each side between two digits, like `3 – 5` in a table
+  cell, is now exempt, the same as the tight `3–5`. Lopsided spacing
+  (`2024 –5`) and the em dash are still flagged.
 - **An image file that isn't a PNG, JPEG, or WebP now says so when skipped.**
   The message used to read "parse failed", which looked like a stopslop crash
   when the file was actually a placeholder, such as a 1-byte `.png`.
