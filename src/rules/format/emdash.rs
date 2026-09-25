@@ -30,7 +30,7 @@ const FIX: &str = "rewrite the sentence, or use a comma, colon, or parentheses";
 /// `spaced_ascii_dashes` below for why a longer hyphen run can't produce a false ` -- ` match). The
 /// en dash gets one extra exemption: a numeric range (`2020--2024`, `120--140ms`) is legitimate
 /// typography, not a rewritten em dash, so an en dash flanked on BOTH sides by an ASCII digit is
-/// silently allowed. The one allowed dash form (all three characters/forms alike) is the
+/// silently allowed, tight or evenly spaced (see `digit_flanked`). The one allowed dash form (all three characters/forms alike) is the
 /// attribution/quote convention -- a dash that opens a *block* (after optional
 /// whitespace/blockquote `>` markers), as in `-- Oscar Wilde` -- since that's a typographic
 /// convention, not mid-sentence punctuation. A dash opening a line that merely continues the
@@ -89,14 +89,20 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     }
 }
 
-/// True if the character immediately before and immediately after the char at `byte` (whose
-/// encoded length is `ch.len_utf8()`) are both ASCII digits -- the numeric-range exemption for the
-/// en dash.
+/// True if the char at `byte` (whose encoded length is `ch.len_utf8()`) sits between two ASCII
+/// digits, either tight (`3–5`) or with one space on each side (`3 – 5`) -- the numeric-range
+/// exemption for the en dash. The spacing must match on both sides: a table cell like `3 – 5` is
+/// a range, while `in 2024 –5` or `5 –onward` is a lopsided dash, not typography. The spaced form
+/// was 12 of 4,361 sampled findings in a run over a large mixed Markdown tree, all ranges.
 fn digit_flanked(masked: &str, byte: usize, ch: char) -> bool {
-    let before = masked[..byte].chars().next_back();
-    let after = masked[byte + ch.len_utf8()..].chars().next();
-    matches!(before, Some(c) if c.is_ascii_digit())
-        && matches!(after, Some(c) if c.is_ascii_digit())
+    let mut before = &masked[..byte];
+    let mut after = &masked[byte + ch.len_utf8()..];
+    if let (Some(b), Some(a)) = (before.strip_suffix(' '), after.strip_prefix(' ')) {
+        before = b;
+        after = a;
+    }
+    matches!(before.chars().next_back(), Some(c) if c.is_ascii_digit())
+        && matches!(after.chars().next(), Some(c) if c.is_ascii_digit())
 }
 
 /// Byte offsets (pointing at the first of the two hyphens) of every SPACED ascii double hyphen
@@ -405,6 +411,25 @@ mod tests {
     fn allows_en_dash_numeric_range() {
         let src = "Latency dropped from 120\u{2013}140ms to 95\u{2013}110ms this week.\n";
         assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn allows_spaced_en_dash_numeric_range() {
+        let src = "| Hashtags | 3 \u{2013} 5 |\n\nPost 2 \u{2013} 3 times a week.\n";
+        assert!(diagnostics_for(src).is_empty());
+    }
+
+    #[test]
+    fn flags_en_dash_with_lopsided_spacing_between_digits() {
+        let diags = diagnostics_for("Hired in 2024 \u{2013}5 people joined the team.\n");
+        assert_eq!(diags.len(), 1);
+    }
+
+    #[test]
+    fn flags_spaced_em_dash_between_digits() {
+        // The range exemption is the en dash's alone; an em dash between numbers is still prose.
+        let diags = diagnostics_for("We shipped 3 \u{2014} 5 of them broke.\n");
+        assert_eq!(diags.len(), 1);
     }
 
     #[test]
