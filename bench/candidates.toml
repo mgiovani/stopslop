@@ -25,7 +25,7 @@
 # A [[miss]] records a case an existing rule should have caught and did not.
 
 # Facts about the corpora that bound what any candidate below can show. Sourced from each
-# dataset's paper; the registry in bench/score_corpus.py carries the per-dataset subset.
+# dataset's paper; the registry in bench/corpus/registry.py carries the per-dataset subset.
 paper_caveats = [
   "CodeMirage regenerates every AI file to match its paired human file's line count and size and filters to BLEU < 0.5, so length and size tells are suppressed by construction.",
   "DroidCollection collected its human class after coding assistants were common and says so; its mitigation dropped the 7% most model-uncertain human samples rather than verified mislabels.",

@@ -7,70 +7,27 @@ migration notes live here.
 
 ### Added
 
-- **`bench/score_corpus.py` grows a multi-dataset, multi-language corpus
-  registry**, scoring every rule against labelled human-vs-machine corpora
-  instead of just AIGCodeSet/Python. Code coverage: TypeScript/TSX (CodeMirage,
-  Ant Design), Python (AIGCodeSet, CPython), Go (the Go standard library), Rust
-  (Rosetta Code, the Rust standard library). Every stdlib/library checkout in
-  that list is pinned to a pre-2022 tag. Prose coverage: English (HC3, MAGE,
-  Ghostbuster, CPython Doc, the Rust book) and Brazilian Portuguese (WETBench pt,
-  Diplomatrix-BR, Essay-BR, Wikipedia-PT). `CoDET-M4` and `DroidCollection`
-  add further code-language cells. Flags: `--datasets`, `--langs`, `--natlangs`,
-  `--limit` (default 500 per cell, a deterministic spread sample rather than
-  the first N), `--bin`, `--dir`, `--report`, `--local NAME=DIR:LABEL:LANG` for
-  a corpus outside the registry, `--skip-failures`, and `--self-check`. The
-  report table is per rule, per code language and per natural language: hit
-  rate on the human split, hit rate on the AI split, precision at a 1:1 prior,
-  and findings per KLoC or per thousand words. `bench/generate_corpus.py` (`uv
-  run`, PEP 723, Anthropic SDK, `claude-opus-5` default) synthesizes an AI
-  split for a cell that has no public one yet. Flags: `--cells` (default all
-  five synthesized cells, aliased as `pt-wiki`, `pt-essay`, `tsx`, `rust`,
-  `en-readme`), `--limit` (default 200 per cell), `--dir`, `--workers`,
-  `--model`, `--yes` to skip the spend confirmation, and `--self-check`.
-  These five synthesized cells are the only source of plain AI
-  Rust and the only source of a TSX AI split. Its output is raw model text and
-  costs money to run, and every synthesized file is marked as such. The
-  committed `bench/corpus_report.md` is regenerated
-  with `--report` and reviewed like any other change. Datasets are never
-  committed. CI does not run either script: both need the network and neither
-  gates a build.
-- **The corpus benchmark becomes four `just` commands, and a human split now
-  has to prove it is human.** `just corpus` runs the whole thing; the steps
-  split on the network boundary, so `just corpus-fetch` downloads and
-  materializes every cell into a `target/corpus/fetched.json` manifest and
-  `just corpus-score` reads that manifest. Nothing after the fetch touches the
-  network. `score_corpus.py` gains `--fetch-only`, `--no-fetch` and `--json`,
-  and the JSON it writes carries every cell's per-rule counts,
-  per-message tallies and flagged lines. A split counts as human only when its
-  text is dated 2019 or earlier or was written by identified people under
-  controlled conditions; every other split is fetched and reported in full but
-  below a divider, and never enters a pooled human rate, a lift or a
-  precision. The pinned checkouts move to 2019 tags (Go 1.13, CPython 3.8.0,
-  Rust 1.40.0, TypeScript 3.7.2, Ant Design 3.26.0, the Rust book before
-  2020), HC3, MAGE and Ghostbuster keep only their pre-2020 human sources, and
-  Wikipedia-PT is dropped because no pre-2020 Portuguese snapshot is
-  reachable. Thirteen more datasets join the registry: SemEval-2026 Task 13,
-  FAIDSet, Beemo, AIDev, APT-Eval, naples-code, SemEval-2024 Task 8, the GPT-2
-  output dataset, React docs, Kubernetes docs, LeNER-Br, H-AIRosettaMP and
-  PAN25. Every registered code dataset with a paired AI split had an
-  unverified human side, so precision and lift for every code language had
-  to pool a verified human rate from a pinned stdlib or compiler checkout
-  against an AI rate drawn from a different, unverified corpus. naples-code
-  pairs CodeSearchNet-2019 Python functions with gpt-3.5-turbo,
-  DeepSeek-Coder-Instruct-33B, and Qwen2.5-Coder-Instruct-32B completions of
-  those same functions in one corpus, the first registered code dataset that
-  needs no such compromise. Every AI split now states the years of the
-  models that wrote it.
+- **`bench/score_corpus.py` scores every rule against a multi-dataset,
+  multi-language corpus registry** covering several code and prose languages,
+  replacing the earlier AIGCodeSet/Python-only pass. `bench/generate_corpus.py`
+  (`uv run`, PEP 723, Anthropic SDK, `claude-opus-5-5` default) synthesizes
+  the AI split for the five cells no public dataset covers. Datasets are
+  never committed and CI runs neither script. README's "Measured on labelled
+  corpora" has the dataset list and every flag.
+- **The corpus benchmark becomes four `just` commands** (`corpus-fetch`,
+  `corpus-score`, `corpus-analyze`, `corpus-html`, chained by `just corpus`),
+  splitting fetch from scoring so nothing past the fetch step touches the
+  network. A human split counts toward the pooled rate only when it is dated
+  2019 or earlier or was written by identified people under controlled
+  conditions; everything else still gets reported, just never pooled.
+  README's "Measured on labelled corpora" has the rest.
 - **`bench/analyze_corpus.py`, `bench/candidates.toml` and
-  `bench/report_template.html`.** The analyzer measures three things with no
-  model and no network: every proposed tell in `candidates.toml`, each rule's
-  hit rate broken down by which message fired, and the n-grams that appear in
-  far more AI files than verified human ones. `candidates.toml` is the record
-  of those measurements, including the tells that were measured and dropped;
-  it changes nothing about what `stopslop` reports. `bench/render_report.py`
-  renders the template into a standalone `target/corpus/report.html`, which is
-  generated and never committed, because several registered datasets forbid
-  redistributing a derivative.
+  `bench/report_template.html`** find and record a rule candidate before it
+  becomes a rule, with no model call involved: `candidates.toml` holds each
+  proposed tell's measurement, tried or shipped either way, and
+  `bench/render_report.py` renders it to an uncommitted
+  `target/corpus/report.html`. Details in README's "Measured on labelled
+  corpora".
 - **SLOP045** (`format`, Tier C, off): flags a source file whose formatting
   barely varies, the code twin of SLOP041. Two signals, both required: the
   coefficient of variation of content line lengths (under 0.30) and of the

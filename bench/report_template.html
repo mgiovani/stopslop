@@ -297,36 +297,15 @@ const ruleCell = code => `<span class="rule"><span class="code">${code}</span><s
 const fraction = (f, t) => `${f}/${t}`;
 
 // ---------- Per-rule pooled numbers
-// Only verified human splits pool: a human side collected after assistants were common
-// cannot carry a false-positive rate, so it is shown but never averaged in. Pairing is not
-// required, because under the 2019 bar no code dataset clears it on both sides: the human
-// half of a code rule's row is the pinned checkouts and the AI half is somebody else's
-// corpus. The section note says so rather than reporting a zero the rule did not earn.
-const HUMAN = cells.filter(c => c.label === 'human' && verified(c.dataset));
-const AI = cells.filter(c => c.label === 'ai');
-const PAIRED = new Set(HUMAN.filter(h => cellOf(h.dataset, 'ai', h.lang)).map(h => h.dataset + '/' + h.lang));
-function pooled(code, list) { let f = 0, t = 0; list.forEach(c => { if (codesForLang(c.lang).includes(code) && !naFor(c.dataset).includes(code)) { f += hits(c, code); t += c.files; } }); return {f, t, r: pct(f, t)}; }
+// Pooling and the verdict come from D.scoreboard (bench/corpus/results.py), not recomputed
+// here, so the page can never drift from bench/analyze_corpus.py's candidate_verdict().
 const VERDICT = {sep: 'separates', weak: 'leans AI', chance: 'at chance', inv: 'leans human', nodata: 'too few hits'};
 const RANK = {sep: 0, weak: 1, chance: 2, inv: 3, nodata: 4};
-// Mirrors bench/analyze_corpus.py's candidate_verdict() exactly (MIN_AI_FILES,
-// SEPARATES_LIFT, SEPARATES_RATE) -- that function is the source of these numbers, so a rule
-// gets one verdict whether it's read here or in the candidate section below.
-const MIN_AI_FILES = 15, SEPARATES_LIFT = 3, SEPARATES_RATE = 1;
-function verdict(h, a) {
-  if (a.f < MIN_AI_FILES) return 'nodata';
-  const lift = h.r ? a.r / h.r : Infinity; // a.f >= MIN_AI_FILES > 0 so a.r > 0 always
-  if (lift === Infinity || (lift >= SEPARATES_LIFT && a.r >= SEPARATES_RATE)) return 'sep';
-  if (lift >= 1.5) return 'weak';
-  if (lift < 0.67) return 'inv';
-  return 'chance';
-}
-const sbRows = Object.keys(RULES).filter(c => Object.values(D.applicable).some(l => l.includes(c))).map(code => {
-  const h = pooled(code, HUMAN), a = pooled(code, AI);
-  const b = pooled(code, HUMAN.filter(c => !PAIRED.has(c.dataset + '/' + c.lang)));
-  const lift = h.r ? a.r / h.r : (a.r ? Infinity : NaN);
-  const dsHits = ORDER.filter(ds => (byDs[ds]||[]).some(c => hits(c, code) > 0));
-  return {code, h, a, b, lift, v: verdict(h, a), dsHits, any: cells.reduce((s, c) => s + hits(c, code), 0)};
-});
+const sbRows = D.scoreboard.map(r => ({
+  code: r.code, h: r.h, a: r.a, b: r.b,
+  lift: r.lift !== null ? r.lift : (r.a.r > 0 ? Infinity : NaN),
+  v: r.verdict, dsHits: r.ds_hits, any: r.any,
+}));
 
 // ---------- Takeaways, computed from the same rows as the table
 const liftKey = r => r.v === 'nodata' ? -2 : isNaN(r.lift) ? -1 : r.lift === Infinity ? 1e9 : r.lift;

@@ -95,6 +95,8 @@ def main():
         raise SystemExit(f"{args.results}: no results; run just corpus-score first")
     with open(args.results, encoding="utf-8") as fh:
         results = json.load(fh)
+    if "scoreboard" not in results:
+        raise SystemExit(f"{args.results}: no scoreboard; rerun just corpus-score to regenerate it")
     analysis = None
     if args.analysis and os.path.exists(args.analysis):
         with open(args.analysis, encoding="utf-8") as fh:

@@ -14,7 +14,7 @@ Three passes, none of which calls a model:
               files, which is where the next candidate comes from.
 
 Everything is measured against **verified** human splits: a dataset whose human side postdates
-the 2019 bar (see `score_corpus.human_provenance`) is reported separately and never pooled
+the 2019 bar (see each dataset's `human_provenance` in `bench/corpus/registry.py`) is reported separately and never pooled
 into a human rate, a lift or a precision. AI splits other than plain `ai` (paraphrased,
 refined, adversarial, polished, edited) are robustness variants and are likewise reported
 separately, never pooled.
@@ -31,15 +31,12 @@ import re
 import sys
 import tomllib
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# bench/ is on sys.path[0] when run as `python3 bench/analyze_corpus.py`, which is where the
+# `corpus` package lives.
+from corpus.common import APPLICABLE, EXT, VERIFIED, sample_indices  # noqa: F401  (re-exported)
+from corpus.lint import clip
+from corpus.metrics import MIN_AI_FILES, SEPARATES_LIFT, SEPARATES_RATE, lift, pct, precision, rule_verdict
 
-from score_corpus import (  # noqa: E402  (sys.path is set above)
-    APPLICABLE, EXT, VERIFIED, clip, lift, pct, precision, sample_indices,
-)
-
-# A candidate needs this many AI files before its rate is worth reading; below it, one file
-# moves the number by more than the difference the candidate claims to show.
-MIN_AI_FILES = 15
 # Phrase differential: how many n-grams to keep per lang, and how many example lines each.
 TOP_PHRASES = 150
 PHRASE_EXAMPLES = 3
@@ -48,10 +45,6 @@ PHRASE_EXAMPLES = 3
 MAX_N = 4
 # Flagged lines quoted per split for a candidate.
 CAND_EXAMPLES = 6
-# A candidate "separates" when it is both frequent enough on AI files to matter and far more
-# frequent there than on verified human files. Same shape as the report's verdict thresholds.
-SEPARATES_LIFT = 3.0
-SEPARATES_RATE = 1.0
 # Per-message rows below this share of the rule's files fold into one "rarer" row.
 # Percent on the pct() 0-100 scale, like SEPARATES_RATE: 2% is 2.0, and 0.02 folded nothing.
 MESSAGE_FLOOR = 2.0
@@ -385,19 +378,14 @@ def pool(results, tally, wanted_class):
     return {"files": files, "hit": hit, "rate": pct(hit, files)}
 
 
+# bench/report_template.html's sbRows reads rule_verdict's key straight off results.json's
+# scoreboard; this table is the only place left that needs the reader-facing label.
+VERDICT_LABEL = {"nodata": "too few hits", "sep": "separates", "weak": "leans AI",
+                  "inv": "leans human", "chance": "at chance"}
+
+
 def candidate_verdict(human, ai):
-    if ai["hit"] < MIN_AI_FILES:
-        return "too few hits"
-    # ai["hit"] >= MIN_AI_FILES > 0 here, so ai["rate"] > 0 and lift() can never return "n/a"
-    # (its "neither side fires" case).
-    ratio = lift(human["rate"], ai["rate"])
-    if ratio == "inf" or (ratio >= SEPARATES_LIFT and ai["rate"] >= SEPARATES_RATE):
-        return "separates"
-    if isinstance(ratio, float) and ratio >= 1.5:
-        return "leans AI"
-    if isinstance(ratio, float) and ratio < 0.67:
-        return "leans human"
-    return "at chance"
+    return VERDICT_LABEL[rule_verdict(human["hit"], human["files"], ai["hit"], ai["files"])]
 
 
 def candidate_rows(results, root, data, args):
@@ -806,7 +794,7 @@ def build_analysis_report(payload):
 # Self-check + CLI.
 # --------------------------------------------------------------------------------------
 
-def self_check():
+def _check_comment_scanning():
     blanked = blank_strings('x = "a # b"  # real', "python")
     assert blanked == "x =          # real" and len(blanked) == len('x = "a # b"  # real')
     assert blank_strings('s = """\nline\n"""\n', "python").count("\n") == 3
@@ -831,6 +819,8 @@ def self_check():
     assert scope_lines("first\n\nlast one\n", "prose", "last-block") == [(3, "last one")]
     assert scope_lines("only\n", "prose", "line") == [(1, "only")]
 
+
+def _check_candidate_scoping():
     assert candidate_langs({"langs": "code", "name": "x"}) == set(CODE_LANGS)
     assert candidate_langs({"langs": "prose", "name": "x"}) == {"prose"}
     assert candidate_langs({"langs": "python, go", "name": "x"}) == {"python", "go"}
@@ -848,6 +838,8 @@ def self_check():
         "a code dataset states no natural language, so a natlangs restriction cannot exclude it"
     assert cell_matches_natlangs(nat_results, {"dataset": "pt-ds"}, None) is True
 
+
+def _check_phrase_tokenizing():
     assert tokenize("It's a test, isn't it?") == ["it's", "a", "test", "isn't", "it"]
     assert tokenize("ĠconclusionĊthe end") == ["conclusion", "the", "end"]
     assert file_ngrams(["a b a b"], 2) == {("a", "b"), ("b", "a")}
@@ -855,6 +847,8 @@ def self_check():
     # a BPE-marked MAGE line could never find an example to quote.
     assert re.compile(r"\bthe end\b").search(BPE_MARKERS.sub(" ", "ĠconclusionĊthe end"))
 
+
+def _check_candidate_verdict():
     assert candidate_verdict({"rate": 0.0, "hit": 0, "files": 10}, {"rate": 0.0, "hit": 0, "files": 10}) == "too few hits"
     assert candidate_verdict({"rate": 0.0, "hit": 0, "files": 100}, {"rate": 5.0, "hit": 50, "files": 1000}) == "separates"
     assert candidate_verdict({"rate": 2.0, "hit": 20, "files": 1000}, {"rate": 8.0, "hit": 80, "files": 1000}) == "separates"
@@ -871,6 +865,8 @@ def self_check():
     assert [r["measured"]["verdict"] for r in sorted(fake_rows, key=verdict_sort_key)] == [
         "separates", "leans AI", "too few hits"]
 
+
+def _check_cell_classification():
     results = {
         "datasets": {"pinned": {"human_provenance": "pinned-2019"}, "recent": {"human_provenance": "unverified"}},
         "na_rules": {"codet_m4": ["SLOP042", "SLOP043"]},
@@ -883,6 +879,8 @@ def self_check():
         "codet_m4 strips every comment; a comment-scope candidate must skip its cells"
     assert cell_has_comments(results, {"dataset": "pinned"})
 
+
+def _check_candidates_toml():
     # The shipped regexes must still match the shape they were written for. The backslash-n
     # one is two literal backslashes; a TOML edit turning it into a newline measures nothing.
     here = os.path.dirname(os.path.abspath(__file__))
@@ -900,6 +898,8 @@ def self_check():
     fence = compile_candidate(by_name[next(n for n in by_name if n.startswith("Bare fence"))])
     assert fence.search("python  ") and fence.search(" rust,") and not fence.search("go func main() {")
 
+
+def _check_message_rows():
     msg = "robotic rhythm: three or more sentences open with `X`"
     rows = message_rows({
         "cells": [
@@ -932,6 +932,15 @@ def self_check():
     assert [m["message"] for m in floor_rows[0]["messages"]] == ["common"], floor_rows[0]["messages"]
     assert floor_rows[0]["folded"] == 1
 
+
+def self_check():
+    _check_comment_scanning()
+    _check_candidate_scoping()
+    _check_phrase_tokenizing()
+    _check_candidate_verdict()
+    _check_cell_classification()
+    _check_candidates_toml()
+    _check_message_rows()
     print("ok")
 
 
