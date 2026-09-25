@@ -101,50 +101,138 @@ fn emit_sarif(
         })
         .collect();
 
-    let results: Vec<_> = diags
-        .iter()
-        .map(|d| {
-            let level = match d.tier {
-                Tier::A => "error",
-                Tier::B => "warning",
-            };
-            let text = match &d.fix {
-                Some(fix) => format!("{} (fix: {fix})", d.message),
-                None => d.message.clone(),
-            };
-            serde_json::json!({
-                "ruleId": d.code,
-                "level": level,
-                "message": { "text": text },
-                "locations": [ {
-                    "physicalLocation": {
-                        "artifactLocation": { "uri": strip_dot_slash(&d.path) },
-                        "region": { "startLine": d.line, "startColumn": d.col },
-                    }
-                } ],
-            })
-        })
-        .collect();
-
-    let mut doc = serde_json::json!({
-        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-        "version": "2.1.0",
-        "runs": [ {
-            "tool": {
-                "driver": {
-                    "name": "stopslop",
-                    "informationUri": "https://github.com/mgiovani/stopslop",
-                    "rules": rules,
-                }
+    let doc = SarifDoc {
+        schema: SARIF_SCHEMA,
+        version: "2.1.0",
+        runs: [SarifRun {
+            tool: SarifTool {
+                driver: SarifDriver {
+                    name: "stopslop",
+                    information_uri: "https://github.com/mgiovani/stopslop",
+                    rules,
+                },
             },
-            "results": results,
-        } ],
-    });
-    if let Some(stats) = stats {
-        doc["runs"][0]["properties"] = serde_json::json!({ "stats": stats });
-    }
+            results: SarifResults(diags),
+            properties: stats.map(|stats| serde_json::json!({ "stats": stats })),
+        }],
+    };
     serde_json::to_writer_pretty(&mut *w, &doc)?;
     writeln!(w)
+}
+
+const SARIF_SCHEMA: &str =
+    "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json";
+
+#[derive(serde::Serialize)]
+struct SarifDoc<'a> {
+    #[serde(rename = "$schema")]
+    schema: &'static str,
+    version: &'static str,
+    runs: [SarifRun<'a>; 1],
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifRun<'a> {
+    tool: SarifTool,
+    results: SarifResults<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    properties: Option<serde_json::Value>,
+}
+
+#[derive(serde::Serialize)]
+struct SarifTool {
+    driver: SarifDriver,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifDriver {
+    name: &'static str,
+    information_uri: &'static str,
+    /// One entry per enabled rule, so this stays bounded by the rule table however large the
+    /// document is -- unlike `results`, which is one entry per finding.
+    rules: Vec<serde_json::Value>,
+}
+
+/// The `results` array, serialized straight off the diagnostics slice. Collecting it into a
+/// `Vec<serde_json::Value>` first held one owned map, string, and nested location object alive
+/// per finding until the whole document had been written: on `headings_20mb.md` (~195k findings)
+/// that peaked at 398 MB against `--format json`'s 143 MB for the same run. Serializing lazily
+/// keeps one result alive at a time (issue #21).
+struct SarifResults<'a>(&'a [Diagnostic]);
+
+impl serde::Serialize for SarifResults<'_> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+        let mut seq = s.serialize_seq(Some(self.0.len()))?;
+        for d in self.0 {
+            seq.serialize_element(&SarifResult {
+                rule_id: d.code,
+                level: match d.tier {
+                    Tier::A => "error",
+                    Tier::B => "warning",
+                },
+                message: SarifMessage {
+                    text: match &d.fix {
+                        Some(fix) => format!("{} (fix: {fix})", d.message),
+                        None => d.message.clone(),
+                    },
+                },
+                locations: [SarifLocation {
+                    physical_location: SarifPhysicalLocation {
+                        artifact_location: SarifArtifactLocation {
+                            uri: strip_dot_slash(&d.path),
+                        },
+                        region: SarifRegion {
+                            start_line: d.line,
+                            start_column: d.col,
+                        },
+                    },
+                }],
+            })?;
+        }
+        seq.end()
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifResult<'a> {
+    rule_id: &'static str,
+    level: &'static str,
+    message: SarifMessage,
+    locations: [SarifLocation<'a>; 1],
+}
+
+#[derive(serde::Serialize)]
+struct SarifMessage {
+    text: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifLocation<'a> {
+    physical_location: SarifPhysicalLocation<'a>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifPhysicalLocation<'a> {
+    artifact_location: SarifArtifactLocation<'a>,
+    region: SarifRegion,
+}
+
+#[derive(serde::Serialize)]
+struct SarifArtifactLocation<'a> {
+    uri: &'a str,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SarifRegion {
+    start_line: usize,
+    start_column: usize,
 }
 
 pub fn render_stats(s: &Stats) -> String {
@@ -200,6 +288,37 @@ mod tests {
             doc["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]
                 ["uri"],
             "README.md"
+        );
+    }
+
+    /// The streamed `results` array must carry everything the `json!` tree carried: the tier's
+    /// SARIF level, the fix folded into the message, and the 1-based region.
+    #[test]
+    fn sarif_result_carries_level_fix_and_region() {
+        let diags = vec![Diagnostic {
+            code: "SLOP001",
+            name: "test",
+            tier: Tier::A,
+            path: "src/a.rs".to_string(),
+            line: 12,
+            col: 3,
+            message: "elision comment".into(),
+            fix: Some("delete the comment".into()),
+        }];
+        let mut out = Vec::new();
+        emit_sarif(&diags, &HashSet::new(), None, &mut out).unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        let r = &doc["runs"][0]["results"][0];
+        assert_eq!(r["ruleId"], "SLOP001");
+        assert_eq!(r["level"], "error");
+        assert_eq!(
+            r["message"]["text"],
+            "elision comment (fix: delete the comment)"
+        );
+        let region = &r["locations"][0]["physicalLocation"]["region"];
+        assert_eq!(
+            (&region["startLine"], &region["startColumn"]),
+            (&12.into(), &3.into())
         );
     }
 
@@ -271,6 +390,7 @@ mod tests {
         let stats = Stats {
             files: 3,
             skipped: 1,
+            panicked: 0,
             lines: 42,
             wall_secs: 0.1,
             lines_per_sec: 420,
@@ -294,6 +414,7 @@ mod tests {
         let stats = Stats {
             files: 3,
             skipped: 1,
+            panicked: 0,
             lines: 42,
             wall_secs: 0.1,
             lines_per_sec: 420,
@@ -315,6 +436,7 @@ mod tests {
         let stats = Stats {
             files: 3,
             skipped: 1,
+            panicked: 0,
             lines: 42,
             wall_secs: 0.1,
             lines_per_sec: 420,
@@ -338,6 +460,7 @@ mod tests {
         let stats = Stats {
             files: 230,
             skipped: 12,
+            panicked: 0,
             lines: 15918,
             wall_secs: 0.092,
             lines_per_sec: 172241,

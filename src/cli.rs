@@ -246,6 +246,9 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         None => diags,
     };
 
+    // Captured before `stats` is shadowed by the `--stats` Option: the exit code must reflect a
+    // panicked file whether or not the user asked for the stats block.
+    let panicked = stats.panicked;
     let stats = cli.stats.then(|| stats.with_wall(started.elapsed()));
     let stdout = std::io::stdout();
     let mut w = stdout.lock();
@@ -263,13 +266,20 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         update_notice();
     }
 
-    Ok(exit_code(&diags, fail_on))
+    if panicked > 0 {
+        eprintln!("stopslop: {panicked} file(s) skipped after a rule panicked");
+    }
+    Ok(exit_code(&diags, fail_on, panicked))
 }
 
 /// One stderr line when crates.io has a newer stable release, checked at most once per 24h
 /// (update-informer caches under the platform cache dir). Skipped in CI, on opt-out, and when
 /// stderr is not a terminal, so scripts and the pr-comment workflow never see it. Every failure
 /// (offline, timeout, unwritable cache) is swallowed: this must never change the exit code.
+///
+/// The request carries an explicit timeout because this runs AFTER output, on the way out: with
+/// the crate's own default, a half-open network held the process open long after the lint the
+/// user was waiting on had finished (issue #21, H3).
 fn update_notice() {
     let opted_out = ["CI", "STOPSLOP_NO_UPDATE_CHECK", "NO_UPDATE_NOTIFIER"]
         .iter()
@@ -278,7 +288,9 @@ fn update_notice() {
         return;
     }
     let current = env!("CARGO_PKG_VERSION");
-    let informer = update_informer::new(update_informer::registry::Crates, "stopslop", current);
+    // Two seconds: above a healthy crates.io round trip, below what a hung one used to cost.
+    let informer = update_informer::new(update_informer::registry::Crates, "stopslop", current)
+        .timeout(std::time::Duration::from_secs(2));
     // The crate reports the newest published version, not crates.io's max_stable_version, so a
     // pre-release is filtered here rather than advertised.
     if let Ok(Some(latest)) = informer.check_version() {
@@ -292,10 +304,14 @@ fn update_notice() {
     }
 }
 
-/// 1 if any finding is at or above `fail_on` in severity, else 0. Split out of `run` so the
-/// tier-gating contract is testable without a filesystem walk.
-fn exit_code(diags: &[Diagnostic], fail_on: Tier) -> i32 {
-    if diags.iter().any(|d| d.tier.at_least_as_severe_as(fail_on)) {
+/// 2 if any file was skipped because a rule panicked, else 1 if any finding is at or above
+/// `fail_on` in severity, else 0. A crashed rule outranks the findings: the report is
+/// incomplete, so a clean-looking 0 would be a lie. Split out of `run` so both contracts are
+/// testable without a filesystem walk.
+fn exit_code(diags: &[Diagnostic], fail_on: Tier, panicked: u64) -> i32 {
+    if panicked > 0 {
+        2
+    } else if diags.iter().any(|d| d.tier.at_least_as_severe_as(fail_on)) {
         1
     } else {
         0
@@ -398,15 +414,24 @@ mod tests {
 
     #[test]
     fn fail_on_tier_a_ignores_tier_b_findings() {
-        assert_eq!(exit_code(&[diag_at(Tier::B)], Tier::A), 0);
-        assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::A), 1);
+        assert_eq!(exit_code(&[diag_at(Tier::B)], Tier::A, 0), 0);
+        assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::A, 0), 1);
     }
 
     #[test]
     fn fail_on_tier_b_gates_on_any_finding() {
-        assert_eq!(exit_code(&[diag_at(Tier::B)], Tier::B), 1);
-        assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::B), 1);
-        assert_eq!(exit_code(&[], Tier::B), 0);
+        assert_eq!(exit_code(&[diag_at(Tier::B)], Tier::B, 0), 1);
+        assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::B, 0), 1);
+        assert_eq!(exit_code(&[], Tier::B, 0), 0);
+    }
+
+    /// A panicked file outranks the findings: the report is incomplete, so exit 2 even when what
+    /// did get linted is clean, and even when a Tier A finding would otherwise have said 1.
+    #[test]
+    fn a_panicked_file_exits_2_whatever_the_findings_say() {
+        assert_eq!(exit_code(&[], Tier::A, 1), 2);
+        assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::A, 1), 2);
+        assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::A, 0), 1);
     }
 
     #[test]
