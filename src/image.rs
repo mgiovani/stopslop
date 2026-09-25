@@ -19,6 +19,7 @@ pub struct MetaField {
     /// ("caBX", "eXIf").
     pub key: String,
     /// UTF-8-lossy text, or a `printable` extract for a binary payload. Empty when `compressed`.
+    /// A UTF-16 EXIF `UserComment` evades `printable` too: its 0x00 high bytes break every run.
     pub value: String,
     /// Byte offset where the containing chunk/segment record starts in the file: the length
     /// prefix for PNG and JPEG, the FourCC for WebP (whichever field each format's walk reads
