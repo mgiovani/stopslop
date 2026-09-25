@@ -10,6 +10,9 @@ categories = ["command-line-utilities", "development-tools"]
 # 2.7 MB of README art that the README now links by absolute URL anyway.
 exclude = ["assets/*"]
 
+# System allocator on purpose: mimalloc took a 3-line lint from 18.5 to 15.7 ms, still over the
+# 10 ms target, and pushed the 20 MB stress file's RSS from ~145 to 152-160 MB, over the 150 MB
+# target. Measured and declined in issue #21.
 [dependencies]
 tree-sitter = "0.26"
 tree-sitter-typescript = "0.23"

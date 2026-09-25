@@ -111,6 +111,8 @@ fn unmatched_patterns<'a>(pats: &'a [String], custom_codes: &[&'static str]) -> 
 /// Compiles every enabled prose rule's regex statics on its own thread while the caller walks
 /// the tree: that one-time compile tax (~24 ms serially) is most of a run over a few files.
 /// AST rules are skipped; their compile cost is in the noise next to the walk (issue #21).
+/// One thread per rule on purpose: dealing the rules onto a bounded `available_parallelism` pool
+/// moved the wall 1.01 ± 0.07x over 200 runs (issue #21), under the bar for landing.
 pub fn prewarm<'scope>(scope: &'scope std::thread::Scope<'scope, '_>, settings: &Settings) {
     for &rule in RULES {
         if settings.enabled.contains(rule.code) && rule.langs.contains(&Lang::Md) {
@@ -206,6 +208,11 @@ pub fn lint_file(
 /// bilingual rules run exactly as before -- and it feeds SLOP033's Portuguese sentence-length cap
 /// (`sentence_length::OVERLONG_WORDS_PT_BR`), since that only activates when the file's own
 /// `natlangs` resolves to Portuguese alone.
+///
+/// Rules run one after another on this thread. Intra-file rule parallelism was measured and
+/// declined in issue #21: the slowest rule (SLOP033, 292 ms of a 1.73 s run on a 20 MB file)
+/// caps it at ~6x, a shared `ProseDoc` breaks `col_memo`'s ascending-offset order, and one
+/// `ProseDoc` per worker breaks the 150 MB RSS target.
 fn lint_prose(
     display_path: String,
     source: &str,
