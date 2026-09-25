@@ -132,7 +132,10 @@ impl Accumulator {
                 self.diags.lock().unwrap().append(&mut found);
             }
             Some(None) => {
-                eprintln!("stopslop: parse failed, skipping {}", path.display());
+                eprintln!(
+                    "stopslop: skipping {}: not a PNG, JPEG, or WebP",
+                    path.display()
+                );
                 self.skipped.fetch_add(1, Ordering::Relaxed);
             }
             None => {

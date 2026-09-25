@@ -369,6 +369,9 @@ migration notes live here.
 
 ### Fixed
 
+- **An image file that isn't a PNG, JPEG, or WebP now says so when skipped.**
+  The message used to read "parse failed", which looked like a stopslop crash
+  when the file was actually a placeholder, such as a 1-byte `.png`.
 - **The Markdown report's Tier B heading no longer claims Tier B never fails
   the build.** It now says Tier B gates only under `fail-on-tier = "B"` or
   `"C"`, matching the Tier C heading.
