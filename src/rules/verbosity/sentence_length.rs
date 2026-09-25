@@ -20,6 +20,12 @@ pub static RULE: RuleDef = RuleDef {
 
 static WORD_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\S+").unwrap());
 
+/// Closing quotes/brackets that can sit after a sentence's terminal punctuation without hiding it
+/// (`He said "stop." Then …`): trimmed off the word's end before the `ends_with` check below, so
+/// dialogue-heavy prose doesn't undercount its sentences by reading the quote/bracket as the last
+/// character instead of the period underneath it (issue #61).
+const TRAILING_CLOSERS: &[char] = &['"', '\'', '\u{201D}', '\u{2019}', ')', ']'];
+
 // Tuned to 50, not the spec's 35: fixtures owned by other rules (e.g. clean_hedging.md)
 // legitimately run up to 47 words in non-slop prose. 50 stays above that ceiling while still
 // catching genuine run-ons.
@@ -157,7 +163,10 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         last_url_span = url_span;
         prev_line = Some(line);
 
-        if m.as_str().ends_with(['.', '!', '?']) {
+        if m.as_str()
+            .trim_end_matches(TRAILING_CLOSERS)
+            .ends_with(['.', '!', '?'])
+        {
             close_sentence!();
         }
     }
@@ -246,6 +255,17 @@ mod tests {
     #[test]
     fn clean_sentence_at_threshold() {
         let src = format!("{}\n", words(OVERLONG_WORDS, "."));
+        assert!(diagnostics_for(&src).is_empty());
+    }
+
+    #[test]
+    fn trailing_closing_quote_does_not_hide_the_terminator() {
+        // Without trimming the closing quote, "stop." followed immediately by `"` would read as
+        // not ending in [.!?], gluing this sentence onto the next one.
+        let src = format!(
+            "He said \"stop.\" Then {}.\n",
+            words(OVERLONG_WORDS - 2, "")
+        );
         assert!(diagnostics_for(&src).is_empty());
     }
 
