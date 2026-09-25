@@ -258,7 +258,7 @@ DEFAULT columns so you can check any given rule at a glance:
   stays opt-in until it has been: enable it with
   `extend-select = ["SLOP045"]` or `--extend-select SLOP045`. A
   `[[custom-rule]]` may declare `tier = "C"` to keep itself off the exit-1
-  path. Custom rules are always on by default whatever their tier, because you
+  path unless `fail-on-tier = "C"`. Custom rules are always on by default whatever their tier, because you
   wrote them.
 
 Tier is a fixed property of each rule, and select/ignore can't change it.

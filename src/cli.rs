@@ -430,10 +430,10 @@ mod tests {
 
     #[test]
     fn tier_c_findings_gate_only_under_fail_on_tier_c() {
-        assert_eq!(exit_code(&[diag_at(Tier::C)], Tier::A), 0);
-        assert_eq!(exit_code(&[diag_at(Tier::C)], Tier::B), 0);
-        assert_eq!(exit_code(&[diag_at(Tier::C)], Tier::C), 1);
-        assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::C), 1);
+        assert_eq!(exit_code(&[diag_at(Tier::C)], Tier::A, 0), 0);
+        assert_eq!(exit_code(&[diag_at(Tier::C)], Tier::B, 0), 0);
+        assert_eq!(exit_code(&[diag_at(Tier::C)], Tier::C, 0), 1);
+        assert_eq!(exit_code(&[diag_at(Tier::A)], Tier::C, 0), 1);
     }
 
     #[test]

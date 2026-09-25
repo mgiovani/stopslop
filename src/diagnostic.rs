@@ -1,10 +1,11 @@
 use serde::Serialize;
 
-/// Severity ONLY. `A` exits 1 (blocks CI); `B` is advisory and never affects the exit code;
-/// `C` is advisory too and marks a rule whose threshold has not been validated against a
-/// labelled corpus yet, so it is never on by default. Independent of `RuleDef::default_on` --
-/// a rule can be Tier B (advisory) and still on by default (a judgment-call rule you want
-/// surfaced but never gating), so tier and default-on are two separate axes, not a 1:1 pair.
+/// Severity ONLY. `A` exits 1 (blocks CI); `B` is advisory and affects the exit code only under
+/// `fail-on-tier = "B"` or `"C"`; `C` is advisory too, gates only under `fail-on-tier = "C"`, and
+/// marks a rule whose threshold has not been validated against a labelled corpus yet, so it is
+/// never on by default. Independent of `RuleDef::default_on` -- a rule can be Tier B (advisory)
+/// and still on by default (a judgment-call rule you want surfaced without gating by default),
+/// so tier and default-on are two separate axes, not a 1:1 pair.
 /// The one place they are coupled is Tier C, where `registry::tier_c_rules_are_default_off`
 /// enforces `default_on: false`: an uncalibrated rule that switched itself on would be noise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

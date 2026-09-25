@@ -33,7 +33,10 @@ fn emit_markdown(diags: &[Diagnostic], w: &mut impl Write) -> std::io::Result<()
     for (tier, heading) in [
         (Tier::A, "Tier A -- these fail the build"),
         (Tier::B, "Tier B -- advisory, they do not fail the build"),
-        (Tier::C, "Tier C -- experimental, opt-in and never gating"),
+        (
+            Tier::C,
+            "Tier C -- experimental, opt-in, gates only with fail-on-tier = \"C\"",
+        ),
     ] {
         let group: Vec<_> = diags.iter().filter(|d| d.tier == tier).collect();
         if group.is_empty() {
