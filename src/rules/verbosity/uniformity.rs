@@ -32,7 +32,7 @@ use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{self, PROSE_LANGS};
 use crate::prose::ProseDoc;
 use crate::registry::RuleDef;
-use crate::rules::fragmentation;
+use crate::rules::rhetoric::fragmentation;
 use std::collections::HashSet;
 
 pub static RULE: RuleDef = RuleDef {

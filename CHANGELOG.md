@@ -292,6 +292,12 @@ migration notes live here.
 
 ### Changed
 
+- **Rule modules grouped by directory.** `src/rules/` now has one subdirectory
+  per group (`artifact/`, `structure/`, `stdlib/`, `rhetoric/`, `verbosity/`,
+  `sourcing/`, `format/`, `provenance/`), so a rule's library path is
+  `stopslop::rules::<group>::<module>`. Rule codes, group names, `--list-rules`
+  output, and the `stopslop::imports_data` re-export are unchanged. See
+  [#7](https://github.com/mgiovani/stopslop/issues/7).
 - **Paragraph blocks are built once per document.** Five default-on rules
   asked `fragmentation::paragraph_blocks` for the same list on every Markdown
   file: SLOP030, SLOP034, SLOP041, and SLOP011 twice, once per natlang panel.

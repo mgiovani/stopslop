@@ -3,7 +3,7 @@ use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{NatLang, CODE_LANGS};
 use crate::prose_words::REASONING_CHAIN_FRAGMENT;
 use crate::registry::RuleDef;
-use crate::rules::residue::REASONING_CHAIN_FRAGMENT_PT_BR;
+use crate::rules::artifact::residue::REASONING_CHAIN_FRAGMENT_PT_BR;
 use regex::Regex;
 use std::sync::LazyLock;
 

@@ -2,7 +2,7 @@ use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang;
 use crate::registry::RuleDef;
-use crate::rules::image_prompt;
+use crate::rules::provenance::image_prompt;
 
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP047",

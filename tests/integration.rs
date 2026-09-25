@@ -148,7 +148,7 @@ fn every_declared_lang_has_a_fixture_witness() {
 
     let mut missing = Vec::new();
     for rule in stopslop::registry::RULES {
-        // SLOP010 is opt-in; its languages are covered by unit tests in src/rules/imports.rs.
+        // SLOP010 is opt-in; its languages are covered by unit tests in src/rules/structure/imports.rs.
         if !enabled.contains(rule.code) {
             continue;
         }
