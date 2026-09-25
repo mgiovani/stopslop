@@ -5,7 +5,7 @@
 //! `UNEXERCISED_LANGS` doc comment for why `Lang::Image` is excepted from it).
 
 use std::collections::HashSet;
-use stopslop::{lint_image, resolve_enabled, Settings, ALL_NATLANGS};
+use stopslop::{lint_image, resolve_enabled, Settings, Tier, ALL_NATLANGS};
 
 /// Selects the whole `"SLOP"` group, same as `tests/integration.rs`'s text-fixture harness, so an
 /// unrelated rule over-firing on one of these fixtures is caught rather than silently masked by
@@ -250,14 +250,29 @@ fn c2pa_camera_provenance_with_no_ai_vocabulary_is_clean() {
     assert!(codes(&bytes).is_empty());
 }
 
-/// The disjointness guard: a ComfyUI PNG's own `prompt` field literally contains "ComfyUI" in
-/// its JSON, but that fact belongs to SLOP046 alone -- SLOP048 must skip any field whose key is
-/// in SLOP046's panel, or the same file double-reports one signal.
+/// The disjointness guard: a ComfyUI PNG's own `prompt` and `workflow` fields literally contain
+/// "ComfyUI" in their JSON, but that fact belongs to SLOP046 alone -- SLOP048 must skip every
+/// field SLOP046 owns, or the same file double-reports one signal.
 #[test]
 fn comfyui_named_inside_its_own_prompt_field_is_slop046_only() {
     let json = r#"{"generator": "ComfyUI", "nodes": []}"#;
-    let bytes = png(&[("tEXt", &text_chunk("prompt", json)), ("IEND", &[])]);
+    let bytes = png(&[
+        ("tEXt", &text_chunk("prompt", json)),
+        ("tEXt", &text_chunk("workflow", json)),
+        ("IEND", &[]),
+    ]);
     assert_eq!(codes(&bytes), HashSet::from(["SLOP046"]));
+}
+
+/// Bare `prompt` is no Tier A key: an ordinary app can key its own text that way.
+#[test]
+fn lone_prompt_text_chunk_gets_no_tier_a_finding() {
+    let bytes = png(&[
+        ("tEXt", &text_chunk("prompt", "write about a rainy day")),
+        ("IEND", &[]),
+    ]);
+    let diags = lint_image("fixture".to_string(), &bytes, &settings()).unwrap();
+    assert!(diags.iter().all(|d| d.tier != Tier::A), "{diags:?}");
 }
 
 #[test]

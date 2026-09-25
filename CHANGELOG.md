@@ -20,13 +20,15 @@ migration notes live here.
   `lint_file`/`ProseDoc` path, since an image has no text stream and no
   lines to count.
 - **SLOP046** (`provenance`, Tier A, on): flags a metadata field keyed
-  exactly `parameters` (A1111), `prompt`, `workflow` (ComfyUI),
-  `sd-metadata`, `invokeai_metadata`, or `invokeai_workflow` (InvokeAI) --
-  the image ships its full generation prompt or workflow graph. Exact key
-  equality only, never a substring match, so an ICC profile chunk keyed `Raw
-  profile type icc` or an `author` field never trips it. Fires on the
-  keyword alone even when the value is zlib-compressed, since the keyword is
-  plaintext ahead of the null separator either way.
+  exactly `parameters` (A1111), `workflow` (ComfyUI), `sd-metadata`,
+  `invokeai_metadata`, or `invokeai_workflow` (InvokeAI) -- the image ships
+  its full generation prompt or workflow graph. Exact key equality only,
+  never a substring match, so an ICC profile chunk keyed `Raw profile type
+  icc` or an `author` field never trips it. Fires on the keyword alone even
+  when the value is zlib-compressed, since the keyword is plaintext ahead of
+  the null separator either way. Bare `prompt` is not a key: any app can
+  name its own text that way, and ComfyUI, which writes it, also writes
+  `workflow`.
 - **SLOP047** (`provenance`, Tier A, on): flags a metadata value naming the
   IPTC digital-source-type vocabulary term `trainedAlgorithmicMedia` (fully
   AI-generated) or `compositeWithTrainedAlgorithmicMedia` (an AI-assisted

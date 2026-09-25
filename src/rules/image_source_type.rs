@@ -65,14 +65,14 @@ pub(crate) fn declares_source_type(value_lower: &str) -> bool {
 /// at once.
 ///
 /// Skips SLOP046's keys first, same disjointness fix SLOP048 already applies and for the same
-/// reason (see `image_prompt::PROMPT_KEYS`'s doc comment): InvokeAI has been adding
+/// reason (see `image_prompt::owns_field`): InvokeAI has been adding
 /// Content-Credentials fields to its own metadata export, so a real `invokeai_metadata` field
 /// (SLOP046's key) can carry `trainedAlgorithmicMedia` inside its own JSON value.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.image else { return };
     // Lowercased once and carried out of the search, to avoid copying `f.value` a second time.
     let Some((field, lower)) = doc.fields.iter().find_map(|f| {
-        if image_prompt::PROMPT_KEYS.contains(&f.key.as_str()) {
+        if image_prompt::owns_field(doc, &f.key) {
             return None;
         }
         let lower = f.value.to_ascii_lowercase();

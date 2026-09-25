@@ -1,6 +1,6 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
-use crate::image::ImageFormat;
+use crate::image::{ImageDoc, ImageFormat, MetaField};
 use crate::lang;
 use crate::registry::RuleDef;
 
@@ -16,28 +16,36 @@ pub static RULE: RuleDef = RuleDef {
 };
 
 /// Metadata keys that carry a full generation prompt or workflow graph verbatim: A1111's
-/// `parameters`, the bare `prompt` some Stable Diffusion front ends use, ComfyUI's `workflow`,
-/// and the three InvokeAI variants. Compared with `==` against the whole key, never a substring
-/// match: this repo's own `assets/findings.png` carries a zTXt chunk keyed `Raw profile type
-/// icc` (an ICC color profile) and a real corpus file carries one keyed `author`, and both
-/// happen to contain "i" and other short fragments a loose substring panel could still snag on
-/// somewhere down the line -- exact equality is what actually rules that out, not caution.
+/// `parameters`, ComfyUI's `workflow`, and the three InvokeAI variants. Compared with `==`
+/// against the whole key, never a substring match: this repo's own `assets/findings.png` carries
+/// a zTXt chunk keyed `Raw profile type icc` (an ICC color profile) and a real corpus file
+/// carries one keyed `author`, and both happen to contain "i" and other short fragments a loose
+/// substring panel could still snag on somewhere down the line -- exact equality is what
+/// actually rules that out, not caution.
 ///
-/// Residual risk, kept at Tier A anyway: bare `prompt` is a soft judgment call -- a "writing
-/// prompt of the day" card generator could plausibly key its own text this way. It stays because
-/// the surrounding mitigations are real: a PNG tEXt/iTXt keyword is only ever set deliberately by
-/// the app author (never inferred, unlike a filename or a comment), the match is case-sensitive
-/// (`Prompt`/`PROMPT` don't trip it), and every other key in this panel (`workflow`,
-/// `sd-metadata`, the `invokeai_*` pair) is unambiguous. Same treatment as the ICC/`author`
-/// exclusion above: named here so the next reader sees it was weighed, not missed.
+/// Rejected: bare `prompt` as a key here, since any app can key its own text that way (a judgment
+/// call Tier A must not carry) and ComfyUI, which writes it, also writes `workflow`.
 pub static PROMPT_KEYS: &[&str] = &[
     "parameters",
-    "prompt",
     "workflow",
     "sd-metadata",
     "invokeai_metadata",
     "invokeai_workflow",
 ];
+
+/// Whether this rule owns the field keyed `key` in `doc`, so the sibling image rules skip it:
+/// every `PROMPT_KEYS` field, plus ComfyUI's bare `prompt` once this rule fires on the file. Its
+/// JSON names ComfyUI beside the `workflow` field already reported here, one fact; a lone
+/// `prompt` stays open to the Tier B generator rule.
+pub(crate) fn owns_field(doc: &ImageDoc, key: &str) -> bool {
+    PROMPT_KEYS.contains(&key) || (key == "prompt" && first_prompt_field(doc).is_some())
+}
+
+fn first_prompt_field(doc: &ImageDoc) -> Option<&MetaField> {
+    doc.fields
+        .iter()
+        .find(|f| PROMPT_KEYS.contains(&f.key.as_str()))
+}
 
 /// Names the metadata container in every image rule's message using `doc.format`, replacing the
 /// generic "image metadata field" wording: PNG and WebP metadata lives in length-prefixed RIFF
@@ -65,11 +73,7 @@ pub(crate) fn container_label(format: ImageFormat) -> &'static str {
 /// rather than silently reading the same as an uncompressed hit.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.image else { return };
-    let Some(field) = doc
-        .fields
-        .iter()
-        .find(|f| PROMPT_KEYS.contains(&f.key.as_str()))
-    else {
+    let Some(field) = first_prompt_field(doc) else {
         return;
     };
     let container = container_label(doc.format);
@@ -101,7 +105,6 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::image::ImageDoc;
     use crate::lang::Lang;
 
     const PNG_SIG: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
@@ -184,10 +187,28 @@ mod tests {
     fn fires_once_even_with_two_prompt_shaped_fields() {
         let bytes = png(&[
             ("tEXt", &text_chunk("parameters", "steps: 20")),
-            ("tEXt", &text_chunk("prompt", "a cat")),
+            ("tEXt", &text_chunk("workflow", "{}")),
             ("IEND", &[]),
         ]);
         assert_eq!(diagnostics_for(&bytes).len(), 1);
+    }
+
+    #[test]
+    fn clean_on_bare_prompt_key_alone() {
+        let bytes = png(&[("tEXt", &text_chunk("prompt", "a cat")), ("IEND", &[])]);
+        assert!(diagnostics_for(&bytes).is_empty());
+    }
+
+    #[test]
+    fn owns_bare_prompt_only_beside_a_prompt_key() {
+        let lone = ImageDoc::parse(&png(&[("tEXt", &text_chunk("prompt", "{}"))])).unwrap();
+        assert!(!owns_field(&lone, "prompt"));
+        let comfy = ImageDoc::parse(&png(&[
+            ("tEXt", &text_chunk("prompt", "{}")),
+            ("tEXt", &text_chunk("workflow", "{}")),
+        ]))
+        .unwrap();
+        assert!(owns_field(&comfy, "prompt"));
     }
 
     #[test]

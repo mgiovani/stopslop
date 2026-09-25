@@ -88,8 +88,8 @@ fn contains_word_bounded(haystack: &str, needle: &str) -> bool {
 /// Disjointness with SLOP046 is load-bearing, not incidental: a real ComfyUI PNG has the literal
 /// string "ComfyUI" inside its own `prompt` and `workflow` JSON payloads, so without this skip
 /// the same file would report both SLOP046 (the prompt chunk itself) and SLOP048 (the generator
-/// name inside it) for one underlying fact. Importing `image_prompt::PROMPT_KEYS` rather than
-/// re-listing those keys keeps the two panels from drifting apart (AGENTS.md allows sibling-rule
+/// name inside it) for one underlying fact. Asking `image_prompt::owns_field` rather than
+/// re-listing its keys keeps the two panels from drifting apart (AGENTS.md allows sibling-rule
 /// imports for exactly this).
 ///
 /// Disjointness with SLOP047 (A2) is the same fix in the other direction: SLOP048 defers to
@@ -117,7 +117,7 @@ fn contains_word_bounded(haystack: &str, needle: &str) -> bool {
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.image else { return };
     for field in &doc.fields {
-        if image_prompt::PROMPT_KEYS.contains(&field.key.as_str()) {
+        if image_prompt::owns_field(doc, &field.key) {
             continue;
         }
         let lower = field.value.to_ascii_lowercase();
@@ -231,14 +231,21 @@ mod tests {
     /// rule's too.
     #[test]
     fn skips_slop046_owned_keys_even_when_they_name_a_generator() {
+        let json = r#"{"generator": "ComfyUI", "nodes": []}"#;
         let bytes = png(&[
-            (
-                "tEXt",
-                &text_chunk("prompt", r#"{"generator": "ComfyUI", "nodes": []}"#),
-            ),
+            ("tEXt", &text_chunk("prompt", json)),
+            ("tEXt", &text_chunk("workflow", json)),
             ("IEND", &[]),
         ]);
         assert!(diagnostics_for(&bytes).is_empty());
+    }
+
+    /// A lone `prompt` field isn't SLOP046's, so the generator it names is this rule's to report.
+    #[test]
+    fn flags_generator_named_in_a_lone_prompt_field() {
+        let json = r#"{"filename_prefix": "ComfyUI"}"#;
+        let bytes = png(&[("tEXt", &text_chunk("prompt", json)), ("IEND", &[])]);
+        assert_eq!(diagnostics_for(&bytes).len(), 1);
     }
 
     #[test]
