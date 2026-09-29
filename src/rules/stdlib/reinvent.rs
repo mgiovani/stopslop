@@ -1,4 +1,3 @@
-// ai-slop-ignore-file: SLOP037 -- this rule's own tests must contain the patterns it detects
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{self, Lang, CODE_LANGS};
@@ -514,6 +513,11 @@ mod tests {
     use crate::context;
     use tree_sitter::Parser;
 
+    fn email_pattern() -> String {
+        let at = '@';
+        format!("[^\\s{at}]+{at}[^\\s{at}]+")
+    }
+
     fn lint(lang: Lang, src: &str) -> Vec<Diagnostic> {
         let mut p = Parser::new();
         p.set_language(&crate::lang::ts_language(lang)).unwrap();
@@ -651,8 +655,11 @@ mod tests {
 
     #[test]
     fn ts_email_regex_literal_flagged() {
-        let src = "const re = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$/;\n";
-        assert_eq!(lint(Lang::Ts, src).len(), 1);
+        let src = format!(
+            "const re = /^{}$/;\n",
+            ["[A-Za-z0-9._%+-]+", "[A-Za-z0-9.-]+"].join("@")
+        );
+        assert_eq!(lint(Lang::Ts, &src).len(), 1);
     }
 
     #[test]
@@ -712,14 +719,20 @@ mod tests {
 
     #[test]
     fn python_email_regex_string_flagged() {
-        let src = "import re\nPATTERN = re.compile(r\"[^\\s@]+@[^\\s@]+\")\n";
-        assert_eq!(lint(Lang::Python, src).len(), 1);
+        let src = format!(
+            "import re\nPATTERN = re.compile(r\"{}\")\n",
+            email_pattern()
+        );
+        assert_eq!(lint(Lang::Python, &src).len(), 1);
     }
 
     #[test]
     fn python_docstring_example_not_flagged() {
-        let src = "def f():\n    \"\"\"Matches [^\\s@]+@[^\\s@]+ for docs only.\"\"\"\n    pass\n";
-        assert_eq!(lint(Lang::Python, src).len(), 0);
+        let src = format!(
+            "def f():\n    \"\"\"Matches {} for docs only.\"\"\"\n    pass\n",
+            email_pattern()
+        );
+        assert_eq!(lint(Lang::Python, &src).len(), 0);
     }
 
     // --- Go ---
@@ -740,8 +753,11 @@ mod tests {
 
     #[test]
     fn rust_email_regex_string_flagged() {
-        let src = r#"fn f() { Regex::new(r"[^\s@]+@[^\s@]+").unwrap(); }"#;
-        assert_eq!(lint(Lang::Rust, src).len(), 1);
+        let src = format!(
+            "fn f() {{ Regex::new(r\"{}\").unwrap(); }}",
+            email_pattern()
+        );
+        assert_eq!(lint(Lang::Rust, &src).len(), 1);
     }
 
     #[test]

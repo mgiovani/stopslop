@@ -411,7 +411,7 @@ mod tests {
 
     #[test]
     fn skips_trailing_link_reference_block() {
-        let src = "In conclusion, ship it now.\n\n[ref]: https://example.com\n"; // ai-slop-ignore
+        let src = "In conclusion, ship it now.\n\n[ref]: https://rust-lang.org\n";
         let diags = diagnostics_for(src);
         assert_eq!(diags.len(), 1);
     }

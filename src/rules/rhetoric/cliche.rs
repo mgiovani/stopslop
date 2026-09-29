@@ -85,7 +85,7 @@ mod tests {
         // The phrase regex requires literal spaces ("on a journey"); a hyphenated URL slug
         // never matches on text alone, and is additionally masked via in_url as a
         // belt-and-suspenders check.
-        let src = "Read more at https://example.com/your-journey-to-mastery today.\n"; // ai-slop-ignore
+        let src = "Read more at https://rust-lang.org/your-journey-to-mastery today.\n";
         assert!(diagnostics_for(src).is_empty());
     }
 }

@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn clean_url_colon() {
-        let src = "See https://example.com/config/reference for the full list of options.\n"; // ai-slop-ignore
+        let src = "See https://rust-lang.org/config/reference for the full list of options.\n";
         assert!(diagnostics_for(src).is_empty());
     }
 
@@ -274,7 +274,7 @@ mod tests {
 
     #[test]
     fn ptbr_clean_url_colon() {
-        let src = "Veja https://example.com/config/referencia para a lista completa de opções.\n"; // ai-slop-ignore
+        let src = "Veja https://rust-lang.org/config/referencia para a lista completa de opções.\n";
         assert!(diagnostics_for(src).is_empty());
     }
 

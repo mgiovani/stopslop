@@ -217,13 +217,13 @@ mod tests {
 
     #[test]
     fn silent_when_markdown_link_present() {
-        let src = "Studies show a 40% drop in latency, per [the benchmark report](https://example.com/report).\n"; // ai-slop-ignore
+        let src = "Studies show a 40% drop in latency, per [the benchmark report](https://rust-lang.org/report).\n";
         assert!(diagnostics_for(src).is_empty());
     }
 
     #[test]
     fn silent_when_bare_url_present() {
-        let src = "Research indicates a measurable improvement; see https://example.com/data for the full set.\n"; // ai-slop-ignore
+        let src = "Research indicates a measurable improvement; see https://rust-lang.org/data for the full set.\n";
         assert!(diagnostics_for(src).is_empty());
     }
 

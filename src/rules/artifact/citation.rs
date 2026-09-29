@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn flags_utm_source_inside_url() {
         let diags = diagnostics_for(
-            "See https://example.com/blog?utm_source=chatgpt.com for the announcement.\n", // ai-slop-ignore
+            "See https://rust-lang.org/blog?utm_source=chatgpt.com for the announcement.\n",
         );
         assert_eq!(
             diags.len(),

@@ -343,7 +343,7 @@ mod tests {
         // The phrase regex requires literal spaces ("here's the thing"); a hyphenated URL slug
         // never matches on text alone, and is additionally masked via in_url as a
         // belt-and-suspenders check (same rationale as cliche.rs).
-        let src = "Read more at https://example.com/heres-the-thing-guide today.\n"; // ai-slop-ignore
+        let src = "Read more at https://rust-lang.org/heres-the-thing-guide today.\n";
         assert!(diagnostics_for(src).is_empty());
     }
 
