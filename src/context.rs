@@ -214,7 +214,7 @@ pub(crate) fn is_doc_comment(lang: Lang, text: &str) -> bool {
 }
 
 /// is_doc(string) per §4a: only Python, via the classic "expression_statement parent"
-/// docstring heuristic. `// ponytail: good enough for placeholder/fence exemption.`
+/// docstring heuristic. `// good enough for placeholder/fence exemption.`
 fn is_doc_string(lang: Lang, node: Node) -> bool {
     match lang {
         Lang::Python => node

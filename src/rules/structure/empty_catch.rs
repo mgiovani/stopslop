@@ -91,7 +91,7 @@ fn check_go(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>
         if !is_err_check {
             continue;
         }
-        // ponytail: err-name heuristic on raw header text; refine if it FPs.
+        // err-name heuristic on raw header text; refine if it FPs.
         let mut cursor = consequence.walk();
         let has_statements = consequence
             .named_children(&mut cursor)

@@ -32,7 +32,7 @@ pub struct ListBlock {
     pub items: Vec<ListItem>, // contiguous run (see masking rules for "contiguous")
 }
 
-// ponytail: the spec's ProseDoc has no lifetime, but `comments: Vec<TextNode>` borrows
+// the spec's ProseDoc has no lifetime, but `comments: Vec<TextNode>` borrows
 // `&str` slices of the source, and structs can't elide a borrowed lifetime like fn signatures
 // can. `ProseDoc<'a>` tied to `LintContext<'a>` is the smallest change that compiles.
 /// One inline `code` span: its byte range in the source, and how many whitespace-separated
@@ -533,7 +533,7 @@ fn is_indented_code_candidate(line: &str) -> bool {
 /// another indented line follows) and blanks them in `masked_bytes` (preserving '\n'), mirroring
 /// `blank_fences`. Returns a per-line bool so callers can fold it into "is this a code line"
 /// alongside `is_fenced_line`.
-/// ponytail: doesn't special-case list-item continuation indent (nested list content indented
+/// doesn't special-case list-item continuation indent (nested list content indented
 /// 4+ columns can get swept in too) -- narrow enough not to matter until a real fixture proves
 /// otherwise.
 fn blank_indented_code(
@@ -604,7 +604,7 @@ static INLINE_CODE_RE: LazyLock<Regex> =
 
 /// Blanks line-local backtick spans (`` `code` `` / ``` ``code`` ```) in the already
 /// fence-blanked `masked_bytes`. Multi-line inline spans are not supported.
-/// ponytail: inline code assumed single-line; multi-line inline spans are rare — upgrade to a
+/// inline code assumed single-line; multi-line inline spans are rare — upgrade to a
 /// CommonMark inline scan only if a fixture demands it.
 /// Returns the blanked spans, so rules that care about POSITION or LENGTH can tell "there was
 /// code here" from "there was nothing here". Blanking to spaces alone loses that distinction and
@@ -645,7 +645,7 @@ fn blank_inline_code(line_spans: &[(usize, usize)], masked_bytes: &mut [u8]) -> 
 }
 
 /// ATX heading: `^\s{0,3}#{1,6}\s+.*`. `text` = the line with leading #'s/ws and trailing #'s/ws
-/// stripped. ponytail: Setext (=== / --- underlines) skipped; add if a fixture needs it.
+/// stripped. Setext (=== / --- underlines) skipped; add if a fixture needs it.
 fn heading_match(line: &str) -> Option<(usize, String)> {
     let bytes = line.as_bytes();
     let mut i = 0usize;
@@ -678,7 +678,7 @@ fn heading_match(line: &str) -> Option<(usize, String)> {
 /// The marker itself and its tail are read from `masked`, matching every other structural scan in
 /// this module. Returns (local marker byte, ordered, content column: the byte offset the item's
 /// content starts at, which becomes the ceiling for anything nested under it).
-/// ponytail: a tab counts as one column, and CommonMark rule 2b (5+ spaces after the marker
+/// a tab counts as one column, and CommonMark rule 2b (5+ spaces after the marker
 /// collapse to a single one) isn't implemented -- no fixture has needed either yet.
 fn list_item_marker(source: &str, masked: &str, max_indent: usize) -> Option<(usize, bool, usize)> {
     let sbytes = source.as_bytes();

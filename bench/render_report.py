@@ -12,7 +12,7 @@ Every non-ASCII character is escaped, as an entity in the markup and as a `\\u` 
 the script, so the page reads correctly however it is served: a local `http.server` sends no
 charset, and a browser then decodes UTF-8 bytes as Latin-1.
 
-ponytail: the markup region includes `<style>`, a raw-text element where character references
+the markup region includes `<style>`, a raw-text element where character references
 don't decode, so a non-ASCII character added to that CSS would render as the literal text
 `&#233;`, not the glyph. None exists there today. Upgrade path: carve `<style>...</style>` out
 of the entity-reference pass and give it its own escape (or ban non-ASCII in the template's CSS

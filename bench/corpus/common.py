@@ -29,7 +29,7 @@ JS_PROXY = "javascript written as .ts; SLOP007 cannot fire"
 
 # Applicable rules per lang, hand-transcribed from each RuleDef.langs in src/rules/<group>/*.rs.
 # SLOP010 needs a manifest no cell carries, so it never fires; left out on purpose.
-# ponytail: add a langs column to `--list-rules`, read it here once that exists.
+# add a langs column to `--list-rules`, read it here once that exists.
 APPLICABLE = {
     "python": (
         "SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP006", "SLOP008",

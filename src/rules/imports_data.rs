@@ -46,7 +46,7 @@ impl DepIndex {
     }
 }
 
-// ponytail: bounded recursive dir walk instead of pulling in a manifest-discovery crate; fixture
+// bounded recursive dir walk instead of pulling in a manifest-discovery crate; fixture
 // trees are tiny and this only runs once per invocation under --check-imports.
 const SKIP_DIRS: &[&str] = &["node_modules", "target", ".git", "vendor"];
 const MANIFEST_NAMES: &[&str] = &[
@@ -235,7 +235,7 @@ fn go_mod_require_path(line: &str) -> Option<String> {
     line.split_whitespace().next().map(|s| s.to_string())
 }
 
-// ponytail: `replace` directives ignored — the module-self + require set covers the fixtures
+// `replace` directives ignored — the module-self + require set covers the fixtures
 // and the common non-monorepo case; add replace-target handling only if it FPs in practice.
 fn parse_go_mod(text: &str) -> HashSet<String> {
     let mut set = HashSet::new();

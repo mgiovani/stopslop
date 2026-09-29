@@ -108,7 +108,7 @@ fn contains_word_bounded(haystack: &str, needle: &str) -> bool {
 /// inside a *compressed* text chunk is invisible to this rule the same way it is to SLOP047.
 /// Pinned by `compressed_generator_name_is_a_known_blind_spot` below.
 ///
-/// ponytail: this reads a `printable()` extract (image.rs), so it can't tell which EXIF tag a
+/// this reads a `printable()` extract (image.rs), so it can't tell which EXIF tag a
 /// name came from -- a generator named in `ImageDescription` matches the same as one in
 /// `Software`. Acceptable at Tier B; the upgrade path is parsing IFD0 and reading tag `0x0131`
 /// (Software) by its actual offset. That precision would currently be a regression: a real

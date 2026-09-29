@@ -290,7 +290,7 @@ def fetch_naples_code(ds, limit, cache_dir, skip_failures):
     cached (`sample.head.jsonl`), so a rerun at the same or a smaller `--limit` never touches
     the network again, and only a `--limit 0` run ever reads past the first few hundred rows.
 
-    ponytail: reading from the front of the file is a head sample, not `hf_filter_sample`'s
+    reading from the front of the file is a head sample, not `hf_filter_sample`'s
     spread sample -- Zenodo has no query endpoint to spread-page against. Upgrade path: fetch
     the whole file once and spread-sample the rows in memory, if head bias ever shows up.
     """

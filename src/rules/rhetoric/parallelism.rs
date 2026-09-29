@@ -251,7 +251,7 @@ fn count_scoped_filtered(
 ///    and correct" and "solo developers, growing startups, or established enterprises". Done by
 ///    looking backwards, since the `regex` crate has no lookbehind.
 ///
-///    ponytail: known false negative -- a tricolon behind a leading adverbial ("In practice, it
+///    known false negative -- a tricolon behind a leading adverbial ("In practice, it
 ///    is clear, concise, and correct") reads as a tail and is skipped. Acceptable on a density
 ///    rule that needs three matches to fire; tighten only if it shows up in practice.
 ///
