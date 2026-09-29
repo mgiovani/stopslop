@@ -53,16 +53,28 @@ pub struct Config {
     pub language: Option<OneOrMany>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct CustomRuleConfig {
-    pub pattern: String,
+    /// `"phrase"` (default) or `"file"`.
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// Required for `kind = "phrase"`, rejected for `"file"`.
+    #[serde(default)]
+    pub pattern: Option<String>,
+    /// `kind = "file"` predicates: exactly one of these.
+    #[serde(default)]
+    pub max_lines: Option<usize>,
+    #[serde(default)]
+    pub forbid: Option<String>,
+    #[serde(default)]
+    pub require: Option<String>,
     pub message: String,
     #[serde(default = "default_tier")]
     pub tier: String,
     #[serde(default)]
     pub fix: Option<String>,
-    /// Glob list; empty means every supported language file.
+    /// Glob list; empty means every supported language file. Required for `kind = "file"`.
     #[serde(default)]
     pub files: Vec<String>,
 }
@@ -218,7 +230,7 @@ tier = "B"
             Some(&vec!["SLOP012".to_string(), "rhetoric".to_string()])
         );
         assert_eq!(cfg.custom_rule.len(), 1);
-        assert_eq!(cfg.custom_rule[0].pattern, "synergy");
+        assert_eq!(cfg.custom_rule[0].pattern.as_deref(), Some("synergy"));
         assert_eq!(cfg.custom_rule[0].message, "banned word: synergy");
         assert_eq!(cfg.custom_rule[0].tier, "B");
     }

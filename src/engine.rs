@@ -443,11 +443,10 @@ mod tests {
     #[test]
     fn custom_rule_finding_is_suppressible_by_code() {
         let custom_cfg = crate::config::CustomRuleConfig {
-            pattern: r"(?i)(?-u:\b)synergy(?-u:\b)".to_string(),
+            pattern: Some(r"(?i)(?-u:\b)synergy(?-u:\b)".to_string()),
             message: "banned word: synergy".to_string(),
             tier: "B".to_string(),
-            fix: None,
-            files: Vec::new(),
+            ..Default::default()
         };
         let custom_rules = crate::custom::load(&[custom_cfg]).unwrap();
         let custom_codes: Vec<&'static str> = custom_rules

@@ -617,6 +617,37 @@ error (exit 2) naming the offending entry's index.
 from both the glob and the path exactly as `[per-file-ignores]` does, so
 `"docs/**"` behaves the same whether you run `stopslop .` or `stopslop docs`.
 
+### File rules
+
+`kind = "file"` judges a whole file instead of a phrase. It requires `files`
+and exactly one predicate; `pattern` is rejected, and the predicate keys are
+rejected on the default `kind = "phrase"`.
+
+| Key | Fires when | Anchor |
+|---|---|---|
+| `max-lines = N` | the file has more than N lines | line N+1, col 1 |
+| `forbid = "regex"` | the regex matches the raw source | first match |
+| `require = "regex"` | the regex matches nowhere | line 1, col 1 |
+
+```toml
+[[custom-rule]]
+kind = "file"
+files = ["**/*.py", "**/*.ts", "**/*.tsx"]
+max-lines = 300
+message = "file is over 300 lines; split by bounded context"
+
+[[custom-rule]]
+kind = "file"
+files = ["**/__init__.py"]
+forbid = '\S'
+message = "__init__.py must be empty; import from the defining module"
+```
+
+A file rule yields at most one finding per file. Regexes have no lookaround.
+Write `(?-u:\b)` instead of `\b`: a Unicode word boundary slows every
+non-ASCII input. Keep the line count out of `message` so a baselined file that
+grows stays baselined.
+
 ## `--check-imports`
 
 SLOP010 cross-references each import against the project's manifest
