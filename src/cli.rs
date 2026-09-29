@@ -118,11 +118,6 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
     // Resolved before any field of `config` is partially moved out below.
     let natlangs = config.natlangs()?;
 
-    if cli.list_rules {
-        list_rules(&custom_rules);
-        return Ok(0);
-    }
-
     let select = if !cli.select.is_empty() {
         cli.select
     } else {
@@ -170,6 +165,10 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         &custom_codes,
         check_imports,
     );
+    if cli.list_rules {
+        print!("{}", render_rules(&custom_rules, &enabled));
+        return Ok(0);
+    }
     // An empty resolved set from a non-empty select would otherwise lint nothing and exit 0 with
     // only a warning, indistinguishable from a clean run; a partial typo among patterns still
     // just warns.
@@ -180,7 +179,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         );
     }
     let deps = if check_imports {
-        Some(DepIndex::discover(&paths))
+        Some(DepIndex::discover(&paths, &config.exclude))
     } else {
         None
     };
@@ -345,39 +344,55 @@ fn apply_per_file_ignores(
         .collect())
 }
 
-/// `code  group  tier  on-by-default  natlang  name`, grouped-name column included so
-/// `--select <group>` is discoverable without reading the README.
-fn list_rules(custom_rules: &[custom::CustomRule]) {
-    println!(
-        "{:<8} {:<10} {:<5} {:<8} {:<10} NAME",
-        "CODE", "GROUP", "TIER", "DEFAULT", "NATLANG"
-    );
+/// `code  group  tier  on-by-default  active  natlang  name`, grouped-name column included so
+/// `--select <group>` is discoverable without reading the README. ACTIVE is the resolved set
+/// under this run's config and flags; DEFAULT is the built-in state.
+fn render_rules(
+    custom_rules: &[custom::CustomRule],
+    enabled: &std::collections::HashSet<&'static str>,
+) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    let active = |code: &str| if enabled.contains(code) { "on" } else { "off" };
+    writeln!(
+        out,
+        "{:<8} {:<10} {:<5} {:<8} {:<7} {:<10} NAME",
+        "CODE", "GROUP", "TIER", "DEFAULT", "ACTIVE", "NATLANG"
+    )
+    .unwrap();
     for r in RULES {
-        println!(
-            "{:<8} {:<10} {:<5} {:<8} {:<10} {}",
+        writeln!(
+            out,
+            "{:<8} {:<10} {:<5} {:<8} {:<7} {:<10} {}",
             r.code,
             groups::group_of(r.code),
             r.tier.label(),
             if r.default_on { "on" } else { "off" },
+            active(r.code),
             r.natlangs
                 .iter()
                 .map(|n| n.label())
                 .collect::<Vec<_>>()
                 .join(", "),
             r.name,
-        );
+        )
+        .unwrap();
     }
     for cr in custom_rules {
-        println!(
-            "{:<8} {:<10} {:<5} {:<8} {:<10} {}",
+        writeln!(
+            out,
+            "{:<8} {:<10} {:<5} {:<8} {:<7} {:<10} {}",
             cr.code(),
             "custom",
             cr.tier().label(),
             "on", // custom rules are always on by default -- the user explicitly wrote them
+            active(cr.code()),
             "en", // custom rules are user regexes, not a validated lexicon in any one language
             cr.name(),
-        );
+        )
+        .unwrap();
     }
+    out
 }
 
 #[cfg(test)]
@@ -481,6 +496,23 @@ mod tests {
         ignores.insert("[".to_string(), vec!["SLOP036".to_string()]);
         let err = apply_per_file_ignores(vec![], &ignores).unwrap_err();
         assert!(err.to_string().contains("invalid glob"));
+    }
+
+    #[test]
+    fn render_rules_active_column_follows_the_resolved_set() {
+        let enabled = std::collections::HashSet::from(["SLOP010"]);
+        let table = render_rules(&[], &enabled);
+        let row = |code: &str| table.lines().find(|l| l.starts_with(code)).unwrap();
+        assert!(
+            row("SLOP010").contains(" off      on "),
+            "{}",
+            row("SLOP010")
+        );
+        assert!(
+            row("SLOP001").contains(" on       off "),
+            "{}",
+            row("SLOP001")
+        );
     }
 
     #[test]

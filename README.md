@@ -82,7 +82,7 @@ stopslop --select rhetoric         # run one rule group (see "Rule groups" below
 stopslop --select ALL              # every rule (SLOP010 still needs --check-imports)
 stopslop --ignore SLOP008          # run everything except stub detection
 stopslop --select artifact --extend-select SLOP033  # add a rule on top of a narrower select
-stopslop --list-rules              # print every rule with its group, tier, and default
+stopslop --list-rules              # print every rule with its group, tier, default, and active state
 stopslop --check-imports .         # also run SLOP010 (unresolved import) — opt-in
 stopslop --config path.toml        # use a specific config file instead of the discovered one
 stopslop --no-config               # ignore any project or user-level stopslop.toml, CLI flags only
@@ -243,8 +243,8 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP047 | provenance | Declared AI source type | A, on | PNG, JPEG, WebP | en, pt-BR | A metadata value names the IPTC digital-source-type vocabulary term `trainedAlgorithmicMedia` (fully AI-generated) or `compositeWithTrainedAlgorithmicMedia` (an AI-assisted edit of a real photograph), whether it surfaces in an XMP packet, an IPTC block, or a C2PA manifest. A C2PA manifest's mere presence is never flagged on its own: camera bodies like the Leica M11-P and Sony Alpha sign every frame they take |
 | SLOP048 | provenance | Image metadata names a generator | B, on | PNG, JPEG, WebP | en, pt-BR | A metadata value names a known image generator (`Midjourney`, `Stable Diffusion`, `ComfyUI`, `Adobe Firefly`, and others), matched with a word-boundary guard so it never trips inside an ordinary word (`medalled`, `we recraft your brand`). Skips any field SLOP046 or SLOP047 already owns, so a ComfyUI file's own `prompt`/`workflow` JSON and a C2PA manifest's own `digitalSourceType` declaration aren't double-reported |
 
-Every rule is exactly one of four states, `--list-rules` prints the TIER and
-DEFAULT columns so you can check any given rule at a glance:
+Every rule is exactly one of four states, `--list-rules` prints the TIER,
+DEFAULT (built-in) and ACTIVE (under your config) columns so you can check any given rule at a glance:
 
 - **Tier A, on by default (14 rules)**: mechanical artifacts (SLOP001–009,
   SLOP011–013, SLOP046–047) with no legitimate reading. A finding here fails

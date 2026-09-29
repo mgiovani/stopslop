@@ -15,15 +15,27 @@ pub struct DepIndex {
     pub python: HashSet<String>, // PEP503-normalized declared package names
     pub go: HashSet<String>, // go.mod module path + require entries
     pub rust: HashSet<String>, // Cargo.toml dep keys + own package name, '-'->'_'
+    pub python_local: HashMap<String, HashSet<String>>, // dir -> sibling `*.py` stems and packages
 }
 
 impl DepIndex {
-    pub fn discover(roots: &[PathBuf]) -> DepIndex {
-        let mut manifests = Vec::new();
-        for root in roots {
-            find_manifests(root, &mut manifests);
+    /// Manifests matching a config `exclude` glob are ignored, so fixture manifests cannot make
+    /// the rest of the repo look undeclared.
+    pub fn discover(roots: &[PathBuf], exclude: &[String]) -> DepIndex {
+        let mut excluded = globset::GlobSetBuilder::new();
+        for glob in exclude {
+            if let Ok(g) = globset::Glob::new(crate::paths::strip_dot_slash(glob)) {
+                excluded.add(g);
+            }
         }
+        let excluded = excluded
+            .build()
+            .unwrap_or_else(|_| globset::GlobSet::empty());
+        let mut manifests = Vec::new();
         let mut idx = DepIndex::default();
+        for root in roots {
+            find_manifests(root, &excluded, &mut manifests, &mut idx.python_local);
+        }
         for path in manifests {
             let Ok(text) = std::fs::read_to_string(&path) else {
                 continue;
@@ -58,9 +70,56 @@ const MANIFEST_NAMES: &[&str] = &[
     "Cargo.toml",
 ];
 
-fn find_manifests(root: &Path, out: &mut Vec<PathBuf>) {
+fn local_key(dir: &Path) -> String {
+    crate::paths::strip_dot_slash(&dir.to_string_lossy()).to_string()
+}
+
+fn is_excluded(path: &Path, excluded: &globset::GlobSet) -> bool {
+    excluded.is_match(crate::paths::strip_dot_slash(&path.to_string_lossy()))
+}
+
+fn note_python_module(
+    dir: &Path,
+    entry: &std::fs::DirEntry,
+    is_dir: bool,
+    local: &mut HashMap<String, HashSet<String>>,
+) {
+    let path = entry.path();
+    let module = if is_dir {
+        path.join("__init__.py").is_file().then(|| path.file_name())
+    } else if path.extension().is_some_and(|e| e == "py") {
+        Some(path.file_stem())
+    } else {
+        None
+    };
+    if let Some(module) = module.flatten().and_then(|m| m.to_str()) {
+        local
+            .entry(local_key(dir))
+            .or_default()
+            .insert(module.to_string());
+    }
+}
+
+fn record_siblings(dir: &Path, local: &mut HashMap<String, HashSet<String>>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if let Ok(ft) = entry.file_type() {
+            note_python_module(dir, &entry, ft.is_dir(), local);
+        }
+    }
+}
+
+fn find_manifests(
+    root: &Path,
+    excluded: &globset::GlobSet,
+    out: &mut Vec<PathBuf>,
+    local: &mut HashMap<String, HashSet<String>>,
+) {
     if root.is_file() {
-        if is_manifest_name(root) {
+        record_siblings(root.parent().unwrap_or(Path::new(".")), local);
+        if is_manifest_name(root) && !is_excluded(root, excluded) {
             out.push(root.to_path_buf());
         }
         // A file argument has no subtree to search, so climb instead: `stopslop --check-imports
@@ -89,6 +148,7 @@ fn find_manifests(root: &Path, out: &mut Vec<PathBuf>) {
         let Ok(file_type) = entry.file_type() else {
             continue;
         };
+        note_python_module(root, &entry, file_type.is_dir(), local);
         let name = entry.file_name();
         // A non-UTF-8 name matches neither list, yet such a directory can still hold manifests.
         let name = name.to_str();
@@ -96,8 +156,10 @@ fn find_manifests(root: &Path, out: &mut Vec<PathBuf>) {
             if name.is_some_and(|n| SKIP_DIRS.contains(&n)) {
                 continue;
             }
-            find_manifests(&entry.path(), out);
-        } else if name.is_some_and(|n| MANIFEST_NAMES.contains(&n)) {
+            find_manifests(&entry.path(), excluded, out, local);
+        } else if name.is_some_and(|n| MANIFEST_NAMES.contains(&n))
+            && !is_excluded(&entry.path(), excluded)
+        {
             out.push(entry.path());
         }
     }
@@ -129,6 +191,34 @@ fn extract_pep508_name(spec: &str) -> Option<String> {
         .unwrap_or(spec.len());
     let name = spec[..end].trim();
     (!name.is_empty()).then(|| name.to_string())
+}
+
+/// Names in the file's PEP 723 `# /// script` block, which declares dependencies inline.
+pub fn pep723_deps(source: &str) -> HashSet<String> {
+    let mut body = String::new();
+    let mut inside = false;
+    for line in source.lines() {
+        if !inside {
+            inside = line.trim_end() == "# /// script";
+        } else if line.trim_end() == "# ///" {
+            break;
+        } else if let Some(rest) = line.strip_prefix('#') {
+            body.push_str(rest.strip_prefix(' ').unwrap_or(rest));
+            body.push('\n');
+        } else {
+            return HashSet::new();
+        }
+    }
+    let Ok(doc) = body.parse::<toml::Value>() else {
+        return HashSet::new();
+    };
+    doc.get("dependencies")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|d| d.as_str().and_then(extract_pep508_name))
+        .map(|n| pep503(&n))
+        .collect()
 }
 
 fn parse_pyproject(text: &str) -> HashSet<String> {
@@ -331,7 +421,8 @@ smtplib sndhdr socket socketserver spwd sqlite3 ssl stat statistics string strin
 subprocess sunau symbol symtable sys sysconfig syslog tabnanny tarfile telnetlib tempfile \
 termios test textwrap threading time timeit tkinter token tokenize trace traceback tracemalloc \
 tty turtle types typing typing_extensions unicodedata unittest urllib uu uuid venv warnings \
-wave weakref webbrowser winreg winsound wsgiref xdrlib xml xmlrpc zipapp zipfile zipimport zlib";
+wave weakref webbrowser winreg winsound wsgiref xdrlib xml xmlrpc zipapp zipfile zipimport zlib \
+tomllib zoneinfo graphlib";
 
 static PY_STDLIB: LazyLock<HashSet<&'static str>> =
     LazyLock::new(|| PY_STDLIB_RAW.split_whitespace().collect());
@@ -372,8 +463,17 @@ const RUST_BUILTINS: &[&str] = &["std", "core", "alloc", "proc_macro", "test"];
 
 // --- resolution (used by imports.rs) ---
 
-pub fn python_resolved(idx: &DepIndex, raw_name: &str) -> bool {
+/// `dir` is the importing file's directory; Python puts it on `sys.path`, so its sibling
+/// modules resolve. Ceiling: `src/`-layout and `PYTHONPATH` roots are not modelled.
+pub fn python_resolved(idx: &DepIndex, dir: &str, raw_name: &str) -> bool {
     if PY_STDLIB.contains(raw_name) {
+        return true;
+    }
+    if idx
+        .python_local
+        .get(crate::paths::strip_dot_slash(dir))
+        .is_some_and(|m| m.contains(raw_name))
+    {
         return true;
     }
     if let Some(&pkg) = PY_ALIASES.get(raw_name) {
@@ -568,7 +668,7 @@ log = { version = "0.4" }
         )
         .unwrap();
 
-        let idx = DepIndex::discover(&[tmp.path().to_path_buf()]);
+        let idx = DepIndex::discover(&[tmp.path().to_path_buf()], &[]);
         assert!(idx.rust.contains("app"));
         assert!(idx.rust.contains("serde"));
         assert!(idx.python.contains("requests"));
@@ -591,7 +691,7 @@ log = { version = "0.4" }
         let file = sub.join("a.ts");
         std::fs::write(&file, "import x from 'react';\n").unwrap();
 
-        let idx = DepIndex::discover(&[file]);
+        let idx = DepIndex::discover(&[file], &[]);
         assert!(idx.ts.contains("react"));
     }
 
@@ -616,7 +716,7 @@ log = { version = "0.4" }
         std::fs::write(&real, r#"{"dependencies":{"react":"18"}}"#).unwrap();
         std::os::unix::fs::symlink(&real, tmp.path().join("package.json")).unwrap();
 
-        let idx = DepIndex::discover(&[tmp.path().to_path_buf()]);
+        let idx = DepIndex::discover(&[tmp.path().to_path_buf()], &[]);
         assert!(idx.rust.contains("serde"), "must descend into crates/inner");
         assert!(
             idx.ts.contains("react"),
@@ -628,9 +728,85 @@ log = { version = "0.4" }
     #[test]
     fn discover_empty_dir_yields_empty_index() {
         let tmp = tempfile::tempdir().unwrap();
-        let idx = DepIndex::discover(&[tmp.path().to_path_buf()]);
+        let idx = DepIndex::discover(&[tmp.path().to_path_buf()], &[]);
         assert!(
             idx.python.is_empty() && idx.ts.is_empty() && idx.go.is_empty() && idx.rust.is_empty()
         );
+    }
+
+    #[test]
+    fn stdlib_covers_tomllib_zoneinfo_graphlib() {
+        let idx = DepIndex::default();
+        for m in ["tomllib", "zoneinfo", "graphlib"] {
+            assert!(python_resolved(&idx, "", m), "{m}");
+        }
+    }
+
+    #[test]
+    fn pep723_block_yields_normalized_dependency_names() {
+        let src = "#!/usr/bin/env python\n# /// script\n# requires-python = \">=3.10\"\n# dependencies = [\"Anthropic>=1\", \"my_pkg\"]\n# ///\nimport x\n";
+        assert_eq!(
+            pep723_deps(src),
+            HashSet::from(["anthropic".into(), "my-pkg".into()])
+        );
+        assert!(pep723_deps("import x\n").is_empty());
+        assert!(pep723_deps("# /// script\nimport x\n").is_empty());
+    }
+
+    #[test]
+    fn discover_records_sibling_python_modules_per_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pkg = tmp.path().join("tools/helpers");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(pkg.join("__init__.py"), "").unwrap();
+        std::fs::write(tmp.path().join("tools/util.py"), "").unwrap();
+        std::fs::create_dir(tmp.path().join("tools/data")).unwrap();
+
+        let idx = DepIndex::default();
+        let found = DepIndex::discover(&[tmp.path().to_path_buf()], &[]);
+        let dir = tmp.path().join("tools").to_string_lossy().into_owned();
+        assert!(python_resolved(
+            &DepIndex {
+                python_local: found.python_local.clone(),
+                ..idx.clone()
+            },
+            &dir,
+            "util"
+        ));
+        assert!(python_resolved(
+            &DepIndex {
+                python_local: found.python_local.clone(),
+                ..idx.clone()
+            },
+            &dir,
+            "helpers"
+        ));
+        assert!(!python_resolved(
+            &DepIndex {
+                python_local: found.python_local.clone(),
+                ..idx.clone()
+            },
+            &dir,
+            "data"
+        ));
+        assert!(!python_resolved(&found, "elsewhere", "util"));
+    }
+
+    #[test]
+    fn discover_skips_manifests_matching_an_exclude_glob() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fixtures = tmp.path().join("fixtures");
+        std::fs::create_dir(&fixtures).unwrap();
+        std::fs::write(
+            fixtures.join("pyproject.toml"),
+            "[project]\ndependencies = [\"requests\"]\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("requirements.txt"), "click\n").unwrap();
+
+        let glob = format!("{}/fixtures/**", tmp.path().display());
+        let idx = DepIndex::discover(&[tmp.path().to_path_buf()], &[glob]);
+        assert!(idx.python.contains("click"));
+        assert!(!idx.python.contains("requests"));
     }
 }

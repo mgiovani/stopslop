@@ -3,6 +3,18 @@
 Notable changes per release. The README describes current behavior only;
 migration notes live here.
 
+## Unreleased
+
+### Fixed
+
+- **The unresolved-package-import rule (SLOP010) no longer flags modules
+  beside the importing file, PEP 723 inline dependencies, or `tomllib`,
+  `zoneinfo` and `graphlib`.** Manifests matching a config `exclude` glob are
+  ignored, so fixture manifests stop making the rest of the repo look
+  undeclared. The message now lists every place the rule looked.
+- **`--list-rules` gains an ACTIVE column** showing each rule's state under
+  the current config and flags; DEFAULT keeps the built-in state.
+
 ## 0.6.0
 
 ### Added
