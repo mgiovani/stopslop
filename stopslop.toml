@@ -1,2 +1,3 @@
 select = ["ALL"]
 exclude = ["tests/fixtures/**"]
+check-imports = true

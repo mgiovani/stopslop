@@ -16,8 +16,15 @@ pub static RULE: RuleDef = RuleDef {
     check,
 };
 
-fn msg(name: &str) -> String {
-    format!("package '{name}' not found in project dependencies or stdlib")
+fn msg(name: &str, manifest: &str) -> String {
+    format!("package '{name}' is not built in and not declared in {manifest}")
+}
+
+fn python_msg(name: &str) -> String {
+    format!(
+        "package '{name}' is not stdlib, not a sibling module, and not declared in \
+         pyproject.toml, requirements.txt or a PEP 723 block"
+    )
 }
 
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
@@ -47,6 +54,17 @@ fn check_python(
     if deps.python.is_empty() {
         return; // no manifest found: never FP
     }
+    let inline = imports_data::pep723_deps(ctx.source);
+    let merged;
+    let deps = if inline.is_empty() {
+        deps
+    } else {
+        merged = DepIndex {
+            python: deps.python.union(&inline).cloned().collect(),
+            ..deps.clone()
+        };
+        &merged
+    };
     for node in ctx.nodes(&["import_statement"]) {
         let mut cursor = node.walk();
         for name_node in node.children_by_field_name("name", &mut cursor) {
@@ -89,14 +107,15 @@ fn flag_python(
     name: &str,
     out: &mut Vec<Diagnostic>,
 ) {
-    if imports_data::python_resolved(deps, name) {
+    let dir = ctx.display_path.rsplit_once('/').map_or("", |(d, _)| d);
+    if imports_data::python_resolved(deps, dir, name) {
         return;
     }
     if is_import_error_guarded(node, ctx) {
         return; // `try: import x / except ImportError:` = optional-dependency idiom, not slop
     }
     let (line, col) = ctx.pos(&node);
-    out.push(Diagnostic::at(rule, ctx, line, col, msg(name)));
+    out.push(Diagnostic::at(rule, ctx, line, col, python_msg(name)));
 }
 
 /// True if `node` sits inside a `try` block whose `try_statement` has an `except` clause
@@ -144,7 +163,13 @@ fn check_ts(rule: &'static RuleDef, ctx: &LintContext, deps: &DepIndex, out: &mu
         if !imports_data::ts_resolved(deps, path) {
             let (line, col) = ctx.pos(&source_node);
             let name = imports_data::ts_package_name(path);
-            out.push(Diagnostic::at(rule, ctx, line, col, msg(&name)));
+            out.push(Diagnostic::at(
+                rule,
+                ctx,
+                line,
+                col,
+                msg(&name, "package.json"),
+            ));
         }
     }
 }
@@ -163,7 +188,7 @@ fn check_go(rule: &'static RuleDef, ctx: &LintContext, deps: &DepIndex, out: &mu
         let path = raw.trim_matches(|c| c == '"' || c == '`');
         if !imports_data::go_resolved(deps, path) {
             let (line, col) = ctx.pos(&node);
-            out.push(Diagnostic::at(rule, ctx, line, col, msg(path)));
+            out.push(Diagnostic::at(rule, ctx, line, col, msg(path, "go.mod")));
         }
     }
 }
@@ -241,7 +266,13 @@ fn flag_rust(
         return;
     }
     let (line, col) = ctx.pos(&node);
-    out.push(Diagnostic::at(rule, ctx, line, col, msg(name)));
+    out.push(Diagnostic::at(
+        rule,
+        ctx,
+        line,
+        col,
+        msg(name, "Cargo.toml"),
+    ));
 }
 
 #[cfg(test)]
@@ -288,6 +319,45 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(lint(Lang::Python, "import fastapi_auth\n", &deps).len(), 1);
+    }
+
+    #[test]
+    fn python_pep723_dependency_is_declared_for_that_file() {
+        let deps = DepIndex {
+            python: set(&["requests"]),
+            ..Default::default()
+        };
+        let src = "# /// script\n# dependencies = [\"anthropic\"]\n# ///\nimport anthropic\nimport other\n";
+        let diags = lint(Lang::Python, src, &deps);
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("'other'"));
+    }
+
+    #[test]
+    fn python_sibling_module_in_the_importing_dir_is_clean() {
+        let mut deps = DepIndex {
+            python: set(&["requests"]),
+            ..Default::default()
+        };
+        deps.python_local.insert(String::new(), set(&["corpus"]));
+        assert_eq!(
+            lint(Lang::Python, "from corpus.common import x\n", &deps).len(),
+            0
+        );
+        assert_eq!(lint(Lang::Python, "import nothere\n", &deps).len(), 1);
+    }
+
+    #[test]
+    fn python_message_names_every_place_it_looked() {
+        let deps = DepIndex {
+            python: set(&["requests"]),
+            ..Default::default()
+        };
+        let d = lint(Lang::Python, "import nothere\n", &deps);
+        assert_eq!(
+            d[0].message,
+            "package 'nothere' is not stdlib, not a sibling module, and not declared in pyproject.toml, requirements.txt or a PEP 723 block"
+        );
     }
 
     #[test]
@@ -681,7 +751,14 @@ mod tests {
 
     fn lint_fixture(lang: Lang, dir_lang: &str, file: &str) -> Vec<Diagnostic> {
         let dir = fixtures_dir(dir_lang);
-        let deps = DepIndex::discover(std::slice::from_ref(&dir));
+        let mut deps = DepIndex::discover(std::slice::from_ref(&dir), &[]);
+        // Display paths drop the fixtures prefix (see above), so re-key the sibling modules.
+        let siblings = deps
+            .python_local
+            .get(&dir.to_string_lossy().into_owned())
+            .cloned()
+            .unwrap_or_default();
+        deps.python_local.insert(dir_lang.to_string(), siblings);
         let source = std::fs::read_to_string(dir.join(file)).unwrap();
         let settings = crate::engine::Settings {
             enabled: crate::engine::resolve_enabled(&[], &[], &[], &[], &[], true),
