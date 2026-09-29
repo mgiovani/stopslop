@@ -110,7 +110,7 @@ const UNEXERCISED_LANGS: &[(&str, Lang)] = &[
     ("SLOP048", Lang::Image),
 ];
 
-// ponytail: Tsx shares every dispatch arm with Ts and prose rules never dispatch on lang, so a
+// Tsx shares every dispatch arm with Ts and prose rules never dispatch on lang, so a
 // witness in one member covers the family. A no-op for a single member inside a family goes unseen.
 // HTML is its own family: it reaches the rules through a different masking path, so a Markdown
 // witness proves nothing about it.

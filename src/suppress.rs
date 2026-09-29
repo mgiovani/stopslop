@@ -122,7 +122,7 @@ fn describe_scope(scope: &Scope) -> String {
     }
 }
 
-// ponytail: these warnings are eprintln! rather than real diagnostics because surfacing them in
+// these warnings are eprintln! rather than real diagnostics because surfacing them in
 // JSON/SARIF output needs a rule code of their own (a "dead suppression" lint) -- deferred until
 // something actually consumes structured output for this.
 /// True when `diags` contains nothing this suppression actually absorbs: no diagnostic both

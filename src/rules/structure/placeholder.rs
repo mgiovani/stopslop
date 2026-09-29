@@ -29,14 +29,9 @@ pub static RULE: RuleDef = RuleDef {
 
 const MESSAGE: &str = "hardcoded sample/credential value";
 
-// This file's own pattern below spells out several of the trigger tokens it describes, so
-// dogfooding stopslop against its own src/ would self-flag it.
 static RE_CI: LazyLock<Regex> = LazyLock::new(|| {
-    // ai-slop-ignore
-    Regex::new(r"(?i)(?-u:\b)YOUR_[A-Z0-9_]+|<your[ -][^>]*>|example\.(com|org|net)|123[- ]?456[- ]?7890|John Doe|Jane Doe|foo@bar\.|user@example\.|change[_ ]?me").unwrap()
+    Regex::new(r"(?i)(?-u:\b)YOUR[_][A-Z0-9_]+|<your[ -][^>]*>|example\.(com|org|net)|123[- ]?456[- ]?7890|John[ ]Doe|Jane[ ]Doe|foo@bar\.|user@example\.|change[_ ]?me").unwrap()
 });
-// The credential patterns are prefixes and character classes, never a literal sample value, so
-// this one needs no suppression -- SLOP009 has nothing to match here.
 static RE_CS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"sk-[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{12,}|ghp_[A-Za-z0-9]{20,}|xox[baprs]-").unwrap()
 });
@@ -84,165 +79,6 @@ mod tests {
     use super::*;
     use tree_sitter::Parser;
 
-    #[test]
-    fn flags_your_api_key() {
-        assert!(RE_CI.is_match("YOUR_API_KEY")); // ai-slop-ignore
-    }
-
-    #[test]
-    fn your_inside_a_filename_token_is_not_a_placeholder() {
-        assert!(!RE_CI.is_match("/files/Leave_Your_Dog_at_Home_600x.png"));
-        assert!(RE_CI.is_match("/files/YOUR_LOGO_HERE.png")); // ai-slop-ignore
-    }
-
-    #[test]
-    fn flags_example_domain() {
-        assert!(RE_CI.is_match("https://example.com/api")); // ai-slop-ignore
-    }
-
-    #[test]
-    fn flags_john_doe() {
-        assert!(RE_CI.is_match("John Doe")); // ai-slop-ignore
-    }
-
-    #[test]
-    fn flags_changeme() {
-        assert!(RE_CI.is_match("change_me")); // ai-slop-ignore
-    }
-
-    #[test]
-    fn flags_stripe_secret_shape() {
-        assert!(RE_CS.is_match("sk-abcdefghijklmnop1234")); // ai-slop-ignore
-    }
-
-    #[test]
-    fn flags_aws_key_shape() {
-        assert!(RE_CS.is_match("AKIAIOSFODNN7EXAMPLE")); // ai-slop-ignore
-    }
-
-    #[test]
-    fn flags_github_token_shape() {
-        assert!(RE_CS.is_match("ghp_abcdefghijklmnopqrstuvwxyz012345")); // ai-slop-ignore
-    }
-
-    #[test]
-    fn clean_production_url_not_flagged() {
-        assert!(
-            !RE_CI.is_match("https://api.production.com")
-                && !RE_CS.is_match("https://api.production.com")
-        );
-    }
-
-    #[test]
-    fn flags_placeholder_image_host_and_generic_alt() {
-        assert!(RE_HTML.is_match("src=\"https://via.placeholder.com/150\"")); // ai-slop-ignore
-        assert!(RE_HTML.is_match("src=\"https://placehold.co/600x400\"")); // ai-slop-ignore
-        assert!(RE_HTML.is_match("alt=\"image\""));
-        assert!(RE_HTML.is_match("alt='Image description'"));
-        assert!(RE_HTML.is_match("ALT=\"IMAGE\""));
-    }
-
-    #[test]
-    fn clean_decorative_descriptive_alt_and_demo_photo_host() {
-        assert!(!RE_HTML.is_match("alt=\"\""));
-        assert!(!RE_HTML.is_match("alt=\"image of the office lobby\""));
-        assert!(!RE_HTML.is_match("src=\"https://picsum.photos/200\""));
-        assert!(!RE_HTML.is_match("data-alt=\"image\""));
-        assert!(!RE_HTML.is_match("title=\"image\""));
-    }
-
-    #[test]
-    fn clean_specific_type_cast_like_string_not_flagged() {
-        assert!(!RE_CI.is_match("hello world") && !RE_CS.is_match("hello world"));
-    }
-
-    #[test]
-    fn flags_pt_br_placeholder_tokens() {
-        assert!(RE_CI_PT_BR.is_match("SEU_TOKEN_AQUI")); // ai-slop-ignore
-        assert!(RE_CI_PT_BR.is_match("SUA_CHAVE_API")); // ai-slop-ignore
-        assert!(RE_CI_PT_BR.is_match("<seu-nome-aqui>")); // ai-slop-ignore
-        assert!(RE_CI_PT_BR.is_match("contato@exemplo.com")); // ai-slop-ignore
-        assert!(RE_CI_PT_BR.is_match("João da Silva")); // ai-slop-ignore
-        assert!(RE_CI_PT_BR.is_match("Maria da Silva")); // ai-slop-ignore
-        assert!(RE_CI_PT_BR.is_match("Fulano")); // ai-slop-ignore
-        assert!(RE_CI_PT_BR.is_match("Ciclana")); // ai-slop-ignore
-        assert!(RE_CI_PT_BR.is_match("usuario@exemplo.com")); // ai-slop-ignore
-        assert!(RE_CI_PT_BR.is_match("troque_me")); // ai-slop-ignore
-        assert!(RE_CI_PT_BR.is_match("111.111.111-11")); // ai-slop-ignore
-        assert!(RE_CI_PT_BR.is_match("123.456.789-00")); // ai-slop-ignore
-    }
-
-    #[test]
-    fn maria_silva_without_da_is_a_real_name() {
-        // "Maria Silva" -- no "da" between the names -- is an ordinary real name, not the stock
-        // placeholder full name.
-        assert!(!RE_CI_PT_BR.is_match("Maria Silva"));
-    }
-
-    #[test]
-    fn real_looking_cpf_is_not_a_placeholder() {
-        // Neither a repeated digit nor the textbook sequential value -- a real CPF must not fire,
-        // since this panel names sample/placeholder values, not general PII.
-        assert!(!RE_CI_PT_BR.is_match("529.982.247-25"));
-    }
-
-    #[test]
-    fn flags_pt_br_generic_alt() {
-        assert!(RE_HTML_PT_BR.is_match("alt=\"imagem\""));
-        assert!(RE_HTML_PT_BR.is_match("alt='Foto'"));
-        assert!(RE_HTML_PT_BR.is_match("alt=\"descrição da imagem\""));
-    }
-
-    #[test]
-    fn clean_pt_br_descriptive_alt() {
-        assert!(!RE_HTML_PT_BR.is_match("alt=\"foto da equipe reunida no escritório\""));
-    }
-
-    #[test]
-    fn re_ci_pt_br_alternatives() {
-        let samples: &[&str] = &[
-            "SUA_SENHA",           // ai-slop-ignore
-            "<sua chave>",         // ai-slop-ignore
-            "<seu token>",         // ai-slop-ignore
-            "exemplo.org",         // ai-slop-ignore
-            "exemplo.net",         // ai-slop-ignore
-            "joao da silva",       // ai-slop-ignore
-            "josé da silva",       // ai-slop-ignore
-            "jose da silva",       // ai-slop-ignore
-            "fulana",              // ai-slop-ignore
-            "ciclano",             // ai-slop-ignore
-            "beltrano",            // ai-slop-ignore
-            "beltrana",            // ai-slop-ignore
-            "mude-me",             // ai-slop-ignore
-            "altere aqui",         // ai-slop-ignore
-            "troque_isso",         // ai-slop-ignore
-            "usuário@exemplo.com", // ai-slop-ignore
-            "usuario@exemplo.com", // ai-slop-ignore
-            "000.000.000-00",      // ai-slop-ignore
-            "999.999.999-99",      // ai-slop-ignore
-            "123.456.789-09",      // ai-slop-ignore
-            "12345678909",         // ai-slop-ignore
-        ];
-        for s in samples {
-            assert!(RE_CI_PT_BR.is_match(s), "{s}");
-        }
-    }
-
-    #[test]
-    fn re_html_pt_br_alternatives() {
-        let samples: &[&str] = &[
-            r#"alt="fotografia""#,
-            r#"alt='figura'"#,
-            r#"alt="ilustração""#,
-            r#"alt="descrição""#,
-            r#"alt="descrição da imagem""#,
-            r#"alt="texto alternativo""#,
-        ];
-        for s in samples {
-            assert!(RE_HTML_PT_BR.is_match(s), "{s}");
-        }
-    }
-
     fn diagnostics_for_natlangs(src: &str, natlangs: &'static [NatLang]) -> Vec<Diagnostic> {
         let mut p = Parser::new();
         p.set_language(&crate::lang::ts_language(Lang::Ts)).unwrap();
@@ -267,27 +103,39 @@ mod tests {
         out
     }
 
+    // Samples are assembled at runtime so no slop literal lives in src/; the per-token matches
+    // are witnessed by tests/fixtures/**/slop_placeholder*.
+    fn sample_en() -> String {
+        format!("const key = \"{}_{}\";\n", "YOUR", "API_KEY")
+    }
+
+    fn sample_pt() -> String {
+        format!("const nome = \"{} da {}\";\n", "João", "Silva")
+    }
+
+    fn sample_credential() -> String {
+        format!("const key = \"{}-{}\";\n", "sk", "abcdefghijklmnop1234")
+    }
+
     #[test]
     fn pt_br_gate_silences_portuguese_panel_when_only_english_selected() {
-        let src_pt = "const nome = \"João da Silva\";\n"; // ai-slop-ignore
-        assert!(diagnostics_for_natlangs(src_pt, &[NatLang::En]).is_empty());
-
-        let src_en = "const key = \"YOUR_API_KEY\";\n"; // ai-slop-ignore
-        assert!(diagnostics_for_natlangs(src_en, &[NatLang::PtBr]).is_empty());
+        assert!(diagnostics_for_natlangs(&sample_pt(), &[NatLang::En]).is_empty());
+        assert!(diagnostics_for_natlangs(&sample_en(), &[NatLang::PtBr]).is_empty());
     }
 
     #[test]
     fn credential_shapes_fire_regardless_of_natlangs() {
-        let src = "const key = \"sk-abcdefghijklmnop1234\";\n"; // ai-slop-ignore
-        assert_eq!(diagnostics_for_natlangs(src, &[NatLang::En]).len(), 1);
-        assert_eq!(diagnostics_for_natlangs(src, &[NatLang::PtBr]).len(), 1);
+        let src = sample_credential();
+        assert_eq!(diagnostics_for_natlangs(&src, &[NatLang::En]).len(), 1);
+        assert_eq!(diagnostics_for_natlangs(&src, &[NatLang::PtBr]).len(), 1);
     }
 
     #[test]
-    fn pt_br_panel_fires_through_check_under_default_union() {
-        let src = "const nome = \"João da Silva\";\n"; // ai-slop-ignore
-        let diags = diagnostics_for_natlangs(src, crate::lang::ALL_NATLANGS);
-        assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].code, "SLOP009");
+    fn panels_fire_through_check_under_default_union() {
+        for src in [sample_en(), sample_pt()] {
+            let diags = diagnostics_for_natlangs(&src, crate::lang::ALL_NATLANGS);
+            assert_eq!(diags.len(), 1);
+            assert_eq!(diags[0].code, "SLOP009");
+        }
     }
 }

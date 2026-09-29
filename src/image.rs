@@ -381,7 +381,7 @@ fn parse_webp(bytes: &[u8]) -> Vec<MetaField> {
 /// a C2PA claim-generator string and an EXIF `Software` value all survive into this extract as
 /// literal substrings between the binary framing bytes that break the runs around them.
 ///
-/// ponytail: this can't tell which EXIF tag a string came from -- every run reads the same
+/// this can't tell which EXIF tag a string came from -- every run reads the same
 /// whether it was tag `0x0131` (Software) or `0x010F` (Make). Upgrade path: parse IFD0 and read
 /// tag `0x0131` by its actual offset once a rule needs that precision.
 fn printable(bytes: &[u8]) -> String {

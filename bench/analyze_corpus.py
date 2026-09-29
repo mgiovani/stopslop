@@ -49,7 +49,7 @@ CAND_EXAMPLES = 6
 # Percent on the pct() 0-100 scale, like SEPARATES_RATE: 2% is 2.0, and 0.02 folded nothing.
 MESSAGE_FLOOR = 2.0
 
-SCOPES = ("line", "comment", "file-first-line", "last-block")
+SCOPES = ("line", "comment", "file-first-line", "last-block", "file")
 FIRST_LINES = 3
 
 CODE_LANGS = tuple(lang for lang in EXT if lang != "prose")
@@ -79,7 +79,7 @@ def blank_strings(text, lang):
     opening a string, because a comment's contents can never be code. Comment text itself
     passes through unchanged here; `comment_lines` is what reads it.
 
-    ponytail: quote-and-comment state machine only, no escapes beyond backslash and no
+    quote-and-comment state machine only, no escapes beyond backslash and no
     raw-string or template-literal awareness; a Rust `r#"..."#`, a Go raw string containing a
     backslash right before its closing backtick, a JS/TS regex literal holding `//`, or a
     nested Rust `/* */` can each desynchronize it. Move to tree-sitter if a candidate ever
@@ -214,6 +214,8 @@ def scope_lines(text, lang, scope):
     if scope == "last-block":
         blocks = paragraph_blocks(text)
         return [blocks[-1]] if blocks else []
+    if scope == "file":
+        return [(len(lines), f"{len(lines)} lines")]
     raise SystemExit(f"unknown scope {scope!r}; expected one of {SCOPES}")
 
 
@@ -226,6 +228,8 @@ def load_candidates(path):
             raise SystemExit(f"{path}: candidate {cand.get('name')!r} is missing {sorted(missing)}")
         if cand["scope"] not in SCOPES:
             raise SystemExit(f"{path}: candidate {cand['name']!r} has scope {cand['scope']!r}")
+        if cand["scope"] == "file" and "min_lines" not in cand:
+            raise SystemExit(f"{path}: candidate {cand['name']!r} has scope 'file' and no min_lines")
         if cand["kind"] not in ("code", "prose"):
             raise SystemExit(f"{path}: candidate {cand['name']!r} has kind {cand['kind']!r}")
     return data
@@ -355,7 +359,7 @@ def measure_candidates(results, root, candidates, args):
                 lines = by_scope.get(c["scope"])
                 if lines is None:
                     lines = by_scope[c["scope"]] = scope_lines(text, cell["lang"], c["scope"])
-                found = [(n, line) for n, line in lines if rx.search(line)]
+                found = [(n, line) for n, line in lines if n >= c.get("min_lines", 0) and rx.search(line)]
                 if not found:
                     continue
                 row = tallies[c["name"]][key]
@@ -818,6 +822,7 @@ def _check_comment_scanning():
     assert scope_lines("a\nb\nc\nd\n", "prose", "file-first-line") == [(1, "a"), (2, "b"), (3, "c")]
     assert scope_lines("first\n\nlast one\n", "prose", "last-block") == [(3, "last one")]
     assert scope_lines("only\n", "prose", "line") == [(1, "only")]
+    assert scope_lines("a\n\nb\n", "prose", "file") == [(2, "2 lines")], "file scope counts non-blank lines"
 
 
 def _check_candidate_scoping():

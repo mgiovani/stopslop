@@ -128,7 +128,7 @@ def _paged_rows(call_page, total, want, skip_failures):
     when the windows themselves don't overlap, and a duplicate row becomes a duplicate file in
     the materialized cell -- dedupe before the slice, not after, so `want` counts unique rows.
     """
-    # ponytail: every returned row lives in memory at once, so `--limit 0` buffers a whole
+    # every returned row lives in memory at once, so `--limit 0` buffers a whole
     # cell before `write_cell` ever touches disk; stream pages straight into `write_cell` if a
     # future dataset makes a full cell too big to hold at once.
     pages = max(1, math.ceil(want / 100))

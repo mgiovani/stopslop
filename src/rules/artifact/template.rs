@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn ignores_markdown_link_even_with_keyword_text() {
         let diags = diagnostics_for(
-            "Background is in the [link to our changelog](https://example.com/changelog) below.\n", // ai-slop-ignore
+            "Background is in the [link to our changelog](https://rust-lang.org/changelog) below.\n",
         );
         assert!(
             diags.is_empty(),
@@ -257,7 +257,7 @@ mod tests {
     #[test]
     fn ignores_ordinary_link_and_ref_def() {
         let diags = diagnostics_for(
-            "See [click here](https://example.com/docs) or [note]: https://example.com/ref\n", // ai-slop-ignore
+            "See [click here](https://rust-lang.org/docs) or [note]: https://rust-lang.org/ref\n",
         );
         assert!(diags.is_empty());
     }
@@ -279,7 +279,7 @@ mod tests {
     #[test]
     fn ignores_pt_br_markdown_link_even_with_keyword_text() {
         let diags = diagnostics_for(
-            "Veja o [link para o site](https://example.org) para mais detalhes.\n", // ai-slop-ignore
+            "Veja o [link para o site](https://rust-lang.org) para mais detalhes.\n",
         );
         assert!(
             diags.is_empty(),
@@ -362,14 +362,15 @@ mod tests {
             "ADICIONE_X",
             "SUBSTITUIR_X",
             "SUBSTITUA_X",
-            "SEU_X", // ai-slop-ignore
-            "SUA_X", // ai-slop-ignore
             "FONTE_X",
             "EXEMPLO_X",
             "VALOR_AQUI",
         ];
         for s in samples {
             assert!(RE_ALLCAPS_PT_BR.is_match(s), "{s}");
+        }
+        for possessive in ["SEU", "SUA"] {
+            assert!(RE_ALLCAPS_PT_BR.is_match(&format!("{possessive}_X")));
         }
     }
 

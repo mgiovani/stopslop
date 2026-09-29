@@ -16,6 +16,9 @@
 #               comment          comment lines only (markers stripped, string literals blanked)
 #               file-first-line  the first three lines, for a paste artifact at the head
 #               last-block       the last non-blank paragraph, for a closing tell
+#               file             one pseudo-line per file carrying its non-blank line count;
+#                                needs `min_lines`, and the regex is `.`
+#   min_lines   scope = "file" only: the file must have at least this many non-blank lines
 #   ignorecase  true to compile with re.IGNORECASE
 #   regex       Python re syntax, written as a TOML literal string so backslashes stay literal
 #   relation    which existing rule this extends, or "new"
@@ -54,7 +57,7 @@ dropped = [
   "Paragraph-initial transition cascade: SLOP016 already owns Furthermore/Moreover/Additionally, and the Portuguese equivalents do not separate from student essays.",
   "Portuguese standalone vague quantifiers: already measured and rejected in weak_verb.rs.",
   "The pt-BR adjective crucial: SLOP016's English panel owns the token, and cross-language disjointness forbids re-flagging it.",
-  "Assumption and simplicity hedges in code comments (assuming, for simplicity): human and AI rates overlap, and the crate's own ponytail convention documents the same idea.",
+  "Assumption and simplicity hedges in code comments (assuming, for simplicity): human and AI rates overlap.",
   "Meta-rationale comments (for clarity, Redundant check): they appear only in paraphrased AI cells, so they mark the paraphrase pipeline, not generation.",
   "Placeholder identifiers such as YourClass: one file, and the identifier proxy fires on human test helpers.",
   "Section-banner comments: SLOP042 exempts banners by design and the shape is a routine human habit.",
@@ -409,6 +412,39 @@ regex = '''pode(?:m)?\s+ser\s+vist[oa]s?\s+como'''
 relation = "extends SLOP025 pt-BR; WEASEL_ATTRIBUTION_PT_BR owns the passive form but not this modal one."
 tier = "B"
 notes = "Measured on the fixed analyzer: verified human 0/88 (Diplomatrix is the only verified pt-BR human dataset after the natlangs fix -- a 0/88 rate is one dataset, not a broad sample, and is weak evidence rather than a clean ceiling), plain AI 52/890 = 5.84%, lift inf (separates)."
+
+[[candidate]]
+name = "Long file: 300+ non-blank lines"
+kind = "code"
+langs = "code"
+scope = "file"
+min_lines = 300
+regex = '''.'''
+relation = "new"
+tier = "B"
+notes = "Does not separate the classes: the verified human pool hits 19.57% (530/2708) and the plain AI pool 0.07% (4/6000), the inverse of the hypothesis. The confound is provenance, not style: the hits come from the pinned stdlib repos (at 300+: typescript-src 40.67%, cpython-lib 31.06%, go-std and rust-std 28.00%), while every AI cell is a single-shot snippet (AIGCodeSet median 14 lines) and CodeMirage is length-matched by construction. The corpus holds no agent-authored repo files, which is where the long-file habit shows up, so the tell is not measurable here. A rule at this threshold would flag human stdlib files. Do not implement without an agent-session corpus."
+
+[[candidate]]
+name = "Long file: 500+ non-blank lines"
+kind = "code"
+langs = "code"
+scope = "file"
+min_lines = 500
+regex = '''.'''
+relation = "new"
+tier = "B"
+notes = "Does not separate the classes: the verified human pool hits 12.92% (350/2708) and the plain AI pool 0.02% (1/6000), the inverse of the hypothesis. The confound is provenance, not style: the hits come from the pinned stdlib repos (at 300+: typescript-src 40.67%, cpython-lib 31.06%, go-std and rust-std 28.00%), while every AI cell is a single-shot snippet (AIGCodeSet median 14 lines) and CodeMirage is length-matched by construction. The corpus holds no agent-authored repo files, which is where the long-file habit shows up, so the tell is not measurable here. A rule at this threshold would flag human stdlib files. Do not implement without an agent-session corpus."
+
+[[candidate]]
+name = "Long file: 1000+ non-blank lines"
+kind = "code"
+langs = "code"
+scope = "file"
+min_lines = 1000
+regex = '''.'''
+relation = "new"
+tier = "B"
+notes = "Does not separate the classes: the verified human pool hits 6.43% (174/2708) and the plain AI pool 0.00% (0/6000), the inverse of the hypothesis. The confound is provenance, not style: the hits come from the pinned stdlib repos (at 300+: typescript-src 40.67%, cpython-lib 31.06%, go-std and rust-std 28.00%), while every AI cell is a single-shot snippet (AIGCodeSet median 14 lines) and CodeMirage is length-matched by construction. The corpus holds no agent-authored repo files, which is where the long-file habit shows up, so the tell is not measurable here. A rule at this threshold would flag human stdlib files. Do not implement without an agent-session corpus."
 
 [[miss]]
 rule = "SLOP011"

@@ -76,7 +76,7 @@ PT_ESSAY_SEED_URL = (
 def fetch(url, dest):
     """Download once, landing the file atomically so a killed download can't be mistaken for a cached one.
 
-    ponytail: streaming copyfileobj + 120s timeout duplicated from bench/score_corpus.py's
+    streaming copyfileobj + 120s timeout duplicated from bench/score_corpus.py's
     fetch rather than imported -- this file must keep running as a standalone `uv run`
     script (PEP 723, `anthropic` only), which importing its sibling would break.
     """
@@ -260,7 +260,7 @@ def call_claude(client, model, prompt):
     except anthropic.AuthenticationError as e:
         raise AuthUnresolved(str(e)) from None
     except TypeError as e:
-        # ponytail: matching the SDK's own client-side message rather than adding
+        # matching the SDK's own client-side message rather than adding
         # a preflight `ant auth status` subprocess call. Upgrade path: if this
         # string ever changes upstream, add that preflight check instead.
         if "authentication method" not in str(e):
@@ -333,7 +333,7 @@ def persist_index(cell_dir, index):
     os.replace(part, path)
 
 
-# ponytail: one lock for every cell, not one per cell_dir. apply_result is I/O bound, so
+# one lock for every cell, not one per cell_dir. apply_result is I/O bound, so
 # cross-cell contention costs nothing measurable; split per-cell if that stops holding.
 _INDEX_LOCK = threading.Lock()
 

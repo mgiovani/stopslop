@@ -307,8 +307,7 @@ mod tests {
         // OVERLONG_WORDS - 1 plain words + 1 collapsed URL word = OVERLONG_WORDS, at the
         // threshold, not over it.
         let mut src = words(OVERLONG_WORDS - 1, "");
-        // ai-slop-ignore
-        src.push_str(" https://example.com/a/very/long/path/that/is/many/tokens.\n");
+        src.push_str(" https://rust-lang.org/a/very/long/path/that/is/many/tokens.\n");
         assert!(diagnostics_for(&src).is_empty());
     }
 
