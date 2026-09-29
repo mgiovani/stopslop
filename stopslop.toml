@@ -1,1 +1,2 @@
+select = ["ALL"]
 exclude = ["tests/fixtures/**"]
