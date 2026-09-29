@@ -5,6 +5,13 @@ migration notes live here.
 
 ## Unreleased
 
+### Added
+
+- **`[[custom-rule]]` gains `kind = "file"`** with one predicate per entry:
+  `max-lines`, `forbid` or `require`. House rules such as "no source file over
+  300 lines" or "`__init__.py` must be empty" no longer need a Rust module.
+  Existing entries are unchanged.
+
 ### Fixed
 
 - **The unresolved-package-import rule (SLOP010) no longer flags modules
