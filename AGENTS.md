@@ -57,12 +57,12 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 
 ## Comments and docs
 
+- Clean code explains itself, so comments are rare. Rename, extract, or restructure before writing one.
+- Comment only a non-obvious why: a workaround, a subtle constraint, a deliberate tradeoff. One line, two at most.
 - Never write a comment that restates the line under it. SLOP042 flags that pattern in linted code and the crate holds itself to it.
-- Doc comments carry the why: why this threshold, why this exclusion, why this ordering.
-- Every tuned constant states the evidence that tuned it. See `sentence_length::OVERLONG_WORDS`.
-- Record a rejected alternative wherever the next reader would otherwise re-propose it. See `context::NodeIndex`.
-- Rename the thing before annotating it. A comment is not a fix for an unclear name.
-- Mark a deliberate shortcut with a `ponytail:` comment naming its ceiling and upgrade path.
+- Evidence stays out of the source. Corpus rates, measurements, issue numbers, and rejected alternatives go in the commit message, the PR body, `bench/candidates.toml`, or the bench reports.
+- Delete a comment you come across that restates the code or carries evidence that belongs elsewhere.
+- Mark a deliberate shortcut with a comment naming its ceiling and upgrade path.
 - A rule message may name an AI tell. It never claims a whole file is AI-written, and it never needs a model or a private key to say so. The README non-goals stay true.
 
 ## Testing
