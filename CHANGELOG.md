@@ -14,6 +14,10 @@ migration notes live here.
 
 ### Fixed
 
+- **A stray Markdown fence in a code file no longer hides every syntax-tree
+  rule.** The parser now sees the file with fence lines blanked, so rules such
+  as the type-escape rule fire on the pasted code inside; the stray-fence rule
+  still reports the fences.
 - **The unresolved-package-import rule (SLOP010) no longer flags modules
   beside the importing file, PEP 723 inline dependencies, or `tomllib`,
   `zoneinfo` and `graphlib`.** Manifests matching a config `exclude` glob are

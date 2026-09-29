@@ -5,6 +5,7 @@ use crate::{
     lang::{self, Lang},
     paths,
     registry::RULES,
+    rules::artifact::fence,
     suppress,
 };
 use std::collections::HashSet;
@@ -183,14 +184,15 @@ pub fn lint_file(
     if parser.set_language(&lang::ts_language(lang)).is_err() {
         return Vec::new();
     }
-    let tree = match parser.parse(source, None) {
+    let parsed = fence::blank_fence_lines(source);
+    let tree = match parser.parse(&*parsed, None) {
         Some(t) => t,
         None => {
             eprintln!("stopslop: parse failed, skipping {display_path}");
             return Vec::new();
         }
     };
-    // NOTE: a tree WITH error nodes is normal and expected (stray fences etc.) — DO NOT skip it.
+    // NOTE: a tree WITH error nodes is normal and expected (broken pasted code) — DO NOT skip it.
     let (comments, strings, index) = context::extract(&tree, source, lang);
     let is_test = paths::is_test_path(&display_path);
     let is_stub = display_path.ends_with(".pyi");
