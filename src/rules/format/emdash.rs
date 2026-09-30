@@ -36,13 +36,8 @@ const FIX: &str = "rewrite the sentence, or use a comma, colon, or parentheses";
 /// qualifying occurrence gets its own diagnostic (not deduped per line): a line with two
 /// mid-prose dashes is two problems to fix, not one.
 ///
-/// The spaced ASCII double hyphen (` -- `) used to be scanned here too. Removed (issue #61):
-/// measured against the corpus, it carried the rule's human-leaning signal -- rust-book and
-/// diplomatrix's editorial `--` use, not an AI tell -- while contributing almost nothing on the AI
-/// side. Dropping it moved SLOP018's file-rate lift from 0.87 to 1.66 (human 12.99% -> 6.53%, AI
-/// 11.36% -> 10.86%), the largest single-step lift gain of this issue's whole prose sweep. A
-/// document that still types a literal `--` for an em dash keeps getting no signal from this rule;
-/// it wasn't separating the classes here either.
+/// ASCII ` -- ` and `word--word` are deliberately not scanned: reStructuredText and Sphinx
+/// authors type them for a dash, so they point toward human prose.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(doc) = ctx.prose else { return };
     let mut block_initial = HashMap::new();
@@ -244,6 +239,12 @@ mod tests {
     fn flags_spaced_mid_sentence_dash() {
         let diags = diagnostics_for("Deploys went smoothly \u{2014} no surprises this week.\n");
         assert_eq!(diags.len(), 1);
+    }
+
+    #[test]
+    fn allows_ascii_double_hyphen() {
+        assert!(diagnostics_for("Deploys went smoothly -- no surprises.\n").is_empty());
+        assert!(diagnostics_for("The build--stays simple.\n").is_empty());
     }
 
     #[test]
