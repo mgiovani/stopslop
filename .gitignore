@@ -4,3 +4,4 @@
 /.claude/workflows
 /.env
 __pycache__/
+/bench/corpus/.cache/

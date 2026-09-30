@@ -7,6 +7,11 @@ migration notes live here.
 
 ### Added
 
+- **SLOP049 flags a spectral ridge in PNG and JPEG images.** Tier C, off by
+  default: a Hann-windowed FFT of the 256x256 centre crop, azimuthally averaged,
+  with a ridge threshold of 0.4 log10. On 190 labelled images the real, GAN and
+  diffusion splits did not separate, so it stays opt-in. Adds the `png` and
+  `zune-jpeg` dependencies (inflate and JPEG IDCT are not in std).
 - **`--help-config` prints an annotated `stopslop.toml`** covering every key,
   `[per-file-ignores]`, both custom rule kinds, suppression comments and exit
   codes. `--help` gains a footer pointing at it, and `--format` and

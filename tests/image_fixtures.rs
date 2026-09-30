@@ -359,3 +359,66 @@ fn compressed_generator_name_field_is_a_known_blind_spot() {
     ]);
     assert!(codes(&bytes).is_empty());
 }
+
+fn adler32(bytes: &[u8]) -> u32 {
+    let (mut a, mut b) = (1u32, 0u32);
+    for &x in bytes {
+        a = (a + x as u32) % 65521;
+        b = (b + a) % 65521;
+    }
+    (b << 16) | a
+}
+
+/// 256x256 8-bit grayscale PNG whose zlib stream is stored (uncompressed) deflate blocks.
+fn gray_png_256(pixel: impl Fn(usize, usize) -> u8) -> Vec<u8> {
+    let mut raw = Vec::new();
+    for y in 0..256 {
+        raw.push(0);
+        raw.extend((0..256).map(|x| pixel(y, x)));
+    }
+    let mut z = vec![0x78, 0x01];
+    let mut blocks = raw.chunks(65535).peekable();
+    while let Some(block) = blocks.next() {
+        z.push(u8::from(blocks.peek().is_none()));
+        z.extend_from_slice(&(block.len() as u16).to_le_bytes());
+        z.extend_from_slice(&(!(block.len() as u16)).to_le_bytes());
+        z.extend_from_slice(block);
+    }
+    z.extend_from_slice(&adler32(&raw).to_be_bytes());
+    let mut ihdr = Vec::new();
+    ihdr.extend_from_slice(&256u32.to_be_bytes());
+    ihdr.extend_from_slice(&256u32.to_be_bytes());
+    ihdr.extend_from_slice(&[8, 0, 0, 0, 0]);
+    png(&[("IHDR", &ihdr), ("IDAT", &z), ("IEND", &[])])
+}
+
+fn noise(y: usize, x: usize) -> u8 {
+    (((y * 73856093) ^ (x * 19349663)).wrapping_mul(2654435761) >> 8) as u8
+}
+
+fn spectrum_only() -> Settings {
+    Settings {
+        enabled: resolve_enabled(&["SLOP049".to_string()], &[], &[], &[], &[], false),
+        ..settings()
+    }
+}
+
+/// A: a periodic 4-pixel grid over faint noise leaves a spectral ridge. SLOP049 is opt-in, so the
+/// test selects it by code.
+#[test]
+fn periodic_grid_png_flags_spectral_ridge() {
+    let bytes =
+        gray_png_256(|y, x| 40 + noise(y, x) / 8 + if x % 4 == 0 || y % 4 == 0 { 90 } else { 0 });
+    let found = lint_image("fixture".to_string(), &bytes, &spectrum_only()).unwrap();
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].code, "SLOP049");
+}
+
+/// B: a flat image has no ridge.
+#[test]
+fn flat_png_has_no_spectral_ridge() {
+    let bytes = gray_png_256(|_, _| 128);
+    assert!(lint_image("fixture".to_string(), &bytes, &spectrum_only())
+        .unwrap()
+        .is_empty());
+}

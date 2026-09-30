@@ -70,6 +70,7 @@ pub static RULES: &[&'static RuleDef] = &[
     &crate::rules::provenance::image_prompt::RULE,   // SLOP046
     &crate::rules::provenance::image_source_type::RULE, // SLOP047
     &crate::rules::provenance::image_generator::RULE, // SLOP048
+    &crate::rules::provenance::image_spectrum::RULE, // SLOP049
 ];
 
 #[cfg(test)]

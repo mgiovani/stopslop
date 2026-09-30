@@ -34,6 +34,8 @@ pub struct MetaField {
 pub struct ImageDoc {
     pub format: ImageFormat,
     pub fields: Vec<MetaField>,
+    /// Raw file bytes, kept so a rule that needs pixels can decode on demand.
+    pub bytes: Vec<u8>,
 }
 
 /// Hard cap on collected fields per file. A hostile PNG can carry millions of zero-length chunks;
@@ -58,16 +60,19 @@ impl ImageDoc {
             Some(ImageDoc {
                 format: ImageFormat::Png,
                 fields: parse_png(bytes),
+                bytes: bytes.to_vec(),
             })
         } else if bytes.starts_with(&[0xFF, 0xD8]) {
             Some(ImageDoc {
                 format: ImageFormat::Jpeg,
                 fields: parse_jpeg(bytes),
+                bytes: bytes.to_vec(),
             })
         } else if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
             Some(ImageDoc {
                 format: ImageFormat::WebP,
                 fields: parse_webp(bytes),
+                bytes: bytes.to_vec(),
             })
         } else {
             None
@@ -426,6 +431,68 @@ fn push_printable_run(out: &mut String, run: &[u8]) {
     }
     // `run` is ASCII 0x20..=0x7E by construction, so this is always valid UTF-8.
     out.push_str(std::str::from_utf8(run).unwrap());
+}
+
+/// Side of the square luma crop the spectral rule transforms; a power of two for the radix-2 FFT.
+pub const CROP: usize = 256;
+
+/// Hard cap on decoded pixels. A decompression bomb declares its dimensions in a few header bytes;
+/// checking them before the decoder allocates keeps the cost bounded regardless of file size.
+const MAX_PIXELS: usize = 64 * 1024 * 1024;
+
+/// Centre `CROP`x`CROP` luma crop (0..255, row-major) of a PNG or JPEG, or `None` when the format
+/// is unsupported (WebP), the image is smaller than the crop, over `MAX_PIXELS`, or won't decode.
+/// Decoding is deliberately outside `ImageDoc::parse`: only the opt-in spectral rule pays for it.
+pub fn luma_crop(bytes: &[u8], format: ImageFormat) -> Option<Vec<f32>> {
+    let (w, h, channels, pixels) = match format {
+        ImageFormat::Png => decode_png(bytes)?,
+        ImageFormat::Jpeg => decode_jpeg(bytes)?,
+        ImageFormat::WebP => return None,
+    };
+    if w < CROP || h < CROP || pixels.len() < w * h * channels {
+        return None;
+    }
+    let (x0, y0) = ((w - CROP) / 2, (h - CROP) / 2);
+    let mut out = Vec::with_capacity(CROP * CROP);
+    for y in y0..y0 + CROP {
+        for x in x0..x0 + CROP {
+            let p = &pixels[(y * w + x) * channels..][..channels];
+            out.push(match channels {
+                1 | 2 => p[0] as f32,
+                _ => 0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32,
+            });
+        }
+    }
+    Some(out)
+}
+
+fn decode_png(bytes: &[u8]) -> Option<(usize, usize, usize, Vec<u8>)> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut reader = decoder.read_info().ok()?;
+    let (w, h) = (reader.info().width as usize, reader.info().height as usize);
+    if w.checked_mul(h)? > MAX_PIXELS {
+        return None;
+    }
+    let mut buf = vec![0; reader.output_buffer_size()?];
+    let frame = reader.next_frame(&mut buf).ok()?;
+    let channels = frame.color_type.samples();
+    buf.truncate(frame.buffer_size());
+    Some((w, h, channels, buf))
+}
+
+fn decode_jpeg(bytes: &[u8]) -> Option<(usize, usize, usize, Vec<u8>)> {
+    use zune_jpeg::zune_core::bytestream::ZCursor;
+    let mut decoder = zune_jpeg::JpegDecoder::new(ZCursor::new(bytes));
+    decoder.decode_headers().ok()?;
+    let info = decoder.info()?;
+    let (w, h) = (info.width as usize, info.height as usize);
+    if w * h > MAX_PIXELS {
+        return None;
+    }
+    let channels = decoder.output_colorspace()?.num_components();
+    let pixels = decoder.decode().ok()?;
+    Some((w, h, channels, pixels))
 }
 
 #[cfg(test)]
