@@ -73,10 +73,11 @@ pub struct Cli {
     /// "C" fails on any finding. Overrides the config's `fail-on-tier`.
     #[arg(long)]
     pub fail_on_tier: Option<String>,
-    /// Report files/lines scanned, wall time and throughput. Text and markdown modes print the
-    /// summary to stderr (stdout is unchanged); json and sarif carry it inside the payload as a
-    /// `stats` object. "skipped" counts files the walk reached but could not lint (unsupported
-    /// extension or unreadable); paths dropped by .gitignore or `exclude` are never walked.
+    /// Report files/lines scanned, wall time, throughput and per-rule finding counts. Text and
+    /// markdown modes print the summary to stderr (stdout is unchanged); json and sarif carry it
+    /// inside the payload as a `stats` object. "skipped" counts files the walk reached but could
+    /// not lint (unsupported extension or unreadable); paths dropped by .gitignore or `exclude`
+    /// are never walked.
     #[arg(long)]
     pub stats: bool,
     /// Worker threads for the walk; 0 picks automatically.
@@ -259,7 +260,7 @@ pub fn run(cli: Cli) -> anyhow::Result<i32> {
         &mut w,
     )?;
     if let (Some(s), Format::Text | Format::Markdown) = (stats, cli.format) {
-        eprint!("{}", output::render_stats(&s));
+        eprint!("{}", output::render_stats(&s, &diags));
     }
     if matches!(cli.format, Format::Text) {
         update_notice();

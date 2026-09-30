@@ -7,6 +7,10 @@ migration notes live here.
 
 ### Added
 
+- **`--stats` reports per-rule finding counts.** After the throughput block,
+  one row per rule with findings: count, code, tier, name and distinct files,
+  busiest first. JSON and SARIF `stats` gain `findings` and `rules`. Counts
+  match what was printed, after baseline and suppression.
 - **`[[custom-rule]]` gains `kind = "file"`** with one predicate per entry:
   `max-lines`, `forbid` or `require`. House rules such as "no source file over
   300 lines" or "`__init__.py` must be empty" no longer need a Rust module.

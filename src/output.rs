@@ -5,7 +5,7 @@ use crate::{
     registry::RULES,
     walk::Stats,
 };
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::io::Write;
 
 pub fn emit(
@@ -80,7 +80,7 @@ fn emit_json(
     match stats {
         None => serde_json::to_writer_pretty(&mut *w, diags)?,
         Some(stats) => {
-            let doc = serde_json::json!({ "findings": diags, "stats": stats });
+            let doc = serde_json::json!({ "findings": diags, "stats": stats_json(stats, diags) });
             serde_json::to_writer_pretty(&mut *w, &doc)?;
         }
     }
@@ -120,7 +120,7 @@ fn emit_sarif(
                 },
             },
             results: SarifResults(diags),
-            properties: stats.map(|stats| serde_json::json!({ "stats": stats })),
+            properties: stats.map(|stats| serde_json::json!({ "stats": stats_json(stats, diags) })),
         }],
     };
     serde_json::to_writer_pretty(&mut *w, &doc)?;
@@ -245,7 +245,62 @@ struct SarifRegion {
     start_column: usize,
 }
 
-pub fn render_stats(s: &Stats) -> String {
+#[derive(serde::Serialize)]
+struct RuleCount {
+    code: &'static str,
+    tier: Tier,
+    name: &'static str,
+    count: u64,
+    files: u64,
+}
+
+fn rule_counts(diags: &[Diagnostic]) -> Vec<RuleCount> {
+    let mut by_code: BTreeMap<&str, (RuleCount, HashSet<&str>)> = BTreeMap::new();
+    for d in diags {
+        let (row, paths) = by_code.entry(d.code).or_insert_with(|| {
+            let row = RuleCount {
+                code: d.code,
+                tier: d.tier,
+                name: d.name,
+                count: 0,
+                files: 0,
+            };
+            (row, HashSet::new())
+        });
+        row.count += 1;
+        paths.insert(&d.path);
+    }
+    let mut rows: Vec<_> = by_code
+        .into_values()
+        .map(|(mut row, paths)| {
+            row.files = paths.len() as u64;
+            row
+        })
+        .collect();
+    rows.sort_by_key(|r| std::cmp::Reverse(r.count));
+    rows
+}
+
+fn distinct_files(diags: &[Diagnostic]) -> u64 {
+    diags
+        .iter()
+        .map(|d| d.path.as_str())
+        .collect::<HashSet<_>>()
+        .len() as u64
+}
+
+fn stats_json(stats: &Stats, diags: &[Diagnostic]) -> serde_json::Value {
+    let mut doc = serde_json::json!(stats);
+    doc["findings"] = diags.len().into();
+    doc["rules"] = serde_json::json!(rule_counts(diags));
+    doc
+}
+
+fn plural_files(n: u64) -> String {
+    format!("{} file{}", commas(n), if n == 1 { "" } else { "s" })
+}
+
+pub fn render_stats(s: &Stats, diags: &[Diagnostic]) -> String {
     let mut out = String::from("\n");
     for (label, value) in [
         ("files", commas(s.files)),
@@ -260,6 +315,31 @@ pub fn render_stats(s: &Stats) -> String {
         "rate",
         commas(s.lines_per_sec)
     ));
+    if diags.is_empty() {
+        return out;
+    }
+    out.push_str(&format!(
+        "\n  findings  {} in {}\n",
+        commas(diags.len() as u64),
+        plural_files(distinct_files(diags))
+    ));
+    let rows = rule_counts(diags);
+    let count_width = rows
+        .iter()
+        .map(|r| commas(r.count).len())
+        .max()
+        .unwrap_or(0);
+    let name_width = rows.iter().map(|r| r.name.len()).max().unwrap_or(0);
+    for r in &rows {
+        out.push_str(&format!(
+            "  {:>count_width$}  {}  {}  {:<name_width$}  ({})\n",
+            commas(r.count),
+            r.code,
+            r.tier.label(),
+            r.name,
+            plural_files(r.files),
+        ));
+    }
     out
 }
 
@@ -506,8 +586,66 @@ mod tests {
             lines_per_sec: 172241,
         };
         assert_eq!(
-            render_stats(&stats),
+            render_stats(&stats, &[]),
             "\n  files            230\n  skipped           12\n  lines         15,918\n  wall          0.092s\n  rate         172,241 lines/s\n"
         );
+    }
+
+    #[test]
+    fn rule_counts_sort_by_count_then_code_and_count_distinct_files() {
+        let diags = [
+            diag("SLOP033", Tier::B, "./a b.md"),
+            diag("SLOP018", Tier::B, "./a b.md"),
+            diag("SLOP018", Tier::B, "./a b.md"),
+            diag("SLOP047", Tier::A, "./c.md"),
+            diag("SLOP018", Tier::B, "./d.md"),
+        ];
+        let rows: Vec<_> = rule_counts(&diags)
+            .into_iter()
+            .map(|r| (r.code, r.count, r.files))
+            .collect();
+        assert_eq!(
+            rows,
+            [("SLOP018", 3, 2), ("SLOP033", 1, 1), ("SLOP047", 1, 1)]
+        );
+    }
+
+    #[test]
+    fn render_stats_lists_rules_after_throughput() {
+        let stats = Stats {
+            files: 2,
+            skipped: 0,
+            panicked: 0,
+            lines: 10,
+            wall_secs: 0.5,
+            lines_per_sec: 20,
+        };
+        let diags = [
+            diag("SLOP018", Tier::B, "./a.md"),
+            diag("SLOP018", Tier::B, "./b.md"),
+            diag("SLOP047", Tier::A, "./b.md"),
+        ];
+        let out = render_stats(&stats, &diags);
+        let tail = out.split("lines/s\n").nth(1).unwrap();
+        assert!(tail.starts_with("\n  findings  3 in 2 files\n"), "{tail}");
+        assert!(tail.contains("  2  SLOP018  B  "), "{tail}");
+        assert!(tail.contains("(2 files)"), "{tail}");
+        assert!(tail.contains("(1 file)"), "{tail}");
+    }
+
+    #[test]
+    fn json_stats_carry_findings_total_and_rules() {
+        let stats = Stats::default();
+        let diags = [
+            diag("SLOP018", Tier::B, "./a.md"),
+            diag("SLOP018", Tier::B, "./b.md"),
+        ];
+        let mut out = Vec::new();
+        emit_json(&diags, Some(&stats), &mut out).unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(doc["stats"]["findings"], 2);
+        assert_eq!(doc["stats"]["rules"][0]["code"], "SLOP018");
+        assert_eq!(doc["stats"]["rules"][0]["count"], 2);
+        assert_eq!(doc["stats"]["rules"][0]["files"], 2);
     }
 }
