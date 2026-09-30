@@ -7,6 +7,10 @@ migration notes live here.
 
 ### Added
 
+- **SLOP050 flags a comment that narrates a stand-in, SLOP051 one that announces
+  demo code.** Tier B, on by default, artifact group (#60). SLOP050 catches
+  "logic would go here", "in a real-world scenario", "simulate the response";
+  SLOP051 catches `Example usage:`, `Example 1:` and "Create sample data" openers.
 - **SLOP049 flags a spectral ridge in PNG and JPEG images.** Tier C, off by
   default: a Hann-windowed FFT of the 256x256 centre crop, azimuthally averaged,
   with a ridge threshold of 0.4 log10. On 190 labelled images the real, GAN and
