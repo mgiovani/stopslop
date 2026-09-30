@@ -14,6 +14,9 @@ migration notes live here.
 
 ### Fixed
 
+- **SLOP018 keeps ASCII `--` unflagged, now pinned by a fixture and a test**
+  (issue [#68](https://github.com/mgiovani/stopslop/issues/68)). Split by
+  form, the spaced `--` is 8x commoner in human files; only `—` and `–` count.
 - **A stray Markdown fence in a code file no longer hides every syntax-tree
   rule.** The parser now sees the file with fence lines blanked, so rules such
   as the type-escape rule fire on the pasted code inside; the stray-fence rule
