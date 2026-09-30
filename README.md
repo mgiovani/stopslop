@@ -539,6 +539,8 @@ preamble or elision comment is junk in a test file too.
 
 ## Config file
 
+`stopslop --help-config` prints an annotated `stopslop.toml` covering every key.
+
 The nearest `stopslop.toml` walking up from the current directory to the
 filesystem root, so a run from a nested cwd (an editor task runner, a
 pre-commit hook) still finds the repo-root file. When no project file exists,

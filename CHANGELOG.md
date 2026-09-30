@@ -7,6 +7,10 @@ migration notes live here.
 
 ### Added
 
+- **`--help-config` prints an annotated `stopslop.toml`** covering every key,
+  `[per-file-ignores]`, both custom rule kinds, suppression comments and exit
+  codes. `--help` gains a footer pointing at it, and `--format` and
+  `--check-imports` now carry help text.
 - **`--stats` reports per-rule finding counts.** After the throughput block,
   one row per rule with findings: count, code, tier, name and distinct files,
   busiest first. JSON and SARIF `stats` gain `findings` and `rules`. Counts
