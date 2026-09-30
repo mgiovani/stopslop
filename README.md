@@ -75,7 +75,7 @@ cargo install --path .
 stopslop                          # lint the current directory
 stopslop src/ lib/                 # lint specific paths
 stopslop --format json .           # machine-readable output
-stopslop --stats .                 # files/lines scanned, wall time, throughput (stderr)
+stopslop --stats .                 # throughput and per-rule finding counts (stderr)
 stopslop -j 1 .                    # single worker thread (perf work; 0 = automatic)
 stopslop --select SLOP001          # run only the elision rule
 stopslop --select rhetoric         # run one rule group (see "Rule groups" below)
@@ -101,10 +101,12 @@ Example output:
 SARIF 2.1.0 document for GitHub code scanning and similar tools;
 `--format markdown` emits the findings grouped under one heading per tier, for
 pasting into a PR comment or a report. `--stats` prints a
-files/lines/wall-time/throughput summary to stderr in text and markdown
-modes; with `--format json` the output becomes
+files/lines/wall-time/throughput summary, followed by one row per rule with
+findings (count, code, tier, name, distinct files), to stderr in text and
+markdown modes; with `--format json` the output becomes
 `{"findings": [...], "stats": {...}}`, and with `--format sarif` the same
-object lands in `runs[0].properties.stats`. Wall time runs from startup
+object lands in `runs[0].properties.stats`. In both, `stats` also carries
+`findings` (total) and `rules`, an array of `{code, tier, name, count, files}`. Wall time runs from startup
 through the walk, so it lines up with an external `time`. "skipped" counts
 files the walk reached but could not lint (unsupported extension or
 unreadable); paths dropped by `.gitignore` or `exclude` are never walked and
