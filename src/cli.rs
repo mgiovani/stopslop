@@ -15,7 +15,16 @@ use std::path::{Path, PathBuf};
 use update_informer::Check;
 
 #[derive(Parser)]
-#[command(name = "stopslop", version, about = "Like Ruff, but for AI slop.")]
+#[command(
+    name = "stopslop",
+    version,
+    about = "Like Ruff, but for AI slop.",
+    after_help = "Config: stopslop.toml (nearest ancestor, else ~/.config/stopslop/); --help-config prints every key.\n\
+Custom rules: [[custom-rule]] phrase or file rules; no AST checks.\n\
+Suppress: `ai-slop-ignore[-file][: CODES|group]` in a comment.\n\
+Exit codes: 0 clean, 1 findings at or above fail-on-tier (Tier A default), 2 error.\n\
+Docs: https://github.com/mgiovani/stopslop"
+)]
 pub struct Cli {
     /// Paths to scan (default: current directory).
     pub paths: Vec<PathBuf>,
@@ -30,6 +39,7 @@ pub struct Cli {
     /// Lint only files changed since the merge base with REF, e.g. `--since origin/main` on a PR.
     #[arg(long, value_name = "REF", group = "git_scope")]
     pub since: Option<String>,
+    /// Output format: text, json, sarif or markdown.
     #[arg(long, value_enum, default_value_t = Format::Text)]
     pub format: Format,
     /// Only run these rule codes/prefixes/groups (resets defaults). Comma-separated or repeated.
@@ -50,6 +60,9 @@ pub struct Cli {
     /// Print every rule with its group and tier, then exit.
     #[arg(long)]
     pub list_rules: bool,
+    /// Print an annotated stopslop.toml covering every key, then exit.
+    #[arg(long)]
+    pub help_config: bool,
     /// Subtract findings recorded in a baseline file, so only new findings are reported.
     /// Bare `--baseline` uses `.stopslop-baseline.json`; `--baseline=PATH` picks another file.
     // require_equals is load-bearing: without it, `--baseline .` would eat the `.` scan path as
@@ -59,7 +72,8 @@ pub struct Cli {
     /// Record the current findings as the baseline and exit 0. Same `=PATH` form as --baseline.
     #[arg(long, num_args = 0..=1, require_equals = true, default_missing_value = baseline::DEFAULT_PATH)]
     pub write_baseline: Option<PathBuf>,
-    /// Enable SLOP010 (package-import resolution).
+    /// Enable SLOP010: read dependency manifests (pyproject.toml, requirements.txt, package.json,
+    /// go.mod, Cargo.toml) and flag imports of packages they do not declare.
     #[arg(long)]
     pub check_imports: bool,
     /// Path to a config file (default: the nearest stopslop.toml walking up from the current
@@ -112,6 +126,10 @@ fn effective_threads(requested: usize, available: usize) -> usize {
 
 pub fn run(cli: Cli) -> anyhow::Result<i32> {
     let started = std::time::Instant::now();
+    if cli.help_config {
+        print!("{}", crate::config::REFERENCE);
+        return Ok(0);
+    }
     // Config is discovered before the --list-rules early-return: custom rules need to appear in
     // that listing, and they only exist once the config is loaded.
     let config = Config::discover(cli.config.as_deref(), cli.no_config)?;
@@ -558,6 +576,7 @@ mod tests {
             ignore: Vec::new(),
             extend_ignore: Vec::new(),
             list_rules: false,
+            help_config: false,
             baseline: None,
             write_baseline: None,
             check_imports: false,
@@ -652,5 +671,35 @@ mod tests {
         let mut cli = default_cli(vec![dir.path().to_path_buf()]);
         cli.select = vec!["SLOP999".to_string()];
         assert!(run(cli).is_err());
+    }
+
+    #[test]
+    fn run_help_config_exits_zero() {
+        let mut cli = default_cli(Vec::new());
+        cli.help_config = true;
+        assert_eq!(run(cli).unwrap(), 0);
+    }
+
+    #[test]
+    fn long_help_points_at_config_only_features() {
+        use clap::CommandFactory;
+        let help = Cli::command().render_long_help().to_string();
+        assert!(
+            help.contains("custom") && help.contains("--help-config"),
+            "{help}"
+        );
+    }
+
+    #[test]
+    fn format_and_check_imports_carry_help_text() {
+        use clap::CommandFactory;
+        let cmd = Cli::command();
+        for name in ["format", "check_imports"] {
+            let arg = cmd.get_arguments().find(|a| a.get_id() == name).unwrap();
+            assert!(
+                arg.get_help().is_some_and(|h| !h.to_string().is_empty()),
+                "{name}"
+            );
+        }
     }
 }

@@ -52,6 +52,7 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 - Add no knob nobody sets. A documented `const` beats a config field with one caller.
 - Delete before you add, and put the proof that a branch is dead in the commit message.
 - Ship the smallest correct diff.
+- Every flag, subcommand and option carries clap help text, and anything reachable only through the README or a config file gets a pointer in the `--help` footer. A new command is not done until `--help` describes it.
 - Speak the domain vocabulary in code, messages, docs, and commits: Rule, RuleDef, Diagnostic, Tier, Group, Panel, LintContext, NodeIndex, ProseDoc, Baseline, suppression directive, custom rule, Lang.
 - Coining a synonym for one of those names is a defect. SLOP034 flags the same habit in prose.
 

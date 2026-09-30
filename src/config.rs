@@ -83,6 +83,66 @@ fn default_tier() -> String {
     "B".to_string()
 }
 
+/// Annotated `stopslop.toml` printed by `--help-config`. Lines starting `#> ` are TOML with the
+/// prefix stripped, so the output stays inert as a scaffold until the reader uncomments them.
+pub const REFERENCE: &str = r##"# stopslop.toml: every key, with its default.
+# Discovery: the nearest stopslop.toml walking up from the current directory, else
+# $XDG_CONFIG_HOME/stopslop/stopslop.toml (~/.config when unset). Never merged.
+# Use --config PATH for a specific file, --no-config to ignore every file.
+# Drop the "#> " prefix from a line to enable it.
+
+# Rule codes, prefixes or groups to run (empty = every default-on rule).
+#> select = []
+# Adds to `select` instead of replacing it.
+#> extend-select = ["SLOP033"]
+# Rule codes, prefixes or groups to subtract.
+#> ignore = ["SLOP009", "verbosity"]
+# Adds to `ignore`; subtracted last, so it wins over extend-select.
+#> extend-ignore = ["SLOP016"]
+# Extra walker exclude globs, on top of .gitignore.
+#> exclude = ["**/generated/**"]
+# Run SLOP010 (unresolved package import); reads dependency manifests.
+#> check-imports = false
+# Subtract findings recorded in this baseline file (omit to disable).
+#> baseline = ".stopslop-baseline.json"
+# Lowest tier that exits 1: "A" (default), "B" adds Tier B, "C" fails on any finding.
+#> fail-on-tier = "A"
+# Natural languages to lint, a string or an array (omit = every supported language).
+#> language = ["en", "pt-BR"]
+
+# Codes and/or groups to ignore for files matching a glob.
+#> [per-file-ignores]
+#> "docs/**" = ["SLOP036"]
+
+# Custom phrase rule: codes are assigned SLOP900, SLOP901, ... in declaration order.
+# Limit: phrase rules match comments and strings in code files, and masked prose in
+# Markdown, MDX, text, reST and HTML. They never see identifiers or AST shape.
+#> [[custom-rule]]
+#> pattern = '(?i)(?-u:\b)synergy(?-u:\b)'   # required: a regex, no lookaround
+#> message = "banned house phrase: synergy"   # required
+#> tier = "B"                                 # "A", "B" (default) or "C"
+#> fix = "say what the teams actually do"     # optional replacement hint
+#> files = ["docs/**"]                        # optional globs; omit for every supported file
+
+# Custom file rule: needs `files` and exactly one of max-lines, forbid or require.
+# It reads the raw source, yields at most one finding per file, and has no AST checks.
+#> [[custom-rule]]
+#> kind = "file"
+#> files = ["**/*.py", "**/*.ts"]
+#> max-lines = 300                            # or forbid = 'regex', or require = 'regex'
+#> message = "file is over 300 lines; split it"
+
+# Suppression comments, in the file's own comment syntax (<!-- ... --> in Markdown and HTML):
+#   ai-slop-ignore                  this line and the next, every rule
+#   ai-slop-ignore: SLOP002,SLOP004 only these codes
+#   ai-slop-ignore: verbosity       every rule in a group
+#   ai-slop-ignore-file[: CODES]    the whole file, optionally only these codes or groups
+# A directive that suppresses nothing is reported as a warning.
+
+# Exit codes: 0 clean, 1 findings at or above fail-on-tier (Tier A by default),
+# 2 usage or config error.
+"##;
+
 const FILE_NAME: &str = "stopslop.toml";
 
 impl Config {
@@ -233,6 +293,19 @@ tier = "B"
         assert_eq!(cfg.custom_rule[0].pattern.as_deref(), Some("synergy"));
         assert_eq!(cfg.custom_rule[0].message, "banned word: synergy");
         assert_eq!(cfg.custom_rule[0].tier, "B");
+    }
+
+    #[test]
+    fn reference_parses_and_loads_once_uncommented() {
+        let toml_src: String = REFERENCE
+            .lines()
+            .map(|l| l.strip_prefix("#> ").unwrap_or(l))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let cfg: Config = toml::from_str(&toml_src).unwrap();
+        assert_eq!(cfg.custom_rule.len(), 2);
+        assert!(cfg.natlangs().is_ok());
+        assert_eq!(crate::custom::load(&cfg.custom_rule).unwrap().len(), 2);
     }
 
     fn touch(p: &Path) {
