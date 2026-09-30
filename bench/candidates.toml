@@ -72,6 +72,7 @@ dropped = [
 
 [[candidate]]
 name = "Narrated stand-in comment: the code says it is a placeholder, a simulation or a demo"
+shipped = "SLOP050"
 kind = "code"
 langs = "code"
 natlangs = "en"
@@ -87,6 +88,7 @@ logician."""
 
 [[candidate]]
 name = "Example usage demo block comment"
+shipped = "SLOP051"
 kind = "code"
 langs = "code"
 natlangs = "en"
@@ -202,6 +204,7 @@ implementation can be measured honestly."""
 
 [[candidate]]
 name = "Fabricated demo-data announcement in a comment"
+shipped = "SLOP051"
 kind = "code"
 langs = "code"
 natlangs = "en"

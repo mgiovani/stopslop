@@ -245,6 +245,8 @@ Pre-commit hook: `stopslop --staged`.
 | SLOP047 | provenance | Declared AI source type | A, on | PNG, JPEG, WebP | en, pt-BR | A metadata value names the IPTC digital-source-type vocabulary term `trainedAlgorithmicMedia` (fully AI-generated) or `compositeWithTrainedAlgorithmicMedia` (an AI-assisted edit of a real photograph), whether it surfaces in an XMP packet, an IPTC block, or a C2PA manifest. A C2PA manifest's mere presence is never flagged on its own: camera bodies like the Leica M11-P and Sony Alpha sign every frame they take |
 | SLOP048 | provenance | Image metadata names a generator | B, on | PNG, JPEG, WebP | en, pt-BR | A metadata value names a known image generator (`Midjourney`, `Stable Diffusion`, `ComfyUI`, `Adobe Firefly`, and others), matched with a word-boundary guard so it never trips inside an ordinary word (`medalled`, `we recraft your brand`). Skips any field SLOP046 or SLOP047 already owns, so a ComfyUI file's own `prompt`/`workflow` JSON and a C2PA manifest's own `digitalSourceType` declaration aren't double-reported |
 | SLOP049 | provenance | Image spectrum has an upsampling ridge | C, off | PNG, JPEG | en, pt-BR | Decodes a 256x256 centre crop to grayscale, takes a Hann-windowed FFT and flags a high-frequency radius standing 0.4 log10 above its neighbours in the azimuthally averaged power spectrum, the periodic artifact GAN and diffusion upsampling can leave. Skips WebP, images under 256 px and images over 64 M pixels. The measured splits did not separate (see `bench/candidates.toml`), so it stays opt-in: `--extend-select SLOP049` |
+| SLOP050 | artifact | Comment narrates a stand-in | B, on | TS, TSX, Python, Go, Rust | en | A non-doc comment saying the code beneath it is a placeholder, simulation or demo ("logic would go here", "in a real-world scenario", "for demonstration purposes", "replace with your actual..."). `here` and `logic` are word-bounded so `thereby` and `logician` stay clean |
+| SLOP051 | artifact | Comment announces demo code | B, on | TS, TSX, Python, Go, Rust | en | A non-doc comment that opens with `Example usage`, `Sample usage`, `Example 1:` or a sample-data announcement ("Create sample data", "Mock response"), the demo a chat answer appends to the code it just wrote |
 
 Every rule is exactly one of four states, `--list-rules` prints the TIER,
 DEFAULT (built-in) and ACTIVE (under your config) columns so you can check any given rule at a glance:
@@ -252,7 +254,7 @@ DEFAULT (built-in) and ACTIVE (under your config) columns so you can check any g
 - **Tier A, on by default (14 rules)**: mechanical artifacts (SLOP001–009,
   SLOP011–013, SLOP046–047) with no legitimate reading. A finding here fails
   the run (exit 1) and blocks CI.
-- **Tier B, on by default (30 rules)**: everything else except SLOP010,
+- **Tier B, on by default (32 rules)**: everything else except SLOP010,
   SLOP020, SLOP043 and SLOP045.
   Judgment calls (density and style checks on prose, stdlib/structure
   heuristics) that warn without ever exiting 1. Expect some noise; silence

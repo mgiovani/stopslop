@@ -71,6 +71,8 @@ pub static RULES: &[&'static RuleDef] = &[
     &crate::rules::provenance::image_source_type::RULE, // SLOP047
     &crate::rules::provenance::image_generator::RULE, // SLOP048
     &crate::rules::provenance::image_spectrum::RULE, // SLOP049
+    &crate::rules::artifact::stand_in::RULE,         // SLOP050
+    &crate::rules::artifact::demo_block::RULE,       // SLOP051
 ];
 
 #[cfg(test)]
