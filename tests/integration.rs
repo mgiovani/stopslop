@@ -108,6 +108,7 @@ const UNEXERCISED_LANGS: &[(&str, Lang)] = &[
     ("SLOP046", Lang::Image),
     ("SLOP047", Lang::Image),
     ("SLOP048", Lang::Image),
+    ("SLOP049", Lang::Image),
 ];
 
 // Tsx shares every dispatch arm with Ts and prose rules never dispatch on lang, so a

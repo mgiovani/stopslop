@@ -65,6 +65,7 @@ dropped = [
   "Log-only Node error-first callback: idiomatic Node, and SLOP005 is catch-scoped on purpose.",
   "Demo-only main() scaffolding, single-method wrapper classes, enterprise role-suffix naming, exhaustive guard clauses, Google-style docstring sections: each one or two files, none mechanically closed.",
   "Cross-document verbatim lede reuse: a Rule never sees a second file; this belongs in the bench pipeline, not in a rule.",
+  "Spectral ridge of the azimuthally averaged FFT (SLOP049) on 60 real (FFHQ, LSUN), 70 GAN (ProGAN, StyleGAN2) and 60 Midjourney images: median prominence 0.088 real, 0.088 GAN, 0.098 diffusion; p90 0.163, 0.162, 0.226. The splits do not separate on JPEG-dominated data, so the rule ships at Tier C, off by default, threshold 0.4 above the real max of 0.383 (two repo screenshots scored 0.28 and 0.35). Images under 256 px are skipped, not scored.",
   "Zero-width space and homoglyph perturbations: evasion attacks with no corpus evidence here, and security-linter territory.",
   "Statistical features from the papers (whitespace averages, AST depth, TTR, readability indices, perplexity, Self-BLEU): each needs a model or a corpus-calibrated threshold the papers do not publish.",
 ]
