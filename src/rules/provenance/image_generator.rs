@@ -199,6 +199,7 @@ mod tests {
             deps: None,
             prose: None,
             image: Some(&doc),
+            style: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();

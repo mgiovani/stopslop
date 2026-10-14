@@ -15,6 +15,7 @@ pub mod prose;
 pub mod prose_words;
 pub mod registry;
 pub mod rules;
+pub mod style;
 pub mod suppress;
 pub mod walk;
 

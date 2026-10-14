@@ -186,6 +186,7 @@ mod tests {
             deps: None,
             prose: Some(&doc),
             image: None,
+            style: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();
@@ -418,6 +419,7 @@ mod tests {
             deps: None,
             prose: Some(&doc),
             image: None,
+            style: None,
             natlangs: &[NatLang::En],
         };
         let mut out = Vec::new();
@@ -438,6 +440,7 @@ mod tests {
             deps: None,
             prose: Some(&doc_en),
             image: None,
+            style: None,
             natlangs: &[NatLang::PtBr],
         };
         let mut out_en = Vec::new();

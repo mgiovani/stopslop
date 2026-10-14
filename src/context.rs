@@ -2,6 +2,7 @@ use crate::image::ImageDoc;
 use crate::imports_data::DepIndex; // re-exported via rules::imports_data
 use crate::lang::{Lang, NatLang};
 use crate::prose::ProseDoc;
+use crate::style::StyleDoc;
 use std::collections::HashMap;
 use tree_sitter::{LanguageRef, Node, Tree, TreeCursor};
 
@@ -27,6 +28,7 @@ pub struct LintContext<'a> {
     pub deps: Option<&'a DepIndex>,      // Some only under --check-imports
     pub prose: Option<&'a ProseDoc<'a>>, // Some only for prose langs (see lang::Lang::is_prose)
     pub image: Option<&'a ImageDoc>,     // Some only for image langs (see lang::Lang::is_image)
+    pub style: Option<&'a StyleDoc<'a>>, // Some only for lang::STYLE_LANGS
     /// Natural languages the document is assumed to contain, resolved once from config (default:
     /// every supported language). A rule is gated out when its `natlangs` shares nothing with
     /// this set (engine::lint_file, engine::lint_prose); a no-op under the default.
@@ -267,6 +269,7 @@ mod tests {
                 deps: None,
                 prose: None,
                 image: None,
+                style: None,
                 natlangs: crate::lang::ALL_NATLANGS,
             };
             let mut preorder = Vec::new();
@@ -306,6 +309,7 @@ mod tests {
             deps: None,
             prose: None,
             image: None,
+            style: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         assert!(ctx.nodes(&["paragraph"]).is_empty());

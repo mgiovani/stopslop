@@ -208,6 +208,7 @@ pub fn lint_file(
         deps: settings.deps.as_ref(),
         prose: None,
         image: None,
+        style: None,
         natlangs: &settings.natlangs,
     };
     run_rules(&ctx, settings)
@@ -264,6 +265,7 @@ fn lint_prose(
         deps: None,
         prose: Some(&doc),
         image: None,
+        style: None,
         natlangs,
     };
     run_rules(&ctx, settings)
@@ -296,6 +298,7 @@ pub fn lint_image(
         deps: None,
         prose: None,
         image: Some(&doc),
+        style: None,
         natlangs: &settings.natlangs,
     };
     Some(run_rules(&ctx, settings))

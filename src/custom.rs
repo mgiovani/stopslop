@@ -316,6 +316,7 @@ mod tests {
             deps: None,
             prose: Some(doc),
             image: None,
+            style: None,
             natlangs: crate::lang::ALL_NATLANGS,
         }
     }
@@ -397,6 +398,7 @@ mod tests {
             deps: None,
             prose: None,
             image: None,
+            style: None,
             natlangs: crate::lang::ALL_NATLANGS,
         }
     }
