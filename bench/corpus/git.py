@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 
-from .common import _slug, read_text_files
+from .common import _slug, read_text_files, sample_indices
 
 
 def git_clone_ref(repo, ref, dest, what, skip_failures):
@@ -97,6 +97,10 @@ def git_files(clone_dir, subdirs, glob_pat, exclude=()):
     matches = []
     for subdir in subdirs:
         root = os.path.join(clone_dir, subdir)
+        if os.path.isfile(root):
+            if fnmatch.fnmatch(os.path.basename(root), glob_pat) and not any(x in subdir for x in exclude):
+                matches.append(subdir)
+            continue
         if not os.path.isdir(root):
             continue
         for dirpath, _dirnames, filenames in os.walk(root):
@@ -147,3 +151,56 @@ def fetch_git_before_cell(ds, cell, limit, cache_dir, skip_failures):
     if git_clone_before(ds["repo"], ds["before"], clone_dir, ds["name"], skip_failures) is None:
         return None
     return materialize_from_clone(ds, cell, clone_dir, limit, skip_failures)
+
+
+def git_clone_sha(repo, sha, dest, what, skip_failures):
+    """Shallow-fetch one commit into `dest + '.part'` and land it atomically, like
+    `git_clone_ref`. Fetching a bare SHA needs the host to allow it; github.com does."""
+    if os.path.isdir(os.path.join(dest, ".git")):
+        return dest
+    part = f"{dest}.part"
+    shutil.rmtree(part, ignore_errors=True)
+    os.makedirs(part)
+    for cmd in (["init", "--quiet"], ["fetch", "--depth", "1", "--quiet", repo, sha],
+                ["checkout", "--quiet", "FETCH_HEAD"]):
+        proc = subprocess.run(["git", "-C", part, *cmd], capture_output=True, text=True)
+        if proc.returncode != 0:
+            shutil.rmtree(part, ignore_errors=True)
+            if skip_failures:
+                return None
+            raise SystemExit(f"{what}: git {cmd[0]} failed:\n{proc.stderr}")
+    os.replace(part, dest)
+    return dest
+
+
+def pinned_set_revision(ds):
+    """A stable id for the pinned list, so the manifest changes when any pin does."""
+    return "pinned-set:" + _slug("".join(r["sha"] for r in ds["repos"]))
+
+
+def fetch_git_pinned_set(ds, cell, limit, cache_dir, skip_failures):
+    """One cell drawn from many repos, each pinned to a commit SHA (`ds['repos']`).
+
+    Files are pooled across repos before the spread sample, so a large repo contributes more
+    files; each item's `domain` is `owner/repo:path` to keep the origin auditable. A repo that
+    fails to clone is skipped under `--skip-failures` (the cell shrinks) and fatal otherwise.
+    """
+    pooled = []
+    for entry in ds["repos"]:
+        url = f"https://github.com/{entry['repo']}"
+        dest = shared_clone_dir(cache_dir, url, entry["sha"])
+        if git_clone_sha(url, entry["sha"], dest, entry["repo"], skip_failures) is None:
+            continue
+        for rel in git_files(dest, cell["subdir"], cell["glob"], ds.get("exclude", ())):
+            pooled.append((entry["repo"], dest, rel))
+    if not pooled:
+        if skip_failures:
+            return None
+        raise SystemExit(f"{ds['name']}/{cell['label']}/{cell['lang']}: 0 files across the pinned repos")
+    items = []
+    for i in sample_indices(len(pooled), limit):
+        repo, dest, rel = pooled[i]
+        with open(os.path.join(dest, rel), encoding="utf-8", errors="replace") as fh:
+            items.append((fh.read(), {"generator": cell.get("generator", ds.get("generator", "unknown")),
+                                      "domain": f"{repo}:{rel}"}))
+    return items

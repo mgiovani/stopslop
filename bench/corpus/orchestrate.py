@@ -6,7 +6,7 @@ import sys
 
 from .common import APPLICABLE, EXT, MANIFEST, RESULTS_SCHEMA
 from .fetchers import fetch_local_cell
-from .git import clone_dir_for, git_head_sha
+from .git import clone_dir_for, git_head_sha, pinned_set_revision
 from .hf import hf_revision
 from .lint import cell_materialized, read_cell, score_cell, write_cell
 from .registry import CELL_KINDS, DATASET_KINDS, DATASETS
@@ -101,6 +101,8 @@ def score_dataset(name, ds, written, args):
 def dataset_revision(name, ds, args):
     if ds["kind"] == "local":
         return "local"
+    if ds["kind"] == "git_pinned":
+        return pinned_set_revision(ds)
     if ds["kind"] in ("git_tag", "git_before", "git_multi"):
         if ds.get("tag"):
             return ds["tag"]
