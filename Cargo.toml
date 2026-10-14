@@ -2,7 +2,7 @@
 name = "stopslop"
 version = "0.6.0"
 edition = "2021"
-description = "Like Ruff, but for AI slop — deterministic AI-slop linter for TS/Python/Go/Rust."
+description = "Like Ruff, but for AI slop — deterministic AI-slop linter for code, prose, stylesheets and images."
 license = "MIT"
 repository = "https://github.com/mgiovani/stopslop"
 keywords = ["linter", "ai", "cli", "lint", "static-analysis"]

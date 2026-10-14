@@ -22,10 +22,9 @@ migration notes live here.
   The rules read Tailwind v3 and v4 spellings: `bg-linear-*`, `bg-radial`,
   `bg-conic`, the `!` marker before or after a utility, the v4 `tw:` prefix and
   `oklch()`/`oklab()` colors. A v3 `tw-` config prefix is not read.
-  The same entry adds
-  `Lang::Css` with the `tree-sitter-css` dependency (a regex cannot track
+  The same entry adds `Lang::Css` with the `tree-sitter-css` dependency (a regex cannot track
   nested blocks, strings and comments in CSS), `StyleDoc` and `color.rs`.
-  `.css` and `.scss` files now enter the walk: add `*.min.css` to `exclude`.
+  `.css` and `.scss` files now enter the walk; `*.min.css` bundles are skipped.
   The corpus benchmark gains html, css and tsx cells.
 - **SLOP050 flags a comment that narrates a stand-in, SLOP051 one that announces
   demo code.** Tier B, on by default, artifact group (#60). SLOP050 catches

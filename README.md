@@ -4,7 +4,7 @@
 
 # stopslop
 
-A deterministic linter, written in Rust, for the tells AI leaves in code and prose: 51 rules, one static binary, no model at scan time.
+A deterministic linter, written in Rust, for the tells AI leaves in code and prose: 56 rules, one static binary, no model at scan time.
 
 [![CI](https://github.com/mgiovani/stopslop/actions/workflows/ci.yml/badge.svg)](https://github.com/mgiovani/stopslop/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/mgiovani/stopslop/blob/main/LICENSE)
@@ -52,14 +52,14 @@ Tier A findings exit 1 and fail CI. Tier B findings warn. See [usage](https://gi
 - **Reads what other linters skip.** ESLint, Ruff, and Clippy treat comment and string content as trivia, which is where `// ... rest of code unchanged` and a leaked "Certainly! Here's..." preamble end up. See [why](https://github.com/mgiovani/stopslop/blob/main/docs/why.md).
 - **Deterministic.** Every rule is a tree-sitter AST match or a regex over extracted comment, string or prose text. Same input, same output, with no LLM call, API call, or network access at scan time.
 - **CI-ready tiers.** Tier A is mechanical and fails the run; Tier B warns. Tier C stays opt-in until a labelled corpus has scored it.
-- **Code, prose, and images.** Source code and documents, plus the metadata of PNG, JPEG and WebP images.
+- **Code, prose, stylesheets, and images.** Source code and documents, `.css` and `.scss` stylesheets (the `design` group reads generated-UI tells, see [style linting](https://github.com/mgiovani/stopslop/blob/main/docs/rules.md#style-linting)), plus the metadata of PNG, JPEG and WebP images.
 - **English and Brazilian Portuguese.** Phrase panels for both run by default.
 - **Measured.** `just corpus` scores every rule against labelled human and AI corpora; see [benchmarks](https://github.com/mgiovani/stopslop/blob/main/docs/benchmarks.md).
 - **Fast and quiet to adopt.** One binary and no config to start. `--staged` and `--since` lint only a diff, and a baseline grandfathers old findings.
 
 ## What it catches
 
-51 rules in 8 groups. `--list-rules` prints every rule with its group, tier, and state.
+56 rules in 9 groups. `--list-rules` prints every rule with its group, tier, and state.
 
 | Group | What it covers |
 |-------|----------------|
@@ -71,6 +71,7 @@ Tier A findings exit 1 and fail CI. Tier B findings warn. See [usage](https://gi
 | `sourcing` | Claims with no checkable source behind them |
 | `format` | Typographic and Markdown affectations |
 | `provenance` | Embedded image metadata that names how or by what an image was made |
+| `design` | Visual tells of generated UI, read from CSS, `style=`, and utility classes |
 
 The per-rule table is in [docs/rules.md](https://github.com/mgiovani/stopslop/blob/main/docs/rules.md).
 
