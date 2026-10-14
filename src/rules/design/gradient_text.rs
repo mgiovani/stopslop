@@ -124,4 +124,39 @@ mod tests {
         let d = diagnostics_for(Lang::Css, src);
         assert_eq!((d[0].line, d[0].col), (2, 51));
     }
+
+    #[test]
+    fn reads_every_tailwind_v3_and_v4_gradient_utility() {
+        for gradient in [
+            "bg-gradient-to-r",
+            "bg-linear-to-br",
+            "bg-linear-45",
+            "bg-radial",
+            "bg-radial-[at_25%_25%]",
+            "bg-conic",
+            "bg-conic-180",
+            "bg-[linear-gradient(red,blue)]",
+        ] {
+            let src = format!("<h1 class=\"bg-clip-text {gradient} text-transparent\">x</h1>\n");
+            assert_eq!(diagnostics_for(Lang::Html, &src).len(), 1, "{gradient}");
+        }
+    }
+
+    #[test]
+    fn reads_the_important_marker_and_variant_prefixes_on_bg_clip_text() {
+        for clip in [
+            "!bg-clip-text",
+            "bg-clip-text!",
+            "tw:bg-clip-text",
+            "md:bg-clip-text",
+        ] {
+            let src = format!("<h1 class=\"{clip} bg-linear-to-r\">x</h1>\n");
+            assert_eq!(diagnostics_for(Lang::Html, &src).len(), 1, "{clip}");
+        }
+        assert!(diagnostics_for(
+            Lang::Html,
+            "<h1 class=\"bg-clip-text bg-(--brand)\">x</h1>\n"
+        )
+        .is_empty());
+    }
 }

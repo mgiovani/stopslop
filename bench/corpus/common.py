@@ -67,9 +67,9 @@ APPLICABLE = {
         "SLOP017", "SLOP018", "SLOP019", "SLOP020", "SLOP021", "SLOP022", "SLOP023", "SLOP024",
         "SLOP025", "SLOP026", "SLOP027", "SLOP028", "SLOP029", "SLOP030", "SLOP031", "SLOP032",
         "SLOP033", "SLOP034", "SLOP035", "SLOP036", "SLOP041", "SLOP044",
-        "SLOP052", "SLOP053", "SLOP054", "SLOP055",
+        "SLOP052", "SLOP053", "SLOP054", "SLOP055", "SLOP056",
     ),
-    "css": ("SLOP052", "SLOP053", "SLOP054"),
+    "css": ("SLOP052", "SLOP053", "SLOP054", "SLOP056"),
 }
 UNSCOREABLE_NOTE = (
     "SLOP010 names every code `Lang` too, but its check needs a dependency manifest a "

@@ -107,8 +107,8 @@ fn arbitrary_stop(utility: &str) -> Option<Rgba> {
     let rest = ["from-", "via-", "to-"]
         .iter()
         .find_map(|p| utility.strip_prefix(p))?;
-    let inner = rest.strip_prefix('[')?.strip_suffix(']')?;
-    colors_in(inner).first().map(|&(_, _, c)| c)
+    let inner = rest.strip_prefix('[')?.strip_suffix(']')?.replace('_', " ");
+    colors_in(&inner).first().map(|&(_, _, c)| c)
 }
 
 /// True for `<prefix><name>-<shade>` (optionally `/<opacity>`) with `name` in `names`.
@@ -203,5 +203,40 @@ mod tests {
         assert!(!palette("from-purple", "from-", &["purple"]));
         assert!(!palette("from-red-500", "from-", &["purple"]));
         assert!(!palette("via-purple-500", "from-", &["purple"]));
+    }
+
+    #[test]
+    fn reads_v4_oklch_stops_in_css_and_brackets() {
+        let violet_to_indigo = ".a { background: linear-gradient(in oklch, oklch(0.606 0.25 292.717), oklch(0.585 0.233 277.117)); }";
+        assert_eq!(diagnostics_for(Lang::Css, violet_to_indigo).len(), 1);
+        let warm = ".a { background: linear-gradient(oklch(0.7 0.2 40), oklch(0.8 0.15 80)); }";
+        assert!(diagnostics_for(Lang::Css, warm).is_empty());
+        let html = "<i class=\"bg-linear-to-r from-[oklch(0.606_0.25_292.717)] to-[oklch(0.585_0.233_277.117)]\">x</i>\n";
+        assert_eq!(diagnostics_for(Lang::Html, html).len(), 1);
+        let comma = "<i class=\"from-[oklch(0.606,0.25,292.717)] to-[#6366f1]\">x</i>\n";
+        assert_eq!(diagnostics_for(Lang::Html, comma).len(), 1);
+    }
+
+    #[test]
+    fn reads_v3_and_v4_stop_spellings() {
+        for class in [
+            "!from-violet-500 to-blue-500",
+            "from-violet-500! to-blue-500!",
+            "tw:from-violet-500 tw:to-blue-500",
+            "bg-linear-to-r from-purple-500 via-pink-500",
+        ] {
+            let src = format!("<i class=\"{class}\">x</i>\n");
+            assert_eq!(diagnostics_for(Lang::Html, &src).len(), 1, "{class}");
+        }
+        assert!(diagnostics_for(
+            Lang::Html,
+            "<i class=\"from-(--brand) to-blue-500\">x</i>\n"
+        )
+        .is_empty());
+        assert!(diagnostics_for(
+            Lang::Html,
+            "<i class=\"from-[#7c3aed] to-(--brand)\">x</i>\n"
+        )
+        .is_empty());
     }
 }

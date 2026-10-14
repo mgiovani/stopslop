@@ -965,7 +965,10 @@ DATASETS = {
             {"repo": "saleor/storefront", "sha": "e99a39d7c269386f3ba53e8df50cbd2f7daef28a"},
             {"repo": "medusajs/nextjs-starter-medusa", "sha": "979f4e31f375d2e45365b53c551b7aa256382d23"},
         ],
-        "cells": [{"label": "human", "lang": "tsx", "generator": "human", "subdir": ".", "glob": "*.tsx"}],
+        "cells": [
+            {"label": "human", "lang": "tsx", "generator": "human", "subdir": ".", "glob": "*.tsx"},
+            {"label": "human", "lang": "css", "generator": "human", "subdir": ".", "glob": "*.css"},
+        ],
         "exclude": UI_EXCLUDE,
     },
 }

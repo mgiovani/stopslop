@@ -49,7 +49,10 @@ pub static GROUPS: &[(&str, &[&str])] = &[
     // Embedded image metadata that names how or by what an image was made.
     ("provenance", &["SLOP046", "SLOP047", "SLOP048", "SLOP049"]),
     // Visual tells of generated UI, read from CSS, `style=`, and utility classes.
-    ("design", &["SLOP052", "SLOP053", "SLOP054", "SLOP055"]),
+    (
+        "design",
+        &["SLOP052", "SLOP053", "SLOP054", "SLOP055", "SLOP056"],
+    ),
 ];
 
 /// The group a code belongs to, for `--list-rules`. `SLOP9NN` codes are user-defined

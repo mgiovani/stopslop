@@ -493,6 +493,16 @@ relation = "SLOP055"
 tier = "B"
 notes = "Scored 2026-10-14 through the Rust rule on 64 pinned AI app-builder repos (tsx, css, html) against 1,186 verified human files. Per builder: bolt.new 100/526 (19.01%), Lovable 18/558 (3.23%), Replit Agent 16/188 (8.51%), Same.new 23/183 (12.57%). Pooled AI 157/1455 (10.79%) against verified human 6/1186 (0.51%), 21x; the Tailwind 2022 TSX baseline alone is 6/500 (1.20%), 9x, and Design2Code (unverified) 0/484. Humans on Tailwind do reach for these shades, so the rule flags the look, not the author. It reads class lists only: a hue-band variant over raw CSS fired on 38% of codemirror and 33% of highlight.js themes and was rejected (see SLOP054)."
 
+[[candidate]]
+name = "Violet shadcn theme preset"
+kind = "code"
+langs = "css,html"
+scope = "file"
+regex = '''--(?:color-)?(?:primary|ring|accent|sidebar-primary|chart-1)\s*:\s*(?:2[4-9]\d|300)(?:\.\d+)?\s+\d+(?:\.\d+)?%'''
+relation = "SLOP056"
+tier = "B"
+notes = "Scored 2026-10-14 through the Rust rule on the css and html files of the pinned AI app-builder repos (129 files) against 275 verified human css and html files (Bootstrap, CodeMirror and highlight.js stylesheets plus the CSS of 11 pinned 2022 Tailwind React apps, including shadcn taxonomy). AI: bolt.new 2/27, Lovable 5/58, Replit Agent 3/29, Same.new 0/15, pooled 10/129 (7.75%). Human 0/275 (0.00%); the Tailwind 2022 CSS alone 0/89. Design2Code 0/484. Hits are real presets (`--primary: 262 83% 58%`, `271 81% 56%`, `oklch(0.64 0.21 295)`). Denominators are small because most builder output keeps its theme in a few index.css files, so the rate is a floor on uncertainty, not a tight estimate."
+
 [[miss]]
 rule = "SLOP011"
 what_it_missed = "Refusal, self-identification and closer phrasings one word outside the panel"

@@ -2,6 +2,7 @@ pub mod gradient_text;
 pub mod purple_gradient;
 pub mod violet_accent;
 pub mod violet_hex;
+pub mod violet_theme;
 
 use crate::style::Decl;
 

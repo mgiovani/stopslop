@@ -77,7 +77,7 @@ The per-rule table is in [docs/rules.md](https://github.com/mgiovani/stopslop/bl
 | Tier | Default | Effect |
 |------|---------|--------|
 | A | on (14 rules) | A finding exits 1 and blocks CI. Mechanical artifacts with no legitimate reading. |
-| B | on (35 rules) or off (3 rules) | Judgment calls that warn and never exit 1. `fail-on-tier = "B"` makes them fail. |
+| B | on (36 rules) or off (3 rules) | Judgment calls that warn and never exit 1. `fail-on-tier = "B"` makes them fail. |
 | C | off (3 rules) | Thresholds not yet scored against a labelled corpus. Opt in with `--extend-select`. |
 
 ## Configuration

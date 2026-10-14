@@ -119,4 +119,31 @@ mod tests {
         );
         assert!(diagnostics_for(Lang::Html, "").is_empty());
     }
+
+    #[test]
+    fn reads_the_important_marker_in_both_positions_and_the_v4_prefix() {
+        for class in [
+            "!bg-violet-600",
+            "bg-violet-600!",
+            "tw:bg-violet-600",
+            "tw:hover:bg-violet-600",
+        ] {
+            let src = format!("<a class=\"{class}\">x</a>\n");
+            assert_eq!(diagnostics_for(Lang::Html, &src).len(), 1, "{class}");
+        }
+    }
+
+    #[test]
+    fn skips_the_v4_variable_shorthand_and_arbitrary_values() {
+        let src =
+            "<a class=\"bg-(--brand) text-[#7c3aed] border-[oklch(0.606_0.25_292.717)]\">x</a>\n";
+        assert!(diagnostics_for(Lang::Html, src).is_empty());
+    }
+
+    // ponytail: a v3 `tw-` config prefix (`tw-bg-violet-600`) is not matched; reading it needs the
+    // project's tailwind config, so a prefixed v3 project is a known miss.
+    #[test]
+    fn v3_config_prefixes_are_a_known_ceiling() {
+        assert!(diagnostics_for(Lang::Html, "<a class=\"tw-bg-violet-600\">x</a>\n").is_empty());
+    }
 }

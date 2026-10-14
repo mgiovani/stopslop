@@ -32,14 +32,14 @@ const NAMED: &[(&str, [u8; 3])] = &[
 static COLOR_RE: LazyLock<Regex> = LazyLock::new(|| {
     let names = NAMED.iter().map(|(n, _)| *n).collect::<Vec<_>>().join("|");
     Regex::new(&format!(
-        r"(?i-u)#[0-9a-f]{{8}}(?-u:\b)|#[0-9a-f]{{6}}(?-u:\b)|#[0-9a-f]{{3,4}}(?-u:\b)|(?-u:\b)(?:rgb|hsl)a?\((?u:[^()]*)\)|(?-u:\b)(?:{names}|transparent)(?-u:\b)"
+        r"(?i-u)#[0-9a-f]{{8}}(?-u:\b)|#[0-9a-f]{{6}}(?-u:\b)|#[0-9a-f]{{3,4}}(?-u:\b)|(?-u:\b)(?:rgba?|hsla?|oklch|oklab)\((?u:[^()]*)\)|(?-u:\b)(?:{names}|transparent)(?-u:\b)"
     ))
     .unwrap()
 });
 
 /// Parses one CSS color token: hex (3/4/6/8 digits), `rgb()`/`rgba()`, `hsl()`/`hsla()` in the
-/// comma or space syntax, or a short named-color table. `None` for anything else (`var()`,
-/// `currentColor`, `oklch()`).
+/// comma or space syntax, `oklch()`/`oklab()` (gamut-clipped to sRGB), or a short named-color
+/// table. `None` for anything else (`var()`, `currentColor`).
 pub fn parse(token: &str) -> Option<Rgba> {
     let t = token.trim().to_ascii_lowercase();
     if let Some(hex) = t.strip_prefix('#') {
@@ -59,10 +59,26 @@ pub fn parse(token: &str) -> Option<Rgba> {
     if let Some(args) = function_args(&t, &["hsla", "hsl"]) {
         return parse_hsl(args);
     }
+    if let Some(args) = function_args(&t, &["oklch"]) {
+        return parse_oklch(args);
+    }
+    if let Some(args) = function_args(&t, &["oklab"]) {
+        return parse_oklab(args);
+    }
     NAMED
         .iter()
         .find(|(n, _)| *n == t)
         .map(|&(_, [r, g, b])| Rgba { r, g, b, a: 1.0 })
+}
+
+/// A shadcn theme value: the bare `H S% L%` triplet its v3-era tokens use (`262.1 83.3% 57.8%`),
+/// which is not valid CSS by itself and so is not accepted by `parse`.
+pub fn parse_hsl_triplet(value: &str) -> Option<Rgba> {
+    let p: Vec<&str> = value.split_whitespace().collect();
+    if p.len() != 3 || !p[1].ends_with('%') || !p[2].ends_with('%') {
+        return None;
+    }
+    parse_hsl(&p.join(" "))
 }
 
 /// Every color token in `value` with its byte span, in source order. Tokens inside `var()` and
@@ -234,6 +250,60 @@ fn parse_hsl(args: &str) -> Option<Rgba> {
     })
 }
 
+fn parse_oklch(args: &str) -> Option<Rgba> {
+    let p = split_args(args);
+    if p.len() < 3 {
+        return None;
+    }
+    let l = number(p[0], 1.0)?;
+    let chroma = number(p[1], 0.4)?;
+    let h = p[2]
+        .trim_end_matches("deg")
+        .parse::<f32>()
+        .ok()?
+        .to_radians();
+    oklab_to_rgba(l, chroma * h.cos(), chroma * h.sin(), alpha(&p)?)
+}
+
+fn parse_oklab(args: &str) -> Option<Rgba> {
+    let p = split_args(args);
+    if p.len() < 3 {
+        return None;
+    }
+    oklab_to_rgba(
+        number(p[0], 1.0)?,
+        number(p[1], 0.4)?,
+        number(p[2], 0.4)?,
+        alpha(&p)?,
+    )
+}
+
+fn oklab_to_rgba(l: f32, a: f32, b: f32, alpha: f32) -> Option<Rgba> {
+    let l_ = (l + 0.396_337_78 * a + 0.215_803_76 * b).powi(3);
+    let m_ = (l - 0.105_561_346 * a - 0.063_854_17 * b).powi(3);
+    let s_ = (l - 0.089_484_18 * a - 1.291_485_5 * b).powi(3);
+    let linear = [
+        4.076_741_7 * l_ - 3.307_711_6 * m_ + 0.230_969_93 * s_,
+        -1.268_438 * l_ + 2.609_757_4 * m_ - 0.341_319_4 * s_,
+        -0.004_196_086 * l_ - 0.703_418_6 * m_ + 1.707_614_7 * s_,
+    ];
+    let byte = |v: f32| {
+        let v = v.clamp(0.0, 1.0);
+        let encoded = if v <= 0.003_130_8 {
+            12.92 * v
+        } else {
+            1.055 * v.powf(1.0 / 2.4) - 0.055
+        };
+        (encoded * 255.0).round() as u8
+    };
+    Some(Rgba {
+        r: byte(linear[0]),
+        g: byte(linear[1]),
+        b: byte(linear[2]),
+        a: alpha,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,5 +370,42 @@ mod tests {
     #[test]
     fn multiline_and_tab_separated_arguments_parse() {
         assert_eq!(parse("rgb(1,\n\t2,\t3)"), Some(rgb(1, 2, 3)));
+    }
+
+    #[test]
+    fn oklch_reads_tailwind_v4_palette_values() {
+        let violet = parse("oklch(0.606 0.25 292.717)").unwrap();
+        let (h, sat, _) = hsl(violet);
+        assert!((240.0..290.0).contains(&h) && sat > 0.5, "{h} {sat}");
+        let blue = parse("oklch(0.623 0.214 259.815)").unwrap();
+        let (h, sat, _) = hsl(blue);
+        assert!((205.0..235.0).contains(&h) && sat > 0.5, "{h} {sat}");
+        assert_eq!(parse("oklch(1 0 0)"), Some(rgb(255, 255, 255)));
+        assert_eq!(parse("oklch(0 0 0 / 50%)").map(|c| c.a), Some(0.5));
+        assert_eq!(parse("oklab(0.5 0.1)"), None);
+    }
+
+    #[test]
+    fn oklab_matches_oklch_and_colors_in_finds_both() {
+        let lch = parse("oklch(0.606 0.25 292.717)").unwrap();
+        let (a, b) = (
+            0.25 * 292.717_f32.to_radians().cos(),
+            0.25 * 292.717_f32.to_radians().sin(),
+        );
+        assert_eq!(parse(&format!("oklab(0.606 {a} {b})")), Some(lch));
+        assert_eq!(
+            colors_in("linear-gradient(oklch(0.6 0.2 290), oklab(0.6 0.1 -0.1))").len(),
+            2
+        );
+    }
+
+    #[test]
+    fn hsl_triplet_is_the_shadcn_token_format() {
+        let (h, s, _) = hsl(parse_hsl_triplet("262.1 83.3% 57.8%").unwrap());
+        assert!((255.0..270.0).contains(&h) && s > 0.7, "{h} {s}");
+        assert_eq!(parse_hsl_triplet("240 5.9% 10%").map(|c| c.a), Some(1.0));
+        assert_eq!(parse_hsl_triplet("#7c3aed"), None);
+        assert_eq!(parse_hsl_triplet("262 83 57"), None);
+        assert_eq!(parse("262.1 83.3% 57.8%"), None);
     }
 }
