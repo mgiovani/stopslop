@@ -7,6 +7,15 @@ migration notes live here.
 
 ### Added
 
+- **A `design` group reads the styling of generated UI.** SLOP052 flags gradient
+  text (`background-clip: text` or `bg-clip-text` over a gradient), SLOP053 a
+  purple-blue gradient, SLOP054 a hand-copied Tailwind violet hex. All three
+  are Tier C, off by default: on 486 verified human files and 600 WebSight
+  pages none of them fires, so nothing separates the classes yet. Adds
+  `Lang::Css` with the `tree-sitter-css` dependency (a regex cannot track
+  nested blocks, strings and comments in CSS), `StyleDoc` and `color.rs`.
+  `.css` and `.scss` files now enter the walk: add `*.min.css` to `exclude`.
+  The corpus benchmark gains html, css and tsx cells.
 - **SLOP050 flags a comment that narrates a stand-in, SLOP051 one that announces
   demo code.** Tier B, on by default, artifact group (#60). SLOP050 catches
   "logic would go here", "in a real-world scenario", "simulate the response";

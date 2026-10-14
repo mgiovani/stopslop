@@ -1,4 +1,4 @@
-use crate::context::{extract, NodeIndex, TextNode};
+use crate::context::{walk_tree, NodeIndex, TextNode};
 use crate::lang::{ts_language, Lang};
 use crate::prose::{compute_line_col, compute_line_starts, ProseDoc};
 use std::borrow::Cow;
@@ -72,8 +72,12 @@ impl<'a> StyleDoc<'a> {
                 .and_then(|()| parser.set_included_ranges(&ranges).ok())
                 .and_then(|()| parser.parse(source, None));
             if let Some(tree) = parsed {
-                let (_, _, index) = extract(&tree, source, Lang::Css);
-                collect_css_decls(&index, source, &mut decls);
+                walk_tree(&mut tree.walk(), &mut |node| {
+                    if node.kind() == "declaration" {
+                        push_css_decl(&node, source, &mut decls);
+                    }
+                    true
+                });
             }
         }
         let mut class_lists = Vec::new();
@@ -183,29 +187,33 @@ fn declaration(seg: &str, seg_start: usize, base: usize) -> Option<(&str, &str, 
 
 fn collect_css_decls<'a>(index: &NodeIndex<'_>, source: &'a str, out: &mut Vec<Decl<'a>>) {
     for node in index.nodes(&["declaration"]) {
-        let Some(name) = node.named_child(0).filter(|n| n.kind() == "property_name") else {
-            continue;
-        };
-        let text = &source[node.byte_range()];
-        let after_name = name.end_byte() - node.start_byte();
-        let Some(colon) = text[after_name..].find(':') else {
-            continue;
-        };
-        let raw = &text[after_name + colon + 1..];
-        let value = raw.trim().trim_end_matches(';').trim_end();
-        if value.is_empty() {
-            continue;
-        }
-        let value_start =
-            node.start_byte() + after_name + colon + 1 + (raw.len() - raw.trim_start().len());
-        out.push(Decl {
-            property: lowercase(&source[name.byte_range()]),
-            value,
-            value_start,
-            start: node.start_byte(),
-            block: node.parent().map_or(0, |p| p.start_byte()),
-        });
+        push_css_decl(&node, source, out);
     }
+}
+
+fn push_css_decl<'a>(node: &Node, source: &'a str, out: &mut Vec<Decl<'a>>) {
+    let Some(name) = node.named_child(0).filter(|n| n.kind() == "property_name") else {
+        return;
+    };
+    let text = &source[node.byte_range()];
+    let after_name = name.end_byte() - node.start_byte();
+    let Some(colon) = text[after_name..].find(':') else {
+        return;
+    };
+    let raw = &text[after_name + colon + 1..];
+    let value = raw.trim().trim_end_matches(';').trim_end();
+    if value.is_empty() {
+        return;
+    }
+    let value_start =
+        node.start_byte() + after_name + colon + 1 + (raw.len() - raw.trim_start().len());
+    out.push(Decl {
+        property: lowercase(&source[name.byte_range()]),
+        value,
+        value_start,
+        start: node.start_byte(),
+        block: node.parent().map_or(0, |p| p.start_byte()),
+    });
 }
 
 /// A `class="..."` or `style="..."` attribute, given as the `name="value"` span the prose scan
@@ -358,6 +366,7 @@ fn point(line_starts: &[usize], byte: usize) -> Point {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::extract;
 
     fn css(src: &str) -> StyleDoc<'_> {
         let mut p = Parser::new();

@@ -17,11 +17,12 @@ just --list                 # every recipe; each one is a single command you can
 ## Architecture
 
 - `main.rs` calls `cli::run` and returns its exit code. Keep every decision out of it.
-- Rule modules import `context`, `diagnostic`, `registry`, `lang`, `prose`, `prose_words`, `suppress`, and sibling rules for shared helpers. Never `cli`, `engine`, `output`, `walk`, or `git`.
+- Rule modules import `context`, `diagnostic`, `registry`, `lang`, `prose`, `prose_words`, `style`, `color`, `suppress`, and sibling rules for shared helpers. Never `cli`, `engine`, `output`, `walk`, or `git`.
 - A rule that wants a new fact gets a `LintContext` field computed once per file, never a new argument threaded through `engine`.
 - `engine` owns selection (`resolve_enabled`) and per-file dispatch (`lint_file`), `walk` owns the parallel file walk, `output` owns rendering, `cli` wires them together.
 - Rules receive source text and an AST index, never a path to open. I/O stays in `walk`, `git`, `config`, `baseline`, and the one manifest scan in `imports_data::DepIndex::discover`, which `cli` runs before the walk.
 - Prose langs share `ProseDoc`. The Markdown family comes from `ProseDoc::parse`, HTML from `ProseDoc::parse_html` (a tree-sitter-html masked stream); rules never dispatch on which, they read `doc` fields (`block_starts`, `block_initial`) instead.
+- Style langs (`lang::STYLE_LANGS`: Css, Html, Tsx) share `StyleDoc`, built once per file by `engine` from `NodeIndex` (CSS, JSX) or `ProseDoc` (HTML) and read through `ctx.style`. Rules may import `style` and `color`; they never re-parse CSS.
 - `lib.rs` is the public surface. Tests link the library and never shell out to the binary.
 
 ## Adding a rule
