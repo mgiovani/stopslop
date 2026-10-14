@@ -1,0 +1,17 @@
+.hero-title {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); /* expect: SLOP053 */
+  -webkit-background-clip: text; /* expect: SLOP052 */
+  color: transparent;
+}
+
+:root {
+  --card-foreground: 0 0% 100%;
+  --primary-foreground: 0 0% 98%;
+  --primary: 262.1 83.3% 57.8%; /* expect: SLOP056 */
+  --ring: 262.1 83.3% 57.8%;
+}
+
+.cta {
+  background-color: #6366f1; /* expect: SLOP054 */
+  border: 1px solid #8B5CF6; /* expect: SLOP054 */
+}

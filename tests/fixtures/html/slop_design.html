@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<title>Harbor Tools</title>
+<style>
+  :root { --card-foreground: 0 0% 100%; --popover-foreground: 0 0% 9%; --primary: oklch(0.541 0.281 293.009); } /* expect: SLOP056 */
+  .headline {
+    background-image: linear-gradient(to right, #6366f1, #a855f7); /* expect: SLOP053 */
+    background-clip: text; /* expect: SLOP052 */
+  }
+</style>
+</head>
+<body>
+<h1 class="headline">Harbor Tools</h1>
+<h2 class="bg-clip-text bg-gradient-to-r from-purple-500 to-blue-500">Plans</h2> <!-- expect: SLOP052 SLOP053 -->
+<a style="background: #7c3aed; color: white" href="/pricing">Pricing</a> <!-- expect: SLOP054 -->
+<button class="px-4 hover:bg-violet-600 text-white">Start</button> <!-- expect: SLOP055 -->
+</body>
+</html>

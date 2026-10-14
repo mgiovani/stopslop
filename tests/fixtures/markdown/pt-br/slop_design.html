@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<title>Horário da loja</title>
+<style>
+  .titulo {
+    background-image: linear-gradient(to right, #6366f1, #a855f7); /* expect: SLOP053 */
+    background-clip: text; /* expect: SLOP052 */
+  }
+  :root { --card-foreground: 0 0% 100%; --popover-foreground: 0 0% 9%; --primary: 262.1 83.3% 57.8%; } /* expect: SLOP056 */
+  .botao { color: #7c3aed; } /* expect: SLOP054 */
+</style>
+</head>
+<body>
+<h1 class="titulo">Horário de atendimento</h1>
+<p>A loja abre às nove e fecha às dezoito horas, de segunda a sexta.</p>
+<a class="bg-violet-600 px-4" href="/loja">Ver loja</a> <!-- expect: SLOP055 -->
+</body>
+</html>

@@ -2,6 +2,7 @@ use crate::image::ImageDoc;
 use crate::imports_data::DepIndex; // re-exported via rules::imports_data
 use crate::lang::{Lang, NatLang};
 use crate::prose::ProseDoc;
+use crate::style::StyleDoc;
 use std::collections::HashMap;
 use tree_sitter::{LanguageRef, Node, Tree, TreeCursor};
 
@@ -27,6 +28,7 @@ pub struct LintContext<'a> {
     pub deps: Option<&'a DepIndex>,      // Some only under --check-imports
     pub prose: Option<&'a ProseDoc<'a>>, // Some only for prose langs (see lang::Lang::is_prose)
     pub image: Option<&'a ImageDoc>,     // Some only for image langs (see lang::Lang::is_image)
+    pub style: Option<&'a StyleDoc<'a>>, // Some only for lang::STYLE_LANGS
     /// Natural languages the document is assumed to contain, resolved once from config (default:
     /// every supported language). A rule is gated out when its `natlangs` shares nothing with
     /// this set (engine::lint_file, engine::lint_prose); a no-op under the default.
@@ -37,19 +39,7 @@ impl<'a> LintContext<'a> {
     /// Every named node whose kind is in `kinds`, in the tree's pre-order. Anonymous tokens
     /// (keywords, punctuation) are not indexed; empty for prose langs.
     pub fn nodes(&self, kinds: &[&str]) -> Vec<Node<'a>> {
-        let Some(index) = self.index else {
-            return Vec::new();
-        };
-        let mut positions: Vec<usize> = kinds
-            .iter()
-            .filter_map(|k| index.kind_id(k))
-            .filter_map(|id| index.by_kind.get(&id))
-            .flatten()
-            .copied()
-            .collect();
-        positions.sort_unstable();
-        positions.dedup();
-        positions.into_iter().map(|i| index.all[i]).collect()
+        self.index.map_or_else(Vec::new, |index| index.nodes(kinds))
     }
     pub fn pos(&self, node: &Node) -> (usize, usize) {
         let p = node.start_position();
@@ -89,7 +79,21 @@ pub struct NodeIndex<'t> {
     by_kind: HashMap<u16, Vec<usize>>, // kind id -> positions in `all`
 }
 
-impl NodeIndex<'_> {
+impl<'t> NodeIndex<'t> {
+    /// See `LintContext::nodes`; callable before a `LintContext` exists.
+    pub fn nodes(&self, kinds: &[&str]) -> Vec<Node<'t>> {
+        let mut positions: Vec<usize> = kinds
+            .iter()
+            .filter_map(|k| self.kind_id(k))
+            .filter_map(|id| self.by_kind.get(&id))
+            .flatten()
+            .copied()
+            .collect();
+        positions.sort_unstable();
+        positions.dedup();
+        positions.into_iter().map(|i| self.all[i]).collect()
+    }
+
     /// Keyed by `Node::kind_id` rather than `Node::kind`: the id is one FFI read per node, the
     /// string is that plus a strlen, a UTF-8 check and a longer hash. `None` for a name that is
     /// not a named kind of this grammar (tree-sitter reserves id 0 for "not found").
@@ -119,6 +123,7 @@ pub fn extract<'t, 'a>(
             &["line_comment", "block_comment"],
             &["string_literal", "raw_string_literal"],
         ),
+        Lang::Css => (&["comment"], &["string_value"]),
         // Never reached: prose langs bypass this extraction path entirely (engine::lint_prose),
         // and image langs never build a tree at all (engine::lint_image).
         Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html | Lang::Image => (&[], &[]),
@@ -162,7 +167,42 @@ pub fn extract<'t, 'a>(
         }
         true
     });
+    if lang == Lang::Css {
+        let block_comments = comments.len();
+        let line_comments = scss_line_comments(source, &comments[..block_comments]);
+        comments.extend(line_comments);
+    }
     (comments, strings, index)
+}
+
+/// tree-sitter-css has no `//` comments, so a `.scss` suppression directive would be lost.
+/// Only a comment that opens its line is found; a trailing `// ...` after a declaration is not.
+/// A line inside a `/* */` comment is part of it, not a directive.
+fn scss_line_comments<'a>(source: &'a str, block_comments: &[TextNode<'a>]) -> Vec<TextNode<'a>> {
+    let mut out = Vec::new();
+    let mut offset = 0;
+    for (i, line) in source.split_inclusive('\n').enumerate() {
+        let trimmed = line.trim_start();
+        let lead = line.len() - trimmed.len();
+        let inside_block = {
+            let at = offset + lead;
+            let i = block_comments.partition_point(|c| c.start_byte <= at);
+            i > 0 && at < block_comments[i - 1].end_byte
+        };
+        if trimmed.starts_with("//") && !inside_block {
+            let text = trimmed.trim_end();
+            out.push(TextNode {
+                text,
+                start_byte: offset + lead,
+                end_byte: offset + lead + text.len(),
+                line: i + 1,
+                col: line[..lead].chars().count() + 1,
+                is_doc: false,
+            });
+        }
+        offset += line.len();
+    }
+    out
 }
 
 /// Pre-order DFS over a `TreeCursor`, visiting every node exactly once. `f` returns whether to
@@ -208,6 +248,7 @@ pub(crate) fn is_doc_comment(lang: Lang, text: &str) -> bool {
                 || text.starts_with("/**")
                 || text.starts_with("/*!")
         }
+        Lang::Css => false,
         // Never reached: prose and image langs never call extract().
         Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html | Lang::Image => false,
     }
@@ -263,6 +304,7 @@ mod tests {
                 deps: None,
                 prose: None,
                 image: None,
+                style: None,
                 natlangs: crate::lang::ALL_NATLANGS,
             };
             let mut preorder = Vec::new();
@@ -288,6 +330,37 @@ mod tests {
         }
     }
 
+    fn css_comments(src: &str) -> Vec<String> {
+        let mut p = Parser::new();
+        p.set_language(&crate::lang::ts_language(Lang::Css))
+            .unwrap();
+        let tree = p.parse(src, None).unwrap();
+        let (comments, _, _) = extract(&tree, src, Lang::Css);
+        comments.iter().map(|c| c.text.to_string()).collect()
+    }
+
+    #[test]
+    fn scss_line_comments_are_extracted_for_suppression() {
+        let src = "// ai-slop-ignore SLOP053\n  // second\na { color: red }\n";
+        let mut p = Parser::new();
+        p.set_language(&crate::lang::ts_language(Lang::Css))
+            .unwrap();
+        let tree = p.parse(src, None).unwrap();
+        let (comments, _, _) = extract(&tree, src, Lang::Css);
+        let found: Vec<_> = comments.iter().map(|c| (c.line, c.col, c.text)).collect();
+        assert!(found.contains(&(1, 1, "// ai-slop-ignore SLOP053")));
+        assert!(found.contains(&(2, 3, "// second")));
+    }
+
+    #[test]
+    fn a_double_slash_line_inside_a_block_comment_is_not_a_scss_comment() {
+        let src = "/*\n// ai-slop-ignore SLOP053\n*/\n// real\na { color: red }\n";
+        assert_eq!(
+            css_comments(src),
+            ["/*\n// ai-slop-ignore SLOP053\n*/", "// real"]
+        );
+    }
+
     #[test]
     fn nodes_query_is_empty_for_prose_ctx() {
         let ctx = LintContext {
@@ -302,6 +375,7 @@ mod tests {
             deps: None,
             prose: None,
             image: None,
+            style: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         assert!(ctx.nodes(&["paragraph"]).is_empty());

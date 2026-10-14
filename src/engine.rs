@@ -1,11 +1,13 @@
 use crate::{
     context::{self, LintContext},
     diagnostic::Diagnostic,
+    groups,
     imports_data::DepIndex,
     lang::{self, Lang},
     paths,
     registry::RULES,
     rules::artifact::fence,
+    style::StyleDoc,
     suppress,
 };
 use std::collections::HashSet;
@@ -131,6 +133,29 @@ pub fn prewarm<'scope>(scope: &'scope std::thread::Scope<'scope, '_>, settings: 
     }
 }
 
+/// Only the `design` group reads `ctx.style`, so a run with none of its rules enabled for this lang
+/// skips building the doc (which re-parses every `<style>` body). A new rule that reads
+/// `ctx.style` joins that group.
+fn wants_style(settings: &Settings, lang: Lang) -> bool {
+    lang::STYLE_LANGS.contains(&lang)
+        && RULES.iter().any(|r| {
+            settings.enabled.contains(r.code)
+                && r.langs.contains(&lang)
+                && groups::group_of(r.code) == "design"
+        })
+}
+
+/// A file no enabled rule (built-in or custom) can report on is not worth parsing.
+fn has_rules_for(settings: &Settings, lang: Lang) -> bool {
+    settings
+        .custom_rules
+        .iter()
+        .any(|cr| settings.enabled.contains(cr.code()))
+        || RULES
+            .iter()
+            .any(|r| settings.enabled.contains(r.code) && r.langs.contains(&lang))
+}
+
 /// The rule-dispatch loop shared by `lint_file`, `lint_prose` and `lint_image`: filter `RULES` by
 /// enabled/lang/natlang/path-gating, run each one, then the custom-rule second pass, then
 /// `suppress::apply`. Previously pasted identically into `lint_file` and `lint_prose`; folding
@@ -170,6 +195,9 @@ pub fn lint_file(
     lang: Lang,
     settings: &Settings,
 ) -> Vec<Diagnostic> {
+    if !has_rules_for(settings, lang) {
+        return Vec::new();
+    }
     if lang.is_prose() {
         return lint_prose(display_path, source, lang, settings);
     }
@@ -194,6 +222,9 @@ pub fn lint_file(
     };
     // NOTE: a tree WITH error nodes is normal and expected (broken pasted code) — DO NOT skip it.
     let (comments, strings, index) = context::extract(&tree, source, lang);
+    let style = wants_style(settings, lang)
+        .then(|| StyleDoc::for_code(lang, &index, source, &strings))
+        .flatten();
     let is_test = paths::is_test_path(&display_path);
     let is_stub = display_path.ends_with(".pyi");
     let ctx = LintContext {
@@ -208,6 +239,7 @@ pub fn lint_file(
         deps: settings.deps.as_ref(),
         prose: None,
         image: None,
+        style: style.as_ref(),
         natlangs: &settings.natlangs,
     };
     run_rules(&ctx, settings)
@@ -251,6 +283,7 @@ fn lint_prose(
         }
         _ => &settings.natlangs,
     };
+    let style = wants_style(settings, lang).then(|| StyleDoc::from_html(&doc, source));
     let is_test = paths::is_test_path(&display_path);
     let ctx = LintContext {
         display_path,
@@ -264,6 +297,7 @@ fn lint_prose(
         deps: None,
         prose: Some(&doc),
         image: None,
+        style: style.as_ref(),
         natlangs,
     };
     run_rules(&ctx, settings)
@@ -296,6 +330,7 @@ pub fn lint_image(
         deps: None,
         prose: None,
         image: Some(&doc),
+        style: None,
         natlangs: &settings.natlangs,
     };
     Some(run_rules(&ctx, settings))
@@ -314,6 +349,50 @@ mod tests {
             natlangs: lang::ALL_NATLANGS.to_vec(),
         };
         std::thread::scope(|scope| prewarm(scope, &settings));
+    }
+
+    fn settings_with(codes: &[&'static str]) -> Settings {
+        Settings {
+            enabled: codes.iter().copied().collect(),
+            deps: None,
+            custom_rules: Vec::new(),
+            natlangs: lang::ALL_NATLANGS.to_vec(),
+        }
+    }
+
+    #[test]
+    fn wants_style_needs_an_enabled_design_rule_that_lists_the_lang() {
+        let none = settings_with(&["SLOP018", "SLOP001"]);
+        let only_theme = settings_with(&["SLOP056"]);
+        let all = settings_with(&["SLOP052", "SLOP055", "SLOP056"]);
+        for lang in lang::STYLE_LANGS {
+            assert!(!wants_style(&none, *lang), "{lang:?}");
+        }
+        assert!(wants_style(&only_theme, Lang::Css));
+        assert!(wants_style(&only_theme, Lang::Html));
+        assert!(!wants_style(&only_theme, Lang::Tsx));
+        assert!(wants_style(&all, Lang::Tsx));
+        assert!(!wants_style(&all, Lang::Python));
+    }
+
+    #[test]
+    fn a_design_rule_fires_only_when_selected() {
+        let css = ".h { background: linear-gradient(#667eea, #764ba2) }\n";
+        let found = |codes: &[&'static str]| {
+            lint_file("a.css".into(), css, Lang::Css, &settings_with(codes)).len()
+        };
+        assert_eq!(found(&["SLOP053"]), 1);
+        assert_eq!(found(&["SLOP056"]), 0);
+        assert_eq!(found(&[]), 0);
+    }
+
+    #[test]
+    fn a_file_no_enabled_rule_lists_is_not_parsed() {
+        let md_only = settings_with(&["SLOP018"]);
+        assert!(!has_rules_for(&md_only, Lang::Css));
+        assert!(has_rules_for(&md_only, Lang::Md));
+        let css = ".h { background: linear-gradient(#667eea, #764ba2) }\n";
+        assert!(lint_file("a.css".into(), css, Lang::Css, &md_only).is_empty());
     }
 
     #[test]

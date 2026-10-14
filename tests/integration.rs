@@ -1,4 +1,4 @@
-//! Generic marker harness. Walks tests/fixtures/{typescript,python,go,rust}/** and, per file,
+//! Generic marker harness. Walks tests/fixtures/{typescript,python,go,rust,markdown,html,css}/** and, per file,
 //! diffs the rule engine's findings against inline `expect:`/`expect-line:` markers (§8 of PLAN).
 
 use regex::Regex;
@@ -6,7 +6,15 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use stopslop::{lint_file, resolve_enabled, Lang, Settings, ALL_NATLANGS};
 
-const LANG_DIRS: &[&str] = &["typescript", "python", "go", "rust", "markdown", "html"];
+const LANG_DIRS: &[&str] = &[
+    "typescript",
+    "python",
+    "go",
+    "rust",
+    "markdown",
+    "html",
+    "css",
+];
 
 fn fixtures_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")

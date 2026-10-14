@@ -19,6 +19,7 @@ code or prefix does, including `--select`, `--ignore`, and the
 | `sourcing` | Claims with no checkable source behind them |
 | `format` | Typographic and Markdown affectations |
 | `provenance` | Embedded image metadata that names how or by what an image was made |
+| `design` | Visual tells of generated UI, read from CSS, `style=`, and utility classes |
 
 ```bash
 stopslop --select artifact,structure   # the mechanical, high-confidence rules only
@@ -89,6 +90,11 @@ entries from your config. SLOP010 is the one exception: it stays off until
 | SLOP049 | provenance | Image spectrum has an upsampling ridge | C, off | PNG, JPEG | en, pt-BR | Decodes a 256x256 centre crop to grayscale, takes a Hann-windowed FFT and flags a high-frequency radius standing 0.4 log10 above its neighbours in the azimuthally averaged power spectrum, the periodic artifact GAN and diffusion upsampling can leave. Skips WebP, images under 256 px and images over 64 M pixels. The measured splits did not separate (see `bench/candidates.toml`), so it stays opt-in: `--extend-select SLOP049` |
 | SLOP050 | artifact | Comment narrates a stand-in | B, on | TS, TSX, Python, Go, Rust | en | A non-doc comment saying the code beneath it is a placeholder, simulation or demo ("logic would go here", "in a real-world scenario", "for demonstration purposes", "replace with your actual..."). `here` and `logic` are word-bounded so `thereby` and `logician` stay clean |
 | SLOP051 | artifact | Comment announces demo code | B, on | TS, TSX, Python, Go, Rust | en | A non-doc comment that opens with `Example usage`, `Sample usage`, `Example 1:` or a sample-data announcement ("Create sample data", "Mock response"), the demo a chat answer appends to the code it just wrote |
+| SLOP052 | design | Gradient text | B, on | CSS, SCSS, HTML, TSX | en, pt-BR | A declaration block that pairs `background-clip: text` with a `*-gradient(` background, or a class list that pairs `bg-clip-text` with a `bg-gradient-to-*`, `bg-linear-*`, `bg-radial*` or `bg-conic*` utility. Reads `<style>` bodies, `style=` attributes and JSX `style={{}}` objects as well as stylesheets |
+| SLOP053 | design | Purple-blue gradient | B, on | CSS, SCSS, HTML, TSX | en, pt-BR | A gradient with at least two opaque stops, all in HSL hue 225-330 with saturation of at least 0.35, one on the blue side (225-255) and one in the purple core (255-290), or a class list running `from-purple\|violet\|indigo-N` into a `via-`/`to-` shade of a different purple, violet, indigo, blue, cyan, pink or fuchsia hue in the same variant. Stops below half opacity do not count |
+| SLOP054 | design | Hand-copied Tailwind violet hex | C, off | CSS, SCSS, HTML, TSX | en, pt-BR | One of nine Tailwind violet and indigo hex values (`#7c3aed`, `#8b5cf6`, `#a855f7`, `#9333ea`, `#7e22ce`, `#6d28d9`, `#6366f1`, and the stock `#764ba2` / `#667eea` pair) written outside a gradient, in a declaration or an arbitrary-value class. Skips custom-property definitions (`--brand: #6366f1` is where the token lives) and gradient stops, which belong to SLOP053 |
+| SLOP055 | design | Violet Tailwind accent | B, on | TSX, HTML | en, pt-BR | A class list holding a `text`, `bg`, `border` (and side forms such as `border-t`), `ring`, `ring-offset`, `inset-ring`, `inset-shadow`, `fill`, `stroke`, `outline`, `decoration`, `accent`, `caret`, `divide`, `shadow` or `placeholder` utility in purple, violet or indigo 400-700, with variants, the `!` marker and `/NN`, `/[..]` or `/(--var)` opacity allowed. One finding per class list, at its first match. Gradient stops (`from-`, `via-`, `to-`) belong to SLOP053 and lists that clip a gradient to text (`bg-clip-text` plus a gradient utility) to SLOP052; raw CSS is never read, because syntax-highlighting themes are legitimately blue-violet. A v3 `tw-` config prefix is not read. Flags the look, not the author |
+| SLOP056 | design | Violet shadcn theme preset | B, on | CSS, HTML | en, pt-BR | A theme block that defines a shadcn token (`--primary`, `--ring`, `--accent`, `--sidebar-primary`, `--chart-1`, or the `--color-` form in `@theme`) with a violet value (HSL hue 248-285, saturation of at least 0.35; bare HSL triplet, `oklch()`, `oklab()`, hex, `rgb()` or `hsl()`). The block must also define at least two shadcn-specific tokens (`--popover`, `--card-foreground`, `--primary-foreground`, `--muted-foreground`, `--destructive`, `--sidebar` and a few more; `--card` and `--radius` do not count, plenty of design systems define them), so a lone `--primary: #9146ff` stays quiet. One finding per block, at its first violet token. Indigo, blue, fuchsia and the zinc, slate and blue presets stay quiet. SCSS files are read with the CSS grammar |
 
 Every rule is exactly one of four states, `--list-rules` prints the TIER,
 DEFAULT (built-in) and ACTIVE (under your config) columns so you can check any given rule at a glance:
@@ -96,8 +102,8 @@ DEFAULT (built-in) and ACTIVE (under your config) columns so you can check any g
 - **Tier A, on by default (14 rules)**: mechanical artifacts (SLOP001–009,
   SLOP011–013, SLOP046–047) with no legitimate reading. A finding here fails
   the run (exit 1) and blocks CI.
-- **Tier B, on by default (32 rules)**: everything else except SLOP010,
-  SLOP020, SLOP043 and SLOP045.
+- **Tier B, on by default (36 rules)**: everything else except SLOP010,
+  SLOP020, SLOP043, SLOP045 and the other Tier C rules.
   Judgment calls (density and style checks on prose, stdlib/structure
   heuristics) that warn without ever exiting 1. Expect some noise; silence
   what you don't want with `ignore`/`--ignore` by code or group.
@@ -106,7 +112,7 @@ DEFAULT (built-in) and ACTIVE (under your config) columns so you can check any g
   registries and dynamic imports; SLOP020 (smart quotes) and SLOP043 (long
   comments), which the labelled corpus showed firing on human text as often
   as on AI text. Enable either with `--extend-select`.
-- **Tier C, always off by default (2 rules)**: SLOP045 and SLOP049. Tier C means the
+- **Tier C, always off by default (3 rules)**: SLOP045, SLOP049 and SLOP054. Tier C means the
   rule's threshold has not been scored against a labelled corpus yet, so it
   stays opt-in until it has been: enable it with
   `extend-select = ["SLOP045"]` or `--extend-select SLOP045`. A
@@ -119,6 +125,24 @@ What you can change is which tier the run fails on: `fail-on-tier = "B"` in
 `stopslop.toml` (or `--fail-on-tier B`) puts every finding on the exit-1
 path. [CHANGELOG.md](../CHANGELOG.md) records which rules changed tier between
 releases.
+
+## Style linting
+
+The `design` group reads three places a generated UI keeps its styling:
+`.css`/`.scss` files, `<style>` bodies and `style=`/`class=` attributes in
+`.html`, and `style={{ }}` objects plus `className` strings in `.tsx`. One
+`StyleDoc` per file holds the declarations and the utility-class lists, so a
+rule never re-parses a stylesheet. SCSS parses with the plain CSS grammar:
+nesting and plain declarations work, but `$variables` and `@include` can hide a
+neighboring declaration. `.min.css` files are skipped. A suppression directive works in
+`/* */` inside a `.css` file, in a `//` comment that opens its line in a `.scss`
+file, and in an HTML comment for `.html`; a `/* */` comment inside a `<style>`
+body is not read as a directive.
+
+SLOP052, SLOP053, SLOP055 and SLOP056 are Tier B and on by default: they fire on
+files from AI app builders and almost never on verified human ones. SLOP054
+stays Tier C and opt-in (`--extend-select SLOP054`). `bench/candidates.toml`
+holds the measured rates.
 
 Findings that have one concrete replacement print it on a second line:
 

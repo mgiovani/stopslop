@@ -17,11 +17,12 @@ just --list                 # every recipe; each one is a single command you can
 ## Architecture
 
 - `main.rs` calls `cli::run` and returns its exit code. Keep every decision out of it.
-- Rule modules import `context`, `diagnostic`, `registry`, `lang`, `prose`, `prose_words`, `suppress`, and sibling rules for shared helpers. Never `cli`, `engine`, `output`, `walk`, or `git`.
+- Rule modules import `context`, `diagnostic`, `registry`, `lang`, `prose`, `prose_words`, `style`, `color`, `suppress`, and sibling rules for shared helpers. Never `cli`, `engine`, `output`, `walk`, or `git`.
 - A rule that wants a new fact gets a `LintContext` field computed once per file, never a new argument threaded through `engine`.
 - `engine` owns selection (`resolve_enabled`) and per-file dispatch (`lint_file`), `walk` owns the parallel file walk, `output` owns rendering, `cli` wires them together.
 - Rules receive source text and an AST index, never a path to open. I/O stays in `walk`, `git`, `config`, `baseline`, and the one manifest scan in `imports_data::DepIndex::discover`, which `cli` runs before the walk.
 - Prose langs share `ProseDoc`. The Markdown family comes from `ProseDoc::parse`, HTML from `ProseDoc::parse_html` (a tree-sitter-html masked stream); rules never dispatch on which, they read `doc` fields (`block_starts`, `block_initial`) instead.
+- Style langs (`lang::STYLE_LANGS`: Css, Html, Tsx) share `StyleDoc`, built once per file by `engine` from `NodeIndex` (CSS, JSX) or `ProseDoc` (HTML) and read through `ctx.style`. Rules may import `style` and `color`; they never re-parse CSS. `ctx.style` is built only when a `design`-group rule is enabled for the file's lang, so a rule that reads it belongs in that group.
 - `lib.rs` is the public surface. Tests link the library and never shell out to the binary.
 
 ## Adding a rule
@@ -30,7 +31,7 @@ just --list                 # every recipe; each one is a single command you can
 2. Declare the module in `src/rules/<group>/mod.rs` and the static in `registry::RULES`.
 3. Put the code in exactly one `groups.rs` entry. `groups_partition_every_rule` fails otherwise.
 4. Open at Tier B. Tier A is for findings with no judgment call in them, because Tier A fails CI.
-5. Set `langs` to `lang::CODE_LANGS` or `lang::PROSE_LANGS` unless the rule is narrower, and add fixtures under `tests/fixtures/<lang>/` for every language listed: one file carrying `expect:` markers and one clean file carrying none. `every_declared_lang_has_a_fixture_witness` fails when the marked file is missing. A rule declaring `Html` needs a witness under `tests/fixtures/html/`. Also declare `natlangs`: `lang::ALL_NATLANGS` when the rule has no natural-language lexicon (AST shape, punctuation, statistics), `&[NatLang::En]` otherwise. Add a `tests/fixtures/markdown/pt-br/` witness before declaring `NatLang::PtBr`; `natlang_witness` fails otherwise.
+5. Set `langs` to `lang::CODE_LANGS`, `lang::PROSE_LANGS` or, for a rule that reads `ctx.style`, `lang::STYLE_LANGS` unless the rule is narrower, and add fixtures under `tests/fixtures/<lang>/` for every language listed: one file carrying `expect:` markers and one clean file carrying none. `every_declared_lang_has_a_fixture_witness` fails when the marked file is missing. A rule declaring `Html` needs a witness under `tests/fixtures/html/`. Also declare `natlangs`: `lang::ALL_NATLANGS` when the rule has no natural-language lexicon (AST shape, punctuation, statistics), `&[NatLang::En]` otherwise. Add a `tests/fixtures/markdown/pt-br/` witness before declaring `NatLang::PtBr`; `natlang_witness` fails otherwise.
 6. Grep `src/` for each phrase before adding it to a panel. If another rule owns the span, drop the phrase.
 7. Keep the panel in the rule file. `prose_words.rs` holds the panels the prose density rules share and takes no new entries.
 8. Write the message lowercase and specific, and use `Diagnostic::at_fix` whenever a concrete replacement exists.

@@ -357,6 +357,7 @@ mod tests {
             deps: None,
             prose: Some(&doc),
             image: None,
+            style: None,
             natlangs,
         };
         let mut out = Vec::new();

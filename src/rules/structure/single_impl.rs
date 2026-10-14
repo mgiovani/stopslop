@@ -26,6 +26,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         | Lang::Txt
         | Lang::Rst
         | Lang::Html
+        | Lang::Css
         | Lang::Image => {} // rule.langs excludes these; never reached
     }
 }
@@ -216,6 +217,7 @@ mod tests {
             deps: None,
             prose: None,
             image: None,
+            style: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();

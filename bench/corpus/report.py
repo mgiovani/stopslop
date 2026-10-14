@@ -283,7 +283,7 @@ def _provenance_table(datasets_built, registry):
 
 def _lang_summaries(names, heading, datasets_built, registry, args):
     out = [heading, ""]
-    for lang in ("python", "go", "rust", "typescript", "tsx", "prose"):
+    for lang in ("python", "go", "rust", "typescript", "tsx", "html", "css", "prose"):
         if args.langs and lang not in args.langs:
             continue
         matrix = lang_summary_matrix(lang, datasets_built, registry, only=set(names))

@@ -73,6 +73,11 @@ pub static RULES: &[&'static RuleDef] = &[
     &crate::rules::provenance::image_spectrum::RULE, // SLOP049
     &crate::rules::artifact::stand_in::RULE,         // SLOP050
     &crate::rules::artifact::demo_block::RULE,       // SLOP051
+    &crate::rules::design::gradient_text::RULE,      // SLOP052
+    &crate::rules::design::purple_gradient::RULE,    // SLOP053
+    &crate::rules::design::violet_hex::RULE,         // SLOP054
+    &crate::rules::design::violet_accent::RULE,      // SLOP055
+    &crate::rules::design::violet_theme::RULE,       // SLOP056
 ];
 
 #[cfg(test)]

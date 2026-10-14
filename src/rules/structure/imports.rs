@@ -39,7 +39,7 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         Lang::Ts | Lang::Tsx => check_ts(rule, ctx, deps, out),
         Lang::Go => check_go(rule, ctx, deps, out),
         Lang::Rust => check_rust(rule, ctx, deps, out),
-        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html | Lang::Image => {} // rule.langs excludes prose and images; never reached
+        Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html | Lang::Css | Lang::Image => {} // rule.langs excludes prose, css and images; never reached
     }
 }
 
@@ -299,6 +299,7 @@ mod tests {
             deps: Some(deps),
             prose: None,
             image: None,
+            style: None,
             natlangs: crate::lang::ALL_NATLANGS,
         };
         let mut out = Vec::new();

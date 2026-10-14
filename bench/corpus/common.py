@@ -24,7 +24,10 @@ PROVENANCE_NOTE = (
     "columns, and the takeaways."
 )
 
-EXT = {"python": "py", "go": "go", "rust": "rs", "typescript": "ts", "tsx": "tsx", "prose": "md"}
+EXT = {
+    "python": "py", "go": "go", "rust": "rs", "typescript": "ts", "tsx": "tsx", "prose": "md",
+    "html": "html", "css": "css",
+}
 JS_PROXY = "javascript written as .ts; SLOP007 cannot fire"
 
 # Applicable rules per lang, hand-transcribed from each RuleDef.langs in src/rules/<group>/*.rs.
@@ -51,7 +54,7 @@ APPLICABLE = {
     "tsx": (
         "SLOP001", "SLOP002", "SLOP003", "SLOP004", "SLOP005", "SLOP007", "SLOP008",
         "SLOP009", "SLOP037", "SLOP038", "SLOP039", "SLOP040", "SLOP042", "SLOP043", "SLOP050", "SLOP051",
-        "SLOP045",
+        "SLOP045", "SLOP052", "SLOP053", "SLOP054", "SLOP055",
     ),
     "prose": (
         "SLOP011", "SLOP012", "SLOP013", "SLOP014", "SLOP015", "SLOP016", "SLOP017",
@@ -59,13 +62,21 @@ APPLICABLE = {
         "SLOP025", "SLOP026", "SLOP027", "SLOP028", "SLOP029", "SLOP030", "SLOP031",
         "SLOP032", "SLOP033", "SLOP034", "SLOP035", "SLOP036", "SLOP041",
     ),
+    "html": (
+        "SLOP001", "SLOP009", "SLOP011", "SLOP012", "SLOP013", "SLOP014", "SLOP015", "SLOP016",
+        "SLOP017", "SLOP018", "SLOP019", "SLOP020", "SLOP021", "SLOP022", "SLOP023", "SLOP024",
+        "SLOP025", "SLOP026", "SLOP027", "SLOP028", "SLOP029", "SLOP030", "SLOP031", "SLOP032",
+        "SLOP033", "SLOP034", "SLOP035", "SLOP036", "SLOP041", "SLOP044",
+        "SLOP052", "SLOP053", "SLOP054", "SLOP055", "SLOP056",
+    ),
+    "css": ("SLOP052", "SLOP053", "SLOP054", "SLOP056"),
 }
 UNSCOREABLE_NOTE = (
     "SLOP010 names every code `Lang` too, but its check needs a dependency manifest a "
     "per-file corpus cell has no reason to carry, so it can never fire here and the "
-    "tables leave it out rather than show a rule that structurally cannot score. SLOP044 "
-    "(HTML) and SLOP046-SLOP048 (images) are left out for the plainer reason that no "
-    "registered dataset carries an HTML or image cell. SLOP045 reads only files of 60+ "
+    "tables leave it out rather than show a rule that structurally cannot score. SLOP046-SLOP048 "
+    "(images) are left out for the plainer reason that no registered dataset carries an image "
+    "cell. SLOP045 reads only files of 60+ "
     "non-blank lines, which excludes nearly every file in the snippet and contest corpora "
     "(2.6% of AIGCodeSet's human `.py` files clear it): its 0% there means it barely ran, "
     "not that it found nothing. The pinned standard libraries clear it (67% of rust-std)."
@@ -141,12 +152,14 @@ def _slug(text):
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
 
 
-def read_text_files(clone_dir, files, limit):
+def read_text_files(clone_dir, files, limit, meta=None):
+    """Sample `files` (paths under `clone_dir`) and read them; `meta(path)` supplies each item's
+    metadata, defaulting to a human file named by its path."""
     idx = sample_indices(len(files), limit)
     items = []
     for i in idx:
         rel = files[i]
         with open(os.path.join(clone_dir, rel), encoding="utf-8", errors="replace") as fh:
             text = fh.read()
-        items.append((text, {"generator": "human", "domain": rel}))
+        items.append((text, meta(rel) if meta else {"generator": "human", "domain": rel}))
     return items

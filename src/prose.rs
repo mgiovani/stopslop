@@ -107,6 +107,9 @@ pub struct ProseDoc<'a> {
     /// treated as an error. `engine::lint_prose` reads this to narrow which language panels run
     /// on this one file (see its doc comment for the narrowing rule).
     pub html_lang: Option<NatLang>,
+    /// Byte range of every `<style>` element's CSS body, for `StyleDoc::from_html` to re-parse
+    /// with the CSS grammar. Empty for Markdown.
+    pub style_ranges: Vec<(usize, usize)>,
     /// Paragraph blocks, built on first use and shared by every rule that needs them. Five
     /// default-on rules ask for this same list on a Markdown file (SLOP011 twice, once per
     /// natlang panel, plus SLOP030/034/041), and each build is a full `line_spans` walk plus an
@@ -186,6 +189,7 @@ impl<'a> ProseDoc<'a> {
             bold_spans: Vec::new(),
             footers: Vec::new(),
             html_lang: None,
+            style_ranges: Vec::new(),
             line_starts,
             blocks: OnceCell::new(),
             col_memo: Cell::new((0, 1)),
@@ -280,6 +284,7 @@ impl<'a> ProseDoc<'a> {
             html_lang: tree
                 .as_ref()
                 .and_then(|t| detect_html_lang(t.root_node(), &prepared)),
+            style_ranges: scan.style_ranges,
             line_starts,
             blocks: OnceCell::new(),
             col_memo: Cell::new((0, 1)),
@@ -407,7 +412,7 @@ fn compute_line_col(line_starts: &[usize], text: &str, byte: usize) -> (usize, u
     (idx + 1, col)
 }
 
-fn compute_line_starts(source: &str) -> Vec<usize> {
+pub(crate) fn compute_line_starts(source: &str) -> Vec<usize> {
     let mut starts = vec![0usize];
     for (i, b) in source.bytes().enumerate() {
         if b == b'\n' {
@@ -947,6 +952,7 @@ struct HtmlScan {
     entities: Vec<(usize, char)>,
     bold_spans: Vec<usize>,
     footers: Vec<(usize, usize)>,
+    style_ranges: Vec<(usize, usize)>,
 }
 
 /// The document's declared language from its root `<html lang="...">` start tag, read off the
@@ -1026,6 +1032,12 @@ fn restore_html(root: Node, prepared: &str, masked: &mut [u8], scan: &mut HtmlSc
     crate::context::walk_tree(&mut cursor, &mut |node| match node.kind() {
         "element" | "script_element" | "style_element" => {
             let tag = tag_name(node, prepared);
+            if node.kind() == "style_element" {
+                let mut kids = node.walk();
+                let body = node.children(&mut kids).find(|c| c.kind() == "raw_text");
+                scan.style_ranges
+                    .extend(body.map(|b| (b.start_byte(), b.end_byte())));
+            }
             if let Some(level) = heading_level(tag) {
                 scan.headings
                     .push((level, node.start_byte(), node.end_byte()));

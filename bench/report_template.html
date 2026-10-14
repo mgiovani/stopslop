@@ -258,10 +258,10 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const pct = (n, d) => d ? (100 * n / d) : 0;
 const fmt = v => v === 0 ? '0' : v < 0.1 ? '<0.1' : v.toFixed(v < 10 ? 1 : 0);
 const RULES = D.rules;
-const PRETTY = {aigcodeset:'AIGCodeSet',codemirage:'CodeMirage',codet_m4:'CoDET-M4',droid:'DroidCollection',semeval13:'SemEval-2026 T13','cpython-lib':'CPython Lib','go-std':'Go std','rust-std':'Rust library','typescript-src':'TypeScript src','antd-tsx':'Ant Design',rosetta:'Rosetta Code',hc3:'HC3',mage:'MAGE',ghostbuster:'Ghostbuster',faidset:'FAIDSet',beemo:'Beemo',aidev:'AIDev','apt-eval':'APT-Eval',diplomatrix:'Diplomatrix-BR','wetbench-pt':'WETBench pt','cpython-doc':'CPython Doc','rust-book':'Rust book','essay-br':'Essay-BR'};
-const LANG = {python:'Python',go:'Go',rust:'Rust',typescript:'TypeScript',tsx:'TSX',prose:'Prose'};
+const PRETTY = {aigcodeset:'AIGCodeSet',codemirage:'CodeMirage',codet_m4:'CoDET-M4',droid:'DroidCollection',semeval13:'SemEval-2026 T13','cpython-lib':'CPython Lib','go-std':'Go std','rust-std':'Rust library','typescript-src':'TypeScript src','antd-tsx':'Ant Design','bootstrap-css':'Bootstrap CSS','codemirror-css':'CodeMirror CSS','highlightjs-css':'highlight.js CSS',design2code:'Design2Code','websight-v01':'WebSight v0.1','websight-v02':'WebSight v0.2',rosetta:'Rosetta Code',hc3:'HC3',mage:'MAGE',ghostbuster:'Ghostbuster',faidset:'FAIDSet',beemo:'Beemo',aidev:'AIDev','apt-eval':'APT-Eval',diplomatrix:'Diplomatrix-BR','wetbench-pt':'WETBench pt','cpython-doc':'CPython Doc','rust-book':'Rust book','essay-br':'Essay-BR'};
+const LANG = {python:'Python',go:'Go',rust:'Rust',typescript:'TypeScript',tsx:'TSX',html:'HTML',css:'CSS',prose:'Prose'};
 const SPLIT = {ai:'plain','ai-paraphrased':'paraphrased','ai-refined':'refined','ai-adversarial':'adversarial','ai-hybrid':'hybrid','ai-collab':'collaborative','ai-polished':'polished','ai-human-edited':'human-edited','ai-llm-edited':'LLM-edited',human:'human'};
-const HL = {python:'python',go:'go',rust:'rust',typescript:'typescript',tsx:'typescript',prose:'markdown'};
+const HL = {python:'python',go:'go',rust:'rust',typescript:'typescript',tsx:'typescript',html:'xml',css:'css',prose:'markdown'};
 const cells = D.cells;
 const byDs = {};
 cells.forEach(c => { (byDs[c.dataset] ||= []).push(c); });
@@ -349,7 +349,7 @@ document.getElementById('sb-sort').addEventListener('change', renderSb);
 renderSb();
 
 // ---------- Matrices
-const LANGS = ['python','go','rust','typescript','tsx','prose'];
+const LANGS = ['python','go','rust','typescript','tsx','html','css','prose'];
 function heat(v, ai) {
   if (!v) return '';
   const t = Math.min(1, Math.log1p(v) / Math.log1p(60));

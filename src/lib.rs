@@ -1,5 +1,6 @@
 pub mod baseline;
 pub mod cli;
+pub mod color;
 pub mod config;
 pub mod context;
 pub mod custom;
@@ -15,6 +16,7 @@ pub mod prose;
 pub mod prose_words;
 pub mod registry;
 pub mod rules;
+pub mod style;
 pub mod suppress;
 pub mod walk;
 

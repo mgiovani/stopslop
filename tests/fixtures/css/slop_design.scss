@@ -1,0 +1,11 @@
+.hero {
+  .title {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); /* expect: SLOP053 */
+    -webkit-background-clip: text; /* expect: SLOP052 */
+    color: transparent;
+  }
+
+  .cta {
+    background-color: #6366f1; /* expect: SLOP054 */
+  }
+}
