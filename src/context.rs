@@ -37,19 +37,7 @@ impl<'a> LintContext<'a> {
     /// Every named node whose kind is in `kinds`, in the tree's pre-order. Anonymous tokens
     /// (keywords, punctuation) are not indexed; empty for prose langs.
     pub fn nodes(&self, kinds: &[&str]) -> Vec<Node<'a>> {
-        let Some(index) = self.index else {
-            return Vec::new();
-        };
-        let mut positions: Vec<usize> = kinds
-            .iter()
-            .filter_map(|k| index.kind_id(k))
-            .filter_map(|id| index.by_kind.get(&id))
-            .flatten()
-            .copied()
-            .collect();
-        positions.sort_unstable();
-        positions.dedup();
-        positions.into_iter().map(|i| index.all[i]).collect()
+        self.index.map_or_else(Vec::new, |index| index.nodes(kinds))
     }
     pub fn pos(&self, node: &Node) -> (usize, usize) {
         let p = node.start_position();
@@ -89,7 +77,21 @@ pub struct NodeIndex<'t> {
     by_kind: HashMap<u16, Vec<usize>>, // kind id -> positions in `all`
 }
 
-impl NodeIndex<'_> {
+impl<'t> NodeIndex<'t> {
+    /// See `LintContext::nodes`; callable before a `LintContext` exists.
+    pub fn nodes(&self, kinds: &[&str]) -> Vec<Node<'t>> {
+        let mut positions: Vec<usize> = kinds
+            .iter()
+            .filter_map(|k| self.kind_id(k))
+            .filter_map(|id| self.by_kind.get(&id))
+            .flatten()
+            .copied()
+            .collect();
+        positions.sort_unstable();
+        positions.dedup();
+        positions.into_iter().map(|i| self.all[i]).collect()
+    }
+
     /// Keyed by `Node::kind_id` rather than `Node::kind`: the id is one FFI read per node, the
     /// string is that plus a strlen, a UTF-8 check and a longer hash. `None` for a name that is
     /// not a named kind of this grammar (tree-sitter reserves id 0 for "not found").
