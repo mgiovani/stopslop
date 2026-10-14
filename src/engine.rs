@@ -6,6 +6,7 @@ use crate::{
     paths,
     registry::RULES,
     rules::artifact::fence,
+    style::StyleDoc,
     suppress,
 };
 use std::collections::HashSet;
@@ -194,6 +195,13 @@ pub fn lint_file(
     };
     // NOTE: a tree WITH error nodes is normal and expected (broken pasted code) — DO NOT skip it.
     let (comments, strings, index) = context::extract(&tree, source, lang);
+    let style = matches!(lang, Lang::Css | Lang::Tsx).then(|| {
+        if lang == Lang::Css {
+            StyleDoc::from_css(&index, source)
+        } else {
+            StyleDoc::from_jsx(&index, source, &strings)
+        }
+    });
     let is_test = paths::is_test_path(&display_path);
     let is_stub = display_path.ends_with(".pyi");
     let ctx = LintContext {
@@ -208,7 +216,7 @@ pub fn lint_file(
         deps: settings.deps.as_ref(),
         prose: None,
         image: None,
-        style: None,
+        style: style.as_ref(),
         natlangs: &settings.natlangs,
     };
     run_rules(&ctx, settings)
@@ -252,6 +260,7 @@ fn lint_prose(
         }
         _ => &settings.natlangs,
     };
+    let style = (lang == Lang::Html).then(|| StyleDoc::from_html(&doc, source));
     let is_test = paths::is_test_path(&display_path);
     let ctx = LintContext {
         display_path,
@@ -265,7 +274,7 @@ fn lint_prose(
         deps: None,
         prose: Some(&doc),
         image: None,
-        style: None,
+        style: style.as_ref(),
         natlangs,
     };
     run_rules(&ctx, settings)
