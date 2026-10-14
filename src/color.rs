@@ -1,5 +1,9 @@
 use regex::Regex;
+use std::ops::RangeInclusive;
 use std::sync::LazyLock;
+
+pub const MIN_SATURATION: f32 = 0.35;
+pub const VIOLET_HUE: RangeInclusive<f32> = 248.0..=285.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rgba {
@@ -83,25 +87,25 @@ pub fn parse_hsl_triplet(value: &str) -> Option<Rgba> {
     parse_hsl(value)
 }
 
-/// Violet and purple, the hues a stock "AI" theme picks: HSL hue 245-285 with saturation of at
-/// least 0.35. The floor sits above pure blue and Tailwind indigo-500 (hue 239-241 depending on
-/// notation) and the ceiling below fuchsia (292) and magenta (300), so one palette stop reads the
-/// same in hex and `oklch()`.
+/// Violet and purple, the hues a stock "AI" theme picks. The floor sits above pure blue and the
+/// Tailwind indigo-500 to indigo-700 stops, whose gamut-clipped `oklch()` hue (up to 247) differs
+/// from their hex hue (239-243), and the ceiling below fuchsia (292) and magenta (300), so one
+/// palette stop reads the same in hex and `oklch()`.
 pub fn is_violet(c: Rgba) -> bool {
     let (h, s, _) = hsl(c);
-    s >= 0.35 && (245.0..=285.0).contains(&h)
+    s >= MIN_SATURATION && VIOLET_HUE.contains(&h)
 }
 
-/// Every color token in `value` with its byte span, in source order. Tokens inside `var()` and
+/// Every color token in `value`, in source order. Tokens inside `var()` and
 /// `url()` are skipped, and a named color glued to identifier characters (`--indigo`,
 /// `purple.png`) is not a color.
-pub fn colors_in(value: &str) -> Vec<(usize, usize, Rgba)> {
+pub fn colors_in(value: &str) -> Vec<Rgba> {
     let opaque = opaque_spans(value);
     COLOR_RE
         .find_iter(value)
         .filter(|m| !opaque.iter().any(|&(s, e)| m.start() >= s && m.start() < e))
         .filter(|m| m.as_str().starts_with('#') || is_standalone(value, m.start(), m.end()))
-        .filter_map(|m| parse(m.as_str()).map(|c| (m.start(), m.end(), c)))
+        .filter_map(|m| parse(m.as_str()))
         .collect()
 }
 
@@ -124,7 +128,7 @@ fn opaque_spans(value: &str) -> Vec<(usize, usize)> {
                 match c {
                     '(' => depth += 1,
                     ')' => {
-                        depth -= 1;
+                        depth = depth.saturating_sub(1);
                         if depth == 0 {
                             end = start + i + 1;
                             break;
@@ -194,14 +198,14 @@ fn function_args<'t>(t: &'t str, names: &[&str]) -> Option<&'t str> {
     })
 }
 
-fn split_args(args: &str) -> Vec<&str> {
+fn split_args(args: &str) -> Option<Vec<&str>> {
     let (color, alpha) = args.split_once('/').unwrap_or((args, ""));
     let mut parts: Vec<&str> = color
         .split(|c: char| c == ',' || c.is_whitespace())
         .filter(|p| !p.is_empty())
         .collect();
     parts.extend(alpha.split_whitespace());
-    parts
+    (parts.len() >= 3).then_some(parts)
 }
 
 fn number(p: &str, scale: f32) -> Option<f32> {
@@ -211,6 +215,13 @@ fn number(p: &str, scale: f32) -> Option<f32> {
         None => p.parse::<f32>().ok(),
     };
     n.filter(|n| n.is_finite())
+}
+
+/// An `hsl()` saturation or lightness as a 0..1 fraction. CSS Color 4 reads a unitless number
+/// as a percentage (`hsl(270 80 60)`).
+fn fraction(p: &str) -> Option<f32> {
+    let n = number(p, 1.0)?;
+    Some(if p.ends_with('%') { n } else { n / 100.0 }.clamp(0.0, 1.0))
 }
 
 /// A CSS `<hue>` in degrees: unitless, `deg`, `grad`, `rad`, `turn`, or `none`.
@@ -242,10 +253,7 @@ fn alpha(parts: &[&str]) -> Option<f32> {
 }
 
 fn parse_rgb(args: &str) -> Option<Rgba> {
-    let p = split_args(args);
-    if p.len() < 3 {
-        return None;
-    }
+    let p = split_args(args)?;
     let ch = |i: usize| number(p[i], 255.0).map(|v| v.round().clamp(0.0, 255.0) as u8);
     Some(Rgba {
         r: ch(0)?,
@@ -256,13 +264,10 @@ fn parse_rgb(args: &str) -> Option<Rgba> {
 }
 
 fn parse_hsl(args: &str) -> Option<Rgba> {
-    let p = split_args(args);
-    if p.len() < 3 {
-        return None;
-    }
+    let p = split_args(args)?;
     let h = hue(p[0])?;
-    let s = number(p[1], 1.0)?.clamp(0.0, 1.0);
-    let l = number(p[2], 1.0)?.clamp(0.0, 1.0);
+    let s = fraction(p[1])?;
+    let l = fraction(p[2])?;
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
     let hp = h.rem_euclid(360.0) / 60.0;
     let x = c * (1.0 - (hp % 2.0 - 1.0).abs());
@@ -285,10 +290,7 @@ fn parse_hsl(args: &str) -> Option<Rgba> {
 }
 
 fn parse_oklch(args: &str) -> Option<Rgba> {
-    let p = split_args(args);
-    if p.len() < 3 {
-        return None;
-    }
+    let p = split_args(args)?;
     let l = number(p[0], 1.0)?;
     let chroma = number(p[1], 0.4)?;
     let h = hue(p[2])?.to_radians();
@@ -301,10 +303,7 @@ fn parse_oklch(args: &str) -> Option<Rgba> {
 }
 
 fn parse_oklab(args: &str) -> Option<Rgba> {
-    let p = split_args(args);
-    if p.len() < 3 {
-        return None;
-    }
+    let p = split_args(args)?;
     Some(oklab_to_rgba(
         number(p[0], 1.0)?,
         number(p[1], 0.4)?,
@@ -379,8 +378,8 @@ mod tests {
         let v = "linear-gradient(135deg, #667eea 0%, rgba(118, 75, 162, .9) 100%, var(--x))";
         let found = colors_in(v);
         assert_eq!(found.len(), 2);
-        assert_eq!(&v[found[0].0..found[0].1], "#667eea");
-        assert_eq!(&v[found[1].0..found[1].1], "rgba(118, 75, 162, .9)");
+        assert_eq!(found[0], rgb(0x66, 0x7e, 0xea));
+        assert_eq!((found[1].r, found[1].a), (118, 0.9));
         assert!(colors_in("url(#abcdefg) 12px").is_empty());
     }
 
@@ -400,6 +399,10 @@ mod tests {
         assert!(colors_in("var(--a, #7c3aed)").is_empty());
         assert!(colors_in("my-purple-box").is_empty());
         assert_eq!(colors_in("red url(blue.png) white").len(), 2);
+        assert!(colors_in("url(\"x.png\") var(--a, rgb(1 2 3))").is_empty());
+        assert!(colors_in("var(--a, #7c3aed").is_empty());
+        assert!(colors_in("url(#7c3aed").is_empty());
+        assert_eq!(colors_in("var(--a) #7c3aed").len(), 1);
     }
 
     #[test]
@@ -466,6 +469,7 @@ mod tests {
         }
         for v4 in [
             "oklch(0.585 0.233 277.117)",
+            "oklch(0.511 0.262 276.966)",
             "oklch(0.623 0.214 259.815)",
             "oklch(0.546 0.245 262.881)",
             "oklch(0.667 0.295 322.15)",
@@ -479,7 +483,7 @@ mod tests {
         assert_eq!(parse("oklch(0.5 0.1 abc)"), None);
         assert_eq!(parse("oklch(0.5 0.1 inf)"), None);
         assert_eq!(parse("oklch(nan 0.1 10)"), None);
-        assert_eq!(parse("oklch(-0.5 -0.1 10deg)").map(|c| c.a), Some(1.0));
+        assert_eq!(parse("oklch(-0.5 -0.1 10deg)"), Some(rgb(0, 0, 0)));
         assert_eq!(
             parse("oklch(0.606 0.25 0.8turn)"),
             parse("oklch(0.606 0.25 288)")
@@ -492,11 +496,21 @@ mod tests {
             parse("oklch(0.606 0.25 320grad)"),
             parse("oklch(0.606 0.25 288)")
         );
-        assert!(parse("oklch(0.606 0.25 5.0265rad)").is_some());
+        assert_eq!(
+            parse("oklch(0.606 0.25 5.0265rad)"),
+            parse("oklch(0.606 0.25 288)")
+        );
         assert_eq!(parse("oklch(0.5 none none)"), parse("oklch(0.5 0 0)"));
         assert_eq!(parse("hsl(0.5turn 100% 50%)"), parse("hsl(180, 100%, 50%)"));
         assert_eq!(parse("oklab(from var(--x) l a b)"), None);
         assert_eq!(parse("oklch(0.5 0.1)"), None);
+    }
+
+    #[test]
+    fn unitless_hsl_saturation_and_lightness_are_percentages() {
+        assert_eq!(parse("hsl(270 80 60)"), parse("hsl(270 80% 60%)"));
+        assert_eq!(parse("hsl(270, 80, 60)"), parse("hsl(270, 80%, 60%)"));
+        assert_eq!(parse("hsl(270 none 60)"), parse("hsl(270 0% 60%)"));
     }
 
     #[test]

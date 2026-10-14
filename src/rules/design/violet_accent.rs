@@ -1,9 +1,8 @@
-use super::is_gradient_utility;
+use super::{is_gradient_utility, report};
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{Lang, ALL_NATLANGS};
 use crate::registry::RuleDef;
-use crate::style::utility;
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -20,36 +19,29 @@ pub static RULE: RuleDef = RuleDef {
 
 static ACCENT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"^(?:text|bg|border(?:-[xytrblse])?|ring(?:-offset)?|inset-ring|inset-shadow|fill|stroke|outline|decoration|accent|caret|divide|shadow|placeholder)-(?:purple|violet|indigo)-(?:400|500|600|700)(?:/(?:\d+|\[[^\]]+\]|\(--[\w-]+\)))?$",
+        r"^(?:text|bg|border(?:-[xytrblse])?|ring(?:-offset)?|inset-ring|inset-shadow|fill|stroke|outline|decoration|accent|caret|divide|shadow|placeholder)-(?:purple|violet|indigo)-(?:400|500|600|700)(?:/(?:(?-u:\d+)|\[[^\]]+\]|\(--(?-u:[\w-]+)\)))?$",
     )
     .unwrap()
 });
 
 const FIX: &str = "use the project's brand color token";
 
-/// Gradient stops (`from-`, `via-`, `to-`) never match `ACCENT`, so SLOP053 keeps them. A list that
-/// clips a gradient to its text is SLOP052's; `bg-clip-text` without a gradient is left alone here.
 /// One diagnostic per class list keeps a styled button quiet. A v3 `tw-` config prefix is not
 /// read: that needs the project's tailwind config.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(style) = ctx.style else { return };
     for list in &style.class_lists {
-        let utilities: Vec<_> = list.iter().map(|t| (t, utility(t.text))).collect();
-        let clips_gradient = utilities.iter().any(|&(_, u)| u == "bg-clip-text")
-            && utilities.iter().any(|&(_, u)| is_gradient_utility(u));
+        let clips_gradient = list.iter().any(|t| t.utility == "bg-clip-text")
+            && list.iter().any(|t| is_gradient_utility(t.utility));
         if clips_gradient {
             continue;
         }
-        if let Some((token, _)) = utilities.iter().find(|&&(_, u)| ACCENT.is_match(u)) {
-            let (line, col) = style.line_col(token.start);
-            out.push(Diagnostic::at_fix(
-                rule,
-                ctx,
-                line,
-                col,
-                "violet tailwind accent, the default generated-UI palette",
-                FIX,
-            ));
+        if let Some(token) = list.iter().find(|t| ACCENT.is_match(t.utility)) {
+            let message = format!(
+                "{} is a violet tailwind accent, the default generated-UI palette",
+                token.text
+            );
+            report(rule, ctx, style, token.start, message, FIX, out);
         }
     }
 }
@@ -125,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn bg_clip_text_without_a_gradient_is_not_slop052_so_the_accent_still_counts() {
+    fn bg_clip_text_alone_does_not_suppress_the_accent() {
         assert_eq!(html("bg-clip-text text-violet-500").len(), 1);
     }
 
@@ -161,6 +153,14 @@ mod tests {
         assert!(
             diagnostics_for(Lang::Html, "<p style=\"color: rebeccapurple\">x</p>\n").is_empty()
         );
+    }
+
+    #[test]
+    fn the_message_names_the_matched_utility() {
+        let d = html("p-2 md:hover:bg-violet-600");
+        assert!(d[0]
+            .message
+            .starts_with("md:hover:bg-violet-600 is a violet"));
     }
 
     #[test]

@@ -4,7 +4,29 @@ pub mod violet_accent;
 pub mod violet_hex;
 pub mod violet_theme;
 
-use crate::style::Decl;
+use crate::context::LintContext;
+use crate::diagnostic::Diagnostic;
+use crate::registry::RuleDef;
+use crate::style::{Decl, StyleDoc};
+
+pub(crate) const STOP_PREFIXES: [&str; 3] = ["from-", "via-", "to-"];
+
+pub(crate) fn is_gradient_stop(u: &str) -> bool {
+    STOP_PREFIXES.iter().any(|p| u.starts_with(p))
+}
+
+pub(crate) fn report(
+    rule: &'static RuleDef,
+    ctx: &LintContext,
+    style: &StyleDoc,
+    byte: usize,
+    message: impl Into<String>,
+    fix: &str,
+    out: &mut Vec<Diagnostic>,
+) {
+    let (line, col) = style.line_col(byte);
+    out.push(Diagnostic::at_fix(rule, ctx, line, col, message, fix));
+}
 
 pub(crate) fn is_gradient_utility(u: &str) -> bool {
     u.starts_with("bg-gradient-to-")
@@ -50,11 +72,7 @@ pub(crate) fn diagnostics_for(
             p.set_language(&ts_language(lang)).unwrap();
             tree = p.parse(src, None).unwrap();
             let (comments, strings, index) = extract(&tree, src, lang);
-            let style = if lang == Lang::Css {
-                StyleDoc::from_css(&index, src)
-            } else {
-                StyleDoc::from_jsx(&index, src, &strings)
-            };
+            let style = StyleDoc::for_code(lang, &index, src, &strings).unwrap();
             (style, comments)
         }
     };

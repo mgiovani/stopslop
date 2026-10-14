@@ -1,9 +1,8 @@
-use super::{is_gradient, unprefixed};
+use super::{is_gradient, is_gradient_stop, report};
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{ALL_NATLANGS, STYLE_LANGS};
 use crate::registry::RuleDef;
-use crate::style::utility;
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -19,7 +18,7 @@ pub static RULE: RuleDef = RuleDef {
 };
 
 static HEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i-u)#(7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9|6366f1|764ba2|667eea)(?-u:\b)")
+    Regex::new(r"(?i-u)#(7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9|6366f1|764ba2|667eea)(?:[0-9a-f]{2})?(?-u:\b)")
         .unwrap()
 });
 
@@ -32,34 +31,23 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let declared = style
         .decls
         .iter()
-        .filter(|d| !is_gradient(d.value) && !unprefixed(&d.property).starts_with("--"))
+        .filter(|d| !is_gradient(d.value) && !d.property.starts_with("--"))
         .map(|d| (d.value, d.value_start));
     let classes = style
         .class_lists
         .iter()
         .flatten()
-        .filter(|t| !is_gradient_stop(utility(t.text)))
+        .filter(|t| !is_gradient_stop(t.utility))
         .map(|t| (t.text, t.start));
     for (text, start) in declared.chain(classes).filter(|(t, _)| t.contains('#')) {
         for m in HEX.find_iter(text) {
-            let (line, col) = style.line_col(start + m.start());
-            out.push(Diagnostic::at_fix(
-                rule,
-                ctx,
-                line,
-                col,
-                format!(
-                    "{} is a Tailwind violet or indigo shade copied by hand",
-                    m.as_str()
-                ),
-                FIX,
-            ));
+            let message = format!(
+                "{} is a Tailwind violet or indigo shade copied by hand",
+                m.as_str()
+            );
+            report(rule, ctx, style, start + m.start(), message, FIX, out);
         }
     }
-}
-
-fn is_gradient_stop(u: &str) -> bool {
-    ["from-", "via-", "to-"].iter().any(|p| u.starts_with(p))
 }
 
 #[cfg(test)]
@@ -76,7 +64,8 @@ mod tests {
     fn panel_matches_whole_hex_tokens_only() {
         assert!(HEX.is_match("color: #7C3AED"));
         assert!(HEX.is_match("#6366f1;"));
-        assert!(!HEX.is_match("#7c3aed00"));
+        assert!(HEX.is_match("#7c3aed80"));
+        assert!(!HEX.is_match("#7c3aed800"));
         assert!(!HEX.is_match("#7c3aeda"));
         assert!(!HEX.is_match("#123456"));
     }

@@ -1,3 +1,4 @@
+use super::report;
 use crate::color::{colors_in, is_violet, parse_hsl_triplet};
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
@@ -22,14 +23,12 @@ const MARKERS: &[&str] = &[
     "primary-foreground",
     "secondary-foreground",
     "accent-foreground",
-    "card",
     "card-foreground",
     "popover",
     "popover-foreground",
     "muted-foreground",
     "destructive",
     "sidebar",
-    "radius",
 ];
 const MIN_MARKERS: usize = 2;
 const FIX: &str = "set --primary to the brand color";
@@ -42,7 +41,7 @@ fn token_name(property: &str) -> &str {
 
 fn is_violet_value(value: &str) -> bool {
     parse_hsl_triplet(value)
-        .or_else(|| colors_in(value).first().map(|&(_, _, c)| c))
+        .or_else(|| colors_in(value).first().copied())
         .is_some_and(is_violet)
 }
 
@@ -61,15 +60,11 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             .iter()
             .find(|d| TOKENS.contains(&token_name(&d.property)) && is_violet_value(d.value));
         if let Some(d) = first {
-            let (line, col) = style.line_col(d.start);
-            out.push(Diagnostic::at_fix(
-                rule,
-                ctx,
-                line,
-                col,
-                "shadcn violet theme preset, the default generated-UI palette",
-                FIX,
-            ));
+            let message = format!(
+                "{}: {} is the shadcn violet theme preset, the default generated-UI palette",
+                d.property, d.value
+            );
+            report(rule, ctx, style, d.start, message, FIX, out);
         }
     }
 }
@@ -85,13 +80,13 @@ mod tests {
 
     fn theme(tokens: &str) -> String {
         format!(
-            ":root {{\n  --card: 0 0% 100%;\n  --primary-foreground: 0 0% 98%;\n  {tokens}\n}}\n"
+            ":root {{\n  --card-foreground: 0 0% 100%;\n  --primary-foreground: 0 0% 98%;\n  {tokens}\n}}\n"
         )
     }
 
     #[test]
     fn flags_the_v3_hsl_triplet_violet_theme_once_per_block() {
-        let src = ":root {\n  --card: 0 0% 100%;\n  --primary-foreground: 0 0% 98%;\n  --primary: 262.1 83.3% 57.8%;\n  --ring: 262.1 83.3% 57.8%;\n}\n.dark {\n  --card: 224 71% 4%;\n  --radius: 0.5rem;\n  --primary: 263.4 70% 50.4%;\n}\n";
+        let src = ":root {\n  --card-foreground: 0 0% 100%;\n  --primary-foreground: 0 0% 98%;\n  --primary: 262.1 83.3% 57.8%;\n  --ring: 262.1 83.3% 57.8%;\n}\n.dark {\n  --card-foreground: 224 71% 4%;\n  --popover-foreground: 0.5rem;\n  --primary: 263.4 70% 50.4%;\n}\n";
         let d = diagnostics_for(Lang::Css, src);
         assert_eq!(d.len(), 2);
         assert_eq!((d[0].line, d[0].col), (4, 3));
@@ -100,7 +95,9 @@ mod tests {
             d[0].fix.as_deref(),
             Some("set --primary to the brand color")
         );
-        assert!(d[0].message.starts_with("shadcn violet theme preset"));
+        assert!(d[0]
+            .message
+            .starts_with("--primary: 262.1 83.3% 57.8% is the shadcn"));
     }
 
     #[test]
@@ -125,26 +122,27 @@ mod tests {
             "#7c3aed",
             "rgb(124 58 237)",
             "hsl(262, 83%, 58%)",
+            "hsl(262 83 58)",
             "262.1 83.3% 57.8%",
             "262.1 83.3% 57.8% / 0.5",
             "oklch(0.606 0.25 292.717)",
             "oklab(0.55 0.1 -0.2)",
-            "oklch(0.7turn 0.2 none)",
         ] {
             let src = theme(&format!("--primary: {value};"));
-            let n = diagnostics_for(Lang::Css, &src).len();
-            assert_eq!(
-                n,
-                usize::from(!value.starts_with("oklch(0.7turn")),
-                "{value}"
-            );
+            assert_eq!(diagnostics_for(Lang::Css, &src).len(), 1, "{value}");
         }
+    }
+
+    #[test]
+    fn a_turn_hue_outside_the_violet_band_stays_quiet() {
+        let src = theme("--primary: oklch(0.7turn 0.2 none);");
+        assert!(diagnostics_for(Lang::Css, &src).is_empty());
     }
 
     #[test]
     fn flags_a_style_element_in_html() {
         let html =
-            "<style>:root { --card: 0 0% 100%; --radius: 1rem; --chart-1: #7c3aed; }</style>\n";
+            "<style>:root { --card-foreground: 0 0% 100%; --popover: 0 0% 9%; --chart-1: #7c3aed; }</style>\n";
         assert_eq!(diagnostics_for(Lang::Html, html).len(), 1);
     }
 
@@ -162,6 +160,8 @@ mod tests {
         assert!(
             diagnostics_for(Lang::Css, ":root { --primary: #9146ff; --card: #fff; }").is_empty()
         );
+        let generic = ":root { --card: #fff; --radius: 4px; --primary: #7c3aed; }";
+        assert!(diagnostics_for(Lang::Css, generic).is_empty());
     }
 
     #[test]
@@ -190,12 +190,12 @@ mod tests {
     #[test]
     fn the_violet_band_edges_are_pinned() {
         let hits = [
-            "--primary: 247 80% 50%;",
+            "--primary: 249 80% 50%;",
             "--primary: 283 80% 50%;",
             "--primary: 258 37% 50%;",
         ];
         let misses = [
-            "--primary: 242 80% 50%;",
+            "--primary: 247 80% 50%;",
             "--primary: 288 80% 50%;",
             "--primary: 262 32% 50%;",
         ];

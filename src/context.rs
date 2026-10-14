@@ -168,20 +168,28 @@ pub fn extract<'t, 'a>(
         true
     });
     if lang == Lang::Css {
-        comments.extend(scss_line_comments(source));
+        let block_comments = comments.len();
+        let line_comments = scss_line_comments(source, &comments[..block_comments]);
+        comments.extend(line_comments);
     }
     (comments, strings, index)
 }
 
 /// tree-sitter-css has no `//` comments, so a `.scss` suppression directive would be lost.
 /// Only a comment that opens its line is found; a trailing `// ...` after a declaration is not.
-fn scss_line_comments(source: &str) -> Vec<TextNode<'_>> {
+/// A line inside a `/* */` comment is part of it, not a directive.
+fn scss_line_comments<'a>(source: &'a str, block_comments: &[TextNode<'a>]) -> Vec<TextNode<'a>> {
     let mut out = Vec::new();
     let mut offset = 0;
     for (i, line) in source.split_inclusive('\n').enumerate() {
         let trimmed = line.trim_start();
-        if trimmed.starts_with("//") {
-            let lead = line.len() - trimmed.len();
+        let lead = line.len() - trimmed.len();
+        let inside_block = {
+            let at = offset + lead;
+            let i = block_comments.partition_point(|c| c.start_byte <= at);
+            i > 0 && at < block_comments[i - 1].end_byte
+        };
+        if trimmed.starts_with("//") && !inside_block {
             let text = trimmed.trim_end();
             out.push(TextNode {
                 text,
@@ -320,6 +328,37 @@ mod tests {
             assert_eq!(ctx.nodes(&kinds), preorder, "{lang:?} every kind at once");
             assert!(ctx.nodes(&["no_such_kind"]).is_empty());
         }
+    }
+
+    fn css_comments(src: &str) -> Vec<String> {
+        let mut p = Parser::new();
+        p.set_language(&crate::lang::ts_language(Lang::Css))
+            .unwrap();
+        let tree = p.parse(src, None).unwrap();
+        let (comments, _, _) = extract(&tree, src, Lang::Css);
+        comments.iter().map(|c| c.text.to_string()).collect()
+    }
+
+    #[test]
+    fn scss_line_comments_are_extracted_for_suppression() {
+        let src = "// ai-slop-ignore SLOP053\n  // second\na { color: red }\n";
+        let mut p = Parser::new();
+        p.set_language(&crate::lang::ts_language(Lang::Css))
+            .unwrap();
+        let tree = p.parse(src, None).unwrap();
+        let (comments, _, _) = extract(&tree, src, Lang::Css);
+        let found: Vec<_> = comments.iter().map(|c| (c.line, c.col, c.text)).collect();
+        assert!(found.contains(&(1, 1, "// ai-slop-ignore SLOP053")));
+        assert!(found.contains(&(2, 3, "// second")));
+    }
+
+    #[test]
+    fn a_double_slash_line_inside_a_block_comment_is_not_a_scss_comment() {
+        let src = "/*\n// ai-slop-ignore SLOP053\n*/\n// real\na { color: red }\n";
+        assert_eq!(
+            css_comments(src),
+            ["/*\n// ai-slop-ignore SLOP053\n*/", "// real"]
+        );
     }
 
     #[test]

@@ -23,6 +23,10 @@ pub struct Decl<'a> {
 pub struct ClassToken<'a> {
     pub text: &'a str,
     pub start: usize,
+    /// The variants in front of the utility, colons included (`md:hover:`).
+    pub variant: &'a str,
+    /// See `utility`.
+    pub utility: &'a str,
 }
 
 /// Declarations and utility-class lists of a Css, Html or Tsx file, collected once per file so
@@ -43,8 +47,25 @@ impl<'a> StyleDoc<'a> {
     // declaration; a full SCSS grammar would recover them.
     pub fn from_css(index: &NodeIndex<'_>, source: &'a str) -> Self {
         let mut decls = Vec::new();
-        collect_css_decls(index, source, &mut decls);
+        for node in index.nodes(&["declaration"]) {
+            push_css_decl(&node, source, &mut decls);
+        }
         Self::finish(source, decls, Vec::new(), compute_line_starts(source))
+    }
+
+    /// The doc of a parsed code file: stylesheet declarations for `Css`, `style=` and `className`
+    /// for `Tsx`. `None` for any other lang; Html builds through `from_html`.
+    pub fn for_code(
+        lang: Lang,
+        index: &NodeIndex<'_>,
+        source: &'a str,
+        strings: &[TextNode<'a>],
+    ) -> Option<Self> {
+        match lang {
+            Lang::Css => Some(Self::from_css(index, source)),
+            Lang::Tsx => Some(Self::from_jsx(index, source, strings)),
+            _ => None,
+        }
     }
 
     /// `<style>` bodies are re-parsed with the CSS grammar over their included ranges, so every
@@ -64,14 +85,7 @@ impl<'a> StyleDoc<'a> {
                     end_point: point(&line_starts, e),
                 })
                 .collect();
-            let mut parser = Parser::new();
-            parser
-                .set_language(&ts_language(Lang::Css))
-                .expect("bundled css grammar");
-            // Ranges come from a pre-order walk, so they are sorted and disjoint.
-            let ranges_ok = parser.set_included_ranges(&ranges).is_ok();
-            debug_assert!(ranges_ok, "style ranges rejected");
-            if let Some(tree) = ranges_ok.then(|| parser.parse(source, None)).flatten() {
+            for tree in css_trees(source, &ranges) {
                 walk_tree(&mut tree.walk(), &mut |node| {
                     if node.kind() == "declaration" {
                         push_css_decl(&node, source, &mut decls);
@@ -98,7 +112,7 @@ impl<'a> StyleDoc<'a> {
                 "className" | "class" => {
                     let tokens = strings_within(strings, &attr)
                         .filter(|s| !has_template_syntax(s.text))
-                        .flat_map(|s| class_tokens(inner(s), s.start_byte + 1))
+                        .flat_map(|s| class_tokens(unquote(s.text), s.start_byte + 1))
                         .collect();
                     class_lists.push(tokens);
                 }
@@ -140,7 +154,11 @@ impl<'a> StyleDoc<'a> {
         } else {
             (line_start, 1)
         };
-        let col = col + self.source[from..byte].chars().count();
+        let col = col
+            + self
+                .source
+                .get(from..byte)
+                .map_or(byte - from, |s| s.chars().count());
         self.col_memo.set((byte, col));
         (idx + 1, col)
     }
@@ -150,6 +168,10 @@ impl<'a> StyleDoc<'a> {
 /// important marker (`!`) stripped. Colons inside an arbitrary value (`bg-[url(a:b)]`) are not
 /// variant separators.
 pub fn utility(token: &str) -> &str {
+    split_variant(token).1
+}
+
+fn split_variant(token: &str) -> (&str, &str) {
     let mut depth = 0usize;
     let mut cut = 0;
     for (i, c) in token.char_indices() {
@@ -160,7 +182,31 @@ pub fn utility(token: &str) -> &str {
             _ => {}
         }
     }
-    token[cut..].trim_start_matches('!').trim_end_matches('!')
+    let (variant, rest) = token.split_at(cut);
+    (variant, rest.trim_start_matches('!').trim_end_matches('!'))
+}
+
+/// Parses `source` once per `<style>` body range. Ranges must be sorted and disjoint to be set
+/// together; if the grammar rejects the set, each range is parsed alone so a bad one loses only
+/// itself.
+fn css_trees(source: &str, ranges: &[Range]) -> Vec<tree_sitter::Tree> {
+    let mut parser = Parser::new();
+    parser
+        .set_language(&ts_language(Lang::Css))
+        .expect("bundled css grammar");
+    let together = parser.set_included_ranges(ranges).is_ok();
+    let batches: Vec<&[Range]> = if together {
+        vec![ranges]
+    } else {
+        ranges.chunks(1).collect()
+    };
+    batches
+        .into_iter()
+        .filter_map(|batch| {
+            parser.set_included_ranges(batch).ok()?;
+            parser.parse(source, None)
+        })
+        .collect()
 }
 
 /// Splits `a: b; c: d` into (property, value, value_start, start) with offsets shifted by
@@ -200,12 +246,6 @@ fn declaration(seg: &str, seg_start: usize, base: usize) -> Option<(&str, &str, 
     let lead = seg[..colon].len() - seg[..colon].trim_start().len();
     let value_start = seg_start + colon + 1 + (raw.len() - raw.trim_start().len());
     Some((property, value, base + value_start, base + seg_start + lead))
-}
-
-fn collect_css_decls<'a>(index: &NodeIndex<'_>, source: &'a str, out: &mut Vec<Decl<'a>>) {
-    for node in index.nodes(&["declaration"]) {
-        push_css_decl(&node, source, out);
-    }
 }
 
 fn push_css_decl<'a>(node: &Node, source: &'a str, out: &mut Vec<Decl<'a>>) {
@@ -250,11 +290,7 @@ fn html_attribute<'a>(
     }
     let raw = raw.trim_start();
     let quoted = raw.starts_with(['"', '\'']);
-    let value = if quoted {
-        raw.get(1..raw.len().saturating_sub(1)).unwrap_or_default()
-    } else {
-        raw
-    };
+    let value = if quoted { unquote(raw) } else { raw };
     let value_start = attr.start_byte + (attr.text.len() - raw.len()) + usize::from(quoted);
     if is_class {
         class_lists.push(class_tokens(value, value_start).collect());
@@ -352,9 +388,14 @@ fn class_tokens(text: &str, base: usize) -> impl Iterator<Item = ClassToken<'_>>
             let start = offset;
             offset += piece.len();
             let token = piece.trim_end();
-            (!token.is_empty() && !token.contains(['{', '}', '$'])).then_some(ClassToken {
-                text: token,
-                start: base + start,
+            (!token.is_empty() && !token.contains(['{', '}', '$'])).then(|| {
+                let (variant, utility) = split_variant(token);
+                ClassToken {
+                    text: token,
+                    start: base + start,
+                    variant,
+                    utility,
+                }
             })
         })
 }
@@ -370,10 +411,14 @@ fn strings_within<'s, 'a>(
         .take_while(move |s| s.end_byte <= end)
 }
 
-fn inner<'a>(s: &TextNode<'a>) -> &'a str {
-    s.text
-        .get(1..s.text.len().saturating_sub(1))
-        .unwrap_or_default()
+/// The text between the opening quote and its closing twin; an unterminated literal keeps its
+/// last character.
+fn unquote(raw: &str) -> &str {
+    let Some(quote) = raw.chars().next() else {
+        return raw;
+    };
+    let body = &raw[quote.len_utf8()..];
+    body.strip_suffix(quote).unwrap_or(body)
 }
 
 fn point(line_starts: &[usize], byte: usize) -> Point {
@@ -536,8 +581,7 @@ mod tests {
         assert!(
             html("<style>a { color: red</style><p style=\"::;\" class=\"\">")
                 .decls
-                .len()
-                <= 1
+                .is_empty()
         );
         assert!(tsx("const a = <p style={{ color: x }} className=")
             .decls
@@ -562,14 +606,58 @@ mod tests {
     }
 
     #[test]
-    fn scss_line_comments_are_extracted_for_suppression() {
-        let src = "// ai-slop-ignore SLOP053\n  // second\na { color: red }\n";
+    fn class_tokens_carry_their_variant_and_utility() {
+        let doc = html("<p class=\"md:hover:!bg-violet-600 plain\">x</p>\n");
+        let [first, second] = doc.class_lists[0][..] else {
+            panic!("two tokens")
+        };
+        assert_eq!(
+            (first.variant, first.utility),
+            ("md:hover:", "bg-violet-600")
+        );
+        assert_eq!((second.variant, second.utility), ("", "plain"));
+    }
+
+    #[test]
+    fn an_unterminated_quote_keeps_the_last_character() {
+        assert_eq!(unquote("\"abc\""), "abc");
+        assert_eq!(unquote("\"abc"), "abc");
+        assert_eq!(unquote("'\u{e9}"), "\u{e9}");
+        assert_eq!(unquote(""), "");
+    }
+
+    #[test]
+    fn line_col_survives_a_byte_inside_a_multibyte_character() {
+        let doc = css("a { content: \"\u{e9}\" }\n");
+        let mid = doc.source.find('\u{e9}').unwrap() + 1;
+        assert_eq!(doc.line_col(mid).0, 1);
+        assert_eq!(doc.line_col(usize::MAX).0, 2);
+    }
+
+    #[test]
+    fn rejected_style_ranges_fall_back_to_one_parse_per_range() {
+        let src = "a { color: red } b { color: blue }";
+        let range = |s: usize, e: usize| Range {
+            start_byte: s,
+            end_byte: e,
+            start_point: Point { row: 0, column: s },
+            end_point: Point { row: 0, column: e },
+        };
+        let overlapping = [range(0, 20), range(10, 34)];
+        assert_eq!(css_trees(src, &overlapping).len(), 2);
+        let disjoint = [range(0, 16), range(17, 34)];
+        assert_eq!(css_trees(src, &disjoint).len(), 1);
+    }
+
+    #[test]
+    fn for_code_builds_css_and_tsx_and_nothing_else() {
+        let src = "a { color: red }";
         let mut p = Parser::new();
         p.set_language(&ts_language(Lang::Css)).unwrap();
         let tree = p.parse(src, None).unwrap();
-        let (comments, _, _) = extract(&tree, src, Lang::Css);
-        let found: Vec<_> = comments.iter().map(|c| (c.line, c.col, c.text)).collect();
-        assert!(found.contains(&(1, 1, "// ai-slop-ignore SLOP053")));
-        assert!(found.contains(&(2, 3, "// second")));
+        let (_, strings, index) = extract(&tree, src, Lang::Css);
+        let doc = StyleDoc::for_code(Lang::Css, &index, src, &strings).unwrap();
+        assert_eq!(pairs(&doc), [("color", "red")]);
+        assert!(StyleDoc::for_code(Lang::Python, &index, src, &strings).is_none());
     }
 }

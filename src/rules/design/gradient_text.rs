@@ -1,9 +1,8 @@
-use super::{is_gradient_background, is_gradient_utility, unprefixed};
+use super::{is_gradient_background, is_gradient_utility, report, unprefixed};
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{ALL_NATLANGS, STYLE_LANGS};
 use crate::registry::RuleDef;
-use crate::style::utility;
 
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP052",
@@ -18,37 +17,36 @@ pub static RULE: RuleDef = RuleDef {
 
 const FIX: &str = "use a solid text color";
 
+fn clips_to_text(value: &str) -> bool {
+    value
+        .trim_end_matches("!important")
+        .split(',')
+        .any(|item| item.trim().eq_ignore_ascii_case("text"))
+}
+
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(style) = ctx.style else { return };
     for block in style.blocks() {
         let clip = block
             .iter()
-            .find(|d| unprefixed(&d.property) == "background-clip" && d.value.starts_with("text"));
+            .find(|d| unprefixed(&d.property) == "background-clip" && clips_to_text(d.value));
         if let Some(clip) = clip.filter(|_| block.iter().any(is_gradient_background)) {
-            let (line, col) = style.line_col(clip.start);
-            out.push(Diagnostic::at_fix(
-                rule,
-                ctx,
-                line,
-                col,
-                "text is filled with a gradient through background-clip: text",
-                FIX,
-            ));
+            let message = format!(
+                "text is filled with a gradient through {}: {}",
+                clip.property, clip.value
+            );
+            report(rule, ctx, style, clip.start, message, FIX, out);
         }
     }
     for list in &style.class_lists {
-        let clip = list.iter().find(|t| utility(t.text) == "bg-clip-text");
-        let gradient = list.iter().any(|t| is_gradient_utility(utility(t.text)));
-        if let Some(clip) = clip.filter(|_| gradient) {
-            let (line, col) = style.line_col(clip.start);
-            out.push(Diagnostic::at_fix(
-                rule,
-                ctx,
-                line,
-                col,
-                "text is filled with a gradient through bg-clip-text",
-                FIX,
-            ));
+        let clip = list.iter().find(|t| t.utility == "bg-clip-text");
+        let gradient = list.iter().find(|t| is_gradient_utility(t.utility));
+        if let Some((clip, gradient)) = clip.zip(gradient) {
+            let message = format!(
+                "text is filled with a gradient through {} and {}",
+                clip.text, gradient.text
+            );
+            report(rule, ctx, style, clip.start, message, FIX, out);
         }
     }
 }
@@ -150,5 +148,34 @@ mod tests {
             "<h1 class=\"bg-clip-text bg-(--brand)\">x</h1>\n"
         )
         .is_empty());
+    }
+
+    #[test]
+    fn flags_a_tsx_class_name_and_a_nested_scss_block() {
+        let tsx = "const a = <h1 className=\"bg-clip-text bg-gradient-to-r\">x</h1>;\n";
+        let d = diagnostics_for(Lang::Tsx, tsx);
+        assert_eq!(d.len(), 1);
+        assert!(d[0].message.contains("bg-clip-text and bg-gradient-to-r"));
+        let scss = ".a { .b { background: linear-gradient(red, blue); background-clip: text; } }";
+        assert_eq!(diagnostics_for(Lang::Css, scss).len(), 1);
+    }
+
+    #[test]
+    fn reads_clip_text_in_any_case_with_important_or_in_a_list() {
+        for clip in [
+            "TEXT",
+            "text !important",
+            "border-box, text",
+            "text, border-box",
+        ] {
+            let src =
+                format!(".a {{ background: linear-gradient(red, blue); background-clip: {clip} }}");
+            assert_eq!(diagnostics_for(Lang::Css, &src).len(), 1, "{clip}");
+        }
+        for clip in ["border-box", "textual", "padding-box, content-box"] {
+            let src =
+                format!(".a {{ background: linear-gradient(red, blue); background-clip: {clip} }}");
+            assert!(diagnostics_for(Lang::Css, &src).is_empty(), "{clip}");
+        }
     }
 }
