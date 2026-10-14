@@ -1,6 +1,7 @@
 use crate::{
     context::{self, LintContext},
     diagnostic::Diagnostic,
+    groups,
     imports_data::DepIndex,
     lang::{self, Lang},
     paths,
@@ -132,13 +133,15 @@ pub fn prewarm<'scope>(scope: &'scope std::thread::Scope<'scope, '_>, settings: 
     }
 }
 
-/// A rule reads `ctx.style` exactly when it declares `lang::STYLE_LANGS`. Building the doc
-/// re-parses every `<style>` body, so a run with no such rule enabled skips it.
+/// The `design` group is the set of rules that read `ctx.style`. Building the doc re-parses
+/// every `<style>` body, so a run with no enabled design rule for this lang skips it.
 fn wants_style(settings: &Settings, lang: Lang) -> bool {
     lang::STYLE_LANGS.contains(&lang)
-        && RULES
-            .iter()
-            .any(|r| r.langs == lang::STYLE_LANGS && settings.enabled.contains(r.code))
+        && RULES.iter().any(|r| {
+            groups::group_of(r.code) == "design"
+                && r.langs.contains(&lang)
+                && settings.enabled.contains(r.code)
+        })
 }
 
 /// The rule-dispatch loop shared by `lint_file`, `lint_prose` and `lint_image`: filter `RULES` by
