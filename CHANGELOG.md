@@ -9,11 +9,11 @@ migration notes live here.
 
 - **A `design` group reads the styling of generated UI.** SLOP052 flags gradient
   text (`background-clip: text` or `bg-clip-text` over a gradient), SLOP053 a
-  purple-blue gradient, SLOP054 a hand-copied Tailwind violet hex. SLOP053 is
-  Tier B, on by default: scored on 1,455 files from Lovable, bolt.new, Same.new
-  and Replit Agent repos it fires on 4.9% of them against 0.08% of 1,186
-  verified human files. SLOP052 (1.99% against 0.08%, just under the 2% bar) and
-  SLOP054 (0.2%) stay Tier C and off by default. Adds
+  purple-blue gradient, SLOP054 a hand-copied Tailwind violet hex. SLOP052 and
+  SLOP053 are Tier B, on by default: scored on 1,455 files from Lovable,
+  bolt.new, Same.new and Replit Agent repos they fire on 2.0% and 4.9% of them
+  against 0.08% of 1,186 verified human files. SLOP054 (0.2%) stays Tier C and
+  off by default. Adds
   `Lang::Css` with the `tree-sitter-css` dependency (a regex cannot track
   nested blocks, strings and comments in CSS), `StyleDoc` and `color.rs`.
   `.css` and `.scss` files now enter the walk: add `*.min.css` to `exclude`.

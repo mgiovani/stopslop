@@ -460,7 +460,7 @@ scope = "line"
 regex = '''(?:-webkit-)?background-clip\s*:\s*text|\bbg-clip-text\b'''
 relation = "SLOP052"
 tier = "B"
-notes = "Scored 2026-10-14 on 1,455 files from 64 pinned AI app-builder repos (Lovable, bolt.new, Same.new, Replit Agent; tsx, css, html) against 1,186 verified human files (Ant Design TSX, 11 pinned 2022 Tailwind React apps, three pinned CSS repos). Per builder: bolt.new 13/526 (2.47%), Lovable 9/558 (1.61%), Replit Agent 3/188 (1.60%), Same.new 4/183 (2.19%). Pooled AI 29/1455 (1.99%) against verified human 1/1186 (0.08%); the Tailwind 2022 TSX baseline alone is 1/500 (0.20%). Separates the classes by 25x but the AI rate sits a hair under the 2% bar, so the rule stays Tier C."
+notes = "Scored 2026-10-14 on 1,455 files from 64 pinned AI app-builder repos (Lovable, bolt.new, Same.new, Replit Agent; tsx, css, html) against 1,186 verified human files (Ant Design TSX, 11 pinned 2022 Tailwind React apps, three pinned CSS repos). Per builder: bolt.new 13/526 (2.47%), Lovable 9/558 (1.61%), Replit Agent 3/188 (1.60%), Same.new 4/183 (2.19%). Pooled AI 29/1455 (1.99%) against verified human 1/1186 (0.08%); the Tailwind 2022 TSX baseline alone is 1/500 (0.20%). Separates the classes by 25x; the AI rate sits a hair under the 2% guidance floor, which was our own threshold, so the rule ships at Tier B, on by default."
 
 [[candidate]]
 name = "Tailwind gradient from a purple, violet or indigo shade"
@@ -481,7 +481,7 @@ ignorecase = true
 regex = '''#(?:7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9|6366f1|764ba2|667eea)\b'''
 relation = "SLOP054"
 tier = "B"
-notes = "Scored 2026-10-14 on 1,455 files from 64 pinned AI app-builder repos (Lovable, bolt.new, Same.new, Replit Agent; tsx, css, html) against 1,186 verified human files (Ant Design TSX, 11 pinned 2022 Tailwind React apps, three pinned CSS repos). Per builder: bolt.new 1/526 (0.19%), Lovable 2/558 (0.36%), Replit Agent 0/188, Same.new 0/183. Pooled AI 3/1455 (0.21%) against verified human 0/1186 (0.00%); the Tailwind 2022 TSX baseline alone is 0/500 (0.00%). Human rate is zero but the AI rate is far under 2%: current builders rarely hand-write a hex, so the rule stays Tier C."
+notes = "Scored 2026-10-14 on 1,455 files from 64 pinned AI app-builder repos (Lovable, bolt.new, Same.new, Replit Agent; tsx, css, html) against 1,186 verified human files (Ant Design TSX, 11 pinned 2022 Tailwind React apps, three pinned CSS repos). Per builder: bolt.new 1/526 (0.19%), Lovable 2/558 (0.36%), Replit Agent 0/188, Same.new 0/183. Pooled AI 3/1455 (0.21%) against verified human 0/1186 (0.00%); the Tailwind 2022 TSX baseline alone is 0/500 (0.00%). Human rate is zero but the AI rate is far under 2%: current builders rarely hand-write a hex, so the rule stays Tier C. Widening it to a violet/indigo hue band (hue 235-290, saturation >= 0.35, lightness 0.35-0.75, outside gradients and custom properties) was measured with a script over the same cells and rejected: it fires on 38% of codemirror and 33% of highlight.js themes (syntax colors are legitimately blue-violet) and 17% of Design2Code pages, putting the verified human pool at 63/1186 (5.3%) against 2.5% AI. Adding Tailwind violet utilities (text|bg|border|ring|fill|stroke-purple|violet|indigo-400..700) lifts AI TSX to 196/1326 (14.8%) but Tailwind apps use them too: 9/500 (1.8%) in the 2022 baseline, 69/1186 (5.8%) verified human pooled, so pooled separation is 2.6x and the human rate exceeds 1%."
 
 [[miss]]
 rule = "SLOP011"

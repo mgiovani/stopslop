@@ -8,10 +8,10 @@ use crate::style::utility;
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP052",
     name: "Gradient text",
-    tier: Tier::C,
+    tier: Tier::B,
     langs: STYLE_LANGS,
     natlangs: ALL_NATLANGS,
-    default_on: false,
+    default_on: true,
     path_gated: false,
     check,
 };

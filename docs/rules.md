@@ -90,7 +90,7 @@ entries from your config. SLOP010 is the one exception: it stays off until
 | SLOP049 | provenance | Image spectrum has an upsampling ridge | C, off | PNG, JPEG | en, pt-BR | Decodes a 256x256 centre crop to grayscale, takes a Hann-windowed FFT and flags a high-frequency radius standing 0.4 log10 above its neighbours in the azimuthally averaged power spectrum, the periodic artifact GAN and diffusion upsampling can leave. Skips WebP, images under 256 px and images over 64 M pixels. The measured splits did not separate (see `bench/candidates.toml`), so it stays opt-in: `--extend-select SLOP049` |
 | SLOP050 | artifact | Comment narrates a stand-in | B, on | TS, TSX, Python, Go, Rust | en | A non-doc comment saying the code beneath it is a placeholder, simulation or demo ("logic would go here", "in a real-world scenario", "for demonstration purposes", "replace with your actual..."). `here` and `logic` are word-bounded so `thereby` and `logician` stay clean |
 | SLOP051 | artifact | Comment announces demo code | B, on | TS, TSX, Python, Go, Rust | en | A non-doc comment that opens with `Example usage`, `Sample usage`, `Example 1:` or a sample-data announcement ("Create sample data", "Mock response"), the demo a chat answer appends to the code it just wrote |
-| SLOP052 | design | Gradient text | C, off | CSS, SCSS, HTML, TSX | en, pt-BR | A declaration block that pairs `background-clip: text` with a `*-gradient(` background, or a class list that pairs `bg-clip-text` with a `bg-gradient-to-*`, `bg-linear-*`, `bg-radial*` or `bg-conic*` utility. Reads `<style>` bodies, `style=` attributes and JSX `style={{}}` objects as well as stylesheets |
+| SLOP052 | design | Gradient text | B, on | CSS, SCSS, HTML, TSX | en, pt-BR | A declaration block that pairs `background-clip: text` with a `*-gradient(` background, or a class list that pairs `bg-clip-text` with a `bg-gradient-to-*`, `bg-linear-*`, `bg-radial*` or `bg-conic*` utility. Reads `<style>` bodies, `style=` attributes and JSX `style={{}}` objects as well as stylesheets |
 | SLOP053 | design | Purple-blue gradient | B, on | CSS, SCSS, HTML, TSX | en, pt-BR | A gradient whose colored stops all sit in HSL hue 225-330 with saturation of at least 0.35 and at least one in 255-290, or a class list running `from-purple\|violet\|indigo-N` into a `via-`/`to-` purple, violet, indigo, blue, cyan, pink or fuchsia shade. Transparent stops do not count |
 | SLOP054 | design | Hand-copied Tailwind violet hex | C, off | CSS, SCSS, HTML, TSX | en, pt-BR | One of nine Tailwind violet and indigo hex values (`#7c3aed`, `#8b5cf6`, `#a855f7`, `#9333ea`, `#7e22ce`, `#6d28d9`, `#6366f1`, and the stock `#764ba2` / `#667eea` pair) written outside a gradient, in a declaration or an arbitrary-value class. Skips custom-property definitions (`--brand: #6366f1` is where the token lives) and gradient stops, which belong to SLOP053 |
 
@@ -100,7 +100,7 @@ DEFAULT (built-in) and ACTIVE (under your config) columns so you can check any g
 - **Tier A, on by default (14 rules)**: mechanical artifacts (SLOP001–009,
   SLOP011–013, SLOP046–047) with no legitimate reading. A finding here fails
   the run (exit 1) and blocks CI.
-- **Tier B, on by default (33 rules)**: everything else except SLOP010,
+- **Tier B, on by default (34 rules)**: everything else except SLOP010,
   SLOP020, SLOP043, SLOP045 and the other Tier C rules.
   Judgment calls (density and style checks on prose, stdlib/structure
   heuristics) that warn without ever exiting 1. Expect some noise; silence
@@ -110,7 +110,7 @@ DEFAULT (built-in) and ACTIVE (under your config) columns so you can check any g
   registries and dynamic imports; SLOP020 (smart quotes) and SLOP043 (long
   comments), which the labelled corpus showed firing on human text as often
   as on AI text. Enable either with `--extend-select`.
-- **Tier C, always off by default (4 rules)**: SLOP045, SLOP049, SLOP052 and SLOP054. Tier C means the
+- **Tier C, always off by default (3 rules)**: SLOP045, SLOP049 and SLOP054. Tier C means the
   rule's threshold has not been scored against a labelled corpus yet, so it
   stays opt-in until it has been: enable it with
   `extend-select = ["SLOP045"]` or `--extend-select SLOP045`. A
@@ -138,9 +138,9 @@ will be read in full: add `*.min.css` to `exclude`. A suppression directive work
 file, and in an HTML comment for `.html`; a `/* */` comment inside a `<style>`
 body is not read as a directive.
 
-SLOP053 is Tier B and on by default: across 1,455 files from four AI app
-builders it fires on 4.9% against 0.08% of 1,186 verified human files. SLOP052
-and SLOP054 stay Tier C and opt-in (`--extend-select design`); see
+SLOP052 and SLOP053 are Tier B and on by default: across 1,455 files from four
+AI app builders they fire on 2.0% and 4.9% against 0.08% of 1,186 verified
+human files. SLOP054 stays Tier C and opt-in (`--extend-select SLOP054`); see
 `bench/candidates.toml` for the measured rates.
 
 Findings that have one concrete replacement print it on a second line:
