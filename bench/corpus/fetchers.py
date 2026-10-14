@@ -44,7 +44,11 @@ def fetch_hf_text_rows(ds, cell, limit, cache_dir, skip_failures):
                           limit, cache_dir, what, skip_failures)
     if rows is None:
         return None
-    return [(row.get(ds["text_col"]) or "", {"generator": cell["generator"]}) for row in rows]
+    col = ds["text_col"]
+    missing = [row for row in rows if not row.get(col)]
+    if missing:
+        raise SystemExit(f"{what}: {len(missing)} of {len(rows)} rows have no {col!r} text")
+    return [(row[col], {"generator": cell["generator"]}) for row in rows]
 
 
 def fetch_aigcodeset(ds, cell, limit, cache_dir, skip_failures):

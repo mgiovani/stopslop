@@ -18,7 +18,8 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from corpus.common import APPLICABLE, EXT, PROVENANCE, RESULTS_SCHEMA, VERIFIED, sample_indices
-from corpus.fetchers import FAIDSET_LABELS, VIETNAMESE, fetch_local_cell, parse_beemo_edits, parse_mage_src
+import corpus.fetchers as fetchers
+from corpus.fetchers import FAIDSET_LABELS, VIETNAMESE, fetch_hf_text_rows, fetch_local_cell, parse_beemo_edits, parse_mage_src
 from corpus.git import clone_dir_for, git_files, shared_clone_dir
 from corpus.hf import (
     _looks_retryable, _paged_rows, _windows_overlap, hf_get_cached, scan_order, spread_page_offsets,
@@ -35,6 +36,38 @@ from corpus.report import build_report, has_human, is_verified, split_by_provena
 from corpus.results import parse_rules, results_payload, scoreboard
 
 import score_corpus
+
+
+class TestHfTextRows(unittest.TestCase):
+    ds = {"name": "d", "dataset": "x/y", "text_col": "text"}
+    cell = {"label": "ai", "lang": "html", "generator": "g"}
+
+    def fetch(self, rows):
+        original = fetchers.hf_rows_sample
+        fetchers.hf_rows_sample = lambda *a, **k: rows
+        try:
+            return fetch_hf_text_rows(self.ds, self.cell, 10, "cache", False)
+        finally:
+            fetchers.hf_rows_sample = original
+
+    def test_rows_become_text_and_generator(self):
+        self.assertEqual(self.fetch([{"text": "<p>a</p>"}]), [("<p>a</p>", {"generator": "g"})])
+
+    def test_a_missing_or_empty_text_column_is_fatal(self):
+        with self.assertRaises(SystemExit):
+            self.fetch([{"text": "ok"}, {"other": "x"}])
+        with self.assertRaises(SystemExit):
+            self.fetch([{"text": ""}])
+
+    def test_a_failed_fetch_passes_none_through(self):
+        self.assertIsNone(self.fetch(None))
+
+
+class TestApplicableDesign(unittest.TestCase):
+    def test_every_design_rule_is_applicable_to_each_style_lang(self):
+        for lang in ("html", "css", "tsx"):
+            for code in ("SLOP052", "SLOP053", "SLOP054"):
+                self.assertIn(code, APPLICABLE[lang])
 
 
 class TestMetrics(unittest.TestCase):
