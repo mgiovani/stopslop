@@ -23,7 +23,7 @@ use update_informer::Check;
 Custom rules: [[custom-rule]] phrase or file rules; no AST checks.\n\
 Suppress: `ai-slop-ignore[-file][: CODES|group]` in a comment.\n\
 Exit codes: 0 clean, 1 findings at or above fail-on-tier (Tier A default), 2 error.\n\
-Docs: https://github.com/mgiovani/stopslop"
+Docs: https://github.com/mgiovani/stopslop/blob/main/docs/README.md"
 )]
 pub struct Cli {
     /// Paths to scan (default: current directory).
@@ -364,7 +364,7 @@ fn apply_per_file_ignores(
 }
 
 /// `code  group  tier  on-by-default  active  natlang  name`, grouped-name column included so
-/// `--select <group>` is discoverable without reading the README. ACTIVE is the resolved set
+/// `--select <group>` is discoverable without reading the docs. ACTIVE is the resolved set
 /// under this run's config and flags; DEFAULT is the built-in state.
 fn render_rules(
     custom_rules: &[custom::CustomRule],

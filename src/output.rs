@@ -100,10 +100,7 @@ fn emit_sarif(
             serde_json::json!({
                 "id": r.code,
                 "shortDescription": { "text": r.name },
-                "helpUri": format!(
-                    "https://github.com/mgiovani/stopslop/blob/main/README.md#{}",
-                    r.code.to_lowercase()
-                ),
+                "helpUri": "https://github.com/mgiovani/stopslop/blob/main/docs/rules.md",
             })
         })
         .collect();
