@@ -483,6 +483,16 @@ relation = "SLOP054"
 tier = "B"
 notes = "Scored 2026-10-14 on 1,455 files from 64 pinned AI app-builder repos (Lovable, bolt.new, Same.new, Replit Agent; tsx, css, html) against 1,186 verified human files (Ant Design TSX, 11 pinned 2022 Tailwind React apps, three pinned CSS repos). Per builder: bolt.new 1/526 (0.19%), Lovable 2/558 (0.36%), Replit Agent 0/188, Same.new 0/183. Pooled AI 3/1455 (0.21%) against verified human 0/1186 (0.00%); the Tailwind 2022 TSX baseline alone is 0/500 (0.00%). Human rate is zero but the AI rate is far under 2%: current builders rarely hand-write a hex, so the rule stays Tier C. Widening it to a violet/indigo hue band (hue 235-290, saturation >= 0.35, lightness 0.35-0.75, outside gradients and custom properties) was measured with a script over the same cells and rejected: it fires on 38% of codemirror and 33% of highlight.js themes (syntax colors are legitimately blue-violet) and 17% of Design2Code pages, putting the verified human pool at 63/1186 (5.3%) against 2.5% AI. Adding Tailwind violet utilities (text|bg|border|ring|fill|stroke-purple|violet|indigo-400..700) lifts AI TSX to 196/1326 (14.8%) but Tailwind apps use them too: 9/500 (1.8%) in the 2022 baseline, 69/1186 (5.8%) verified human pooled, so pooled separation is 2.6x and the human rate exceeds 1%."
 
+[[candidate]]
+name = "Violet Tailwind accent utility"
+kind = "code"
+langs = "html,tsx"
+scope = "line"
+regex = '''(?:text|bg|border|ring|fill|stroke|outline|decoration|accent|caret|divide|shadow)-(?:purple|violet|indigo)-(?:400|500|600|700)'''
+relation = "SLOP055"
+tier = "B"
+notes = "Scored 2026-10-14 through the Rust rule on 64 pinned AI app-builder repos (tsx, css, html) against 1,186 verified human files. Per builder: bolt.new 100/526 (19.01%), Lovable 18/558 (3.23%), Replit Agent 16/188 (8.51%), Same.new 23/183 (12.57%). Pooled AI 157/1455 (10.79%) against verified human 6/1186 (0.51%), 21x; the Tailwind 2022 TSX baseline alone is 6/500 (1.20%), 9x, and Design2Code (unverified) 0/484. Humans on Tailwind do reach for these shades, so the rule flags the look, not the author. It reads class lists only: a hue-band variant over raw CSS fired on 38% of codemirror and 33% of highlight.js themes and was rejected (see SLOP054)."
+
 [[miss]]
 rule = "SLOP011"
 what_it_missed = "Refusal, self-identification and closer phrasings one word outside the panel"
