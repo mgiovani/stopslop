@@ -14,7 +14,7 @@ migration notes live here.
   violet theme preset (`--primary: 262.1 83.3% 57.8%`). Four of them are Tier B
   and on by default: SLOP052, SLOP053, SLOP055 and SLOP056. Scored on 1,455
   files from Lovable, bolt.new, Same.new and Replit Agent repos, the first
-  three fire on 1.8%, 5.0% and 11.2% of them (SLOP055 on its 1,358 tsx and html
+  three fire on 1.8%, 4.5% and 11.2% of them (SLOP055 on its 1,358 tsx and html
   files) and SLOP056 on 5.4% of 129 css and html files. The verified human
   rates are 0.08%, 0.08%, 0.6% and 0%. SLOP055 flags the look, not the author.
   SLOP056 only reads a block that also defines two shadcn tokens, so a lone
