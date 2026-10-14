@@ -167,7 +167,34 @@ pub fn extract<'t, 'a>(
         }
         true
     });
+    if lang == Lang::Css {
+        comments.extend(scss_line_comments(source));
+    }
     (comments, strings, index)
+}
+
+/// tree-sitter-css has no `//` comments, so a `.scss` suppression directive would be lost.
+/// Only a comment that opens its line is found; a trailing `// ...` after a declaration is not.
+fn scss_line_comments(source: &str) -> Vec<TextNode<'_>> {
+    let mut out = Vec::new();
+    let mut offset = 0;
+    for (i, line) in source.split_inclusive('\n').enumerate() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") {
+            let lead = line.len() - trimmed.len();
+            let text = trimmed.trim_end();
+            out.push(TextNode {
+                text,
+                start_byte: offset + lead,
+                end_byte: offset + lead + text.len(),
+                line: i + 1,
+                col: line[..lead].chars().count() + 1,
+                is_doc: false,
+            });
+        }
+        offset += line.len();
+    }
+    out
 }
 
 /// Pre-order DFS over a `TreeCursor`, visiting every node exactly once. `f` returns whether to

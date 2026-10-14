@@ -132,13 +132,13 @@ pub fn prewarm<'scope>(scope: &'scope std::thread::Scope<'scope, '_>, settings: 
     }
 }
 
-/// Building a `StyleDoc` re-parses every `<style>` body with the CSS grammar, which roughly
-/// triples the time to lint a CSS-heavy HTML corpus. Only a rule declaring `Lang::Css` reads
-/// one, so the default run (every style rule is Tier C, off) never pays for it.
-fn wants_style(settings: &Settings) -> bool {
-    RULES
-        .iter()
-        .any(|r| settings.enabled.contains(r.code) && r.langs.contains(&Lang::Css))
+/// A rule reads `ctx.style` exactly when it declares `lang::STYLE_LANGS`. Building the doc
+/// re-parses every `<style>` body, so a run with no such rule enabled skips it.
+fn wants_style(settings: &Settings, lang: Lang) -> bool {
+    lang::STYLE_LANGS.contains(&lang)
+        && RULES
+            .iter()
+            .any(|r| r.langs == lang::STYLE_LANGS && settings.enabled.contains(r.code))
 }
 
 /// The rule-dispatch loop shared by `lint_file`, `lint_prose` and `lint_image`: filter `RULES` by
@@ -204,7 +204,7 @@ pub fn lint_file(
     };
     // NOTE: a tree WITH error nodes is normal and expected (broken pasted code) — DO NOT skip it.
     let (comments, strings, index) = context::extract(&tree, source, lang);
-    let style = (wants_style(settings) && matches!(lang, Lang::Css | Lang::Tsx)).then(|| {
+    let style = wants_style(settings, lang).then(|| {
         if lang == Lang::Css {
             StyleDoc::from_css(&index, source)
         } else {
@@ -269,8 +269,7 @@ fn lint_prose(
         }
         _ => &settings.natlangs,
     };
-    let style =
-        (wants_style(settings) && lang == Lang::Html).then(|| StyleDoc::from_html(&doc, source));
+    let style = wants_style(settings, lang).then(|| StyleDoc::from_html(&doc, source));
     let is_test = paths::is_test_path(&display_path);
     let ctx = LintContext {
         display_path,

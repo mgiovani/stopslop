@@ -42,6 +42,8 @@ impl Lang {
             "txt" | "text" => Some(Lang::Txt),
             "rst" => Some(Lang::Rst),
             "html" | "htm" => Some(Lang::Html),
+            // tree-sitter-css has no SCSS grammar: plain declarations parse, but `$var:` and
+            // `@include` can hide a neighbouring declaration.
             "css" | "scss" => Some(Lang::Css),
             "png" | "jpg" | "jpeg" | "webp" => Some(Lang::Image),
             _ => None,

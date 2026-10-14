@@ -600,7 +600,7 @@ fn is_comment_kind(lang: Lang, kind: &str) -> bool {
     match lang {
         Lang::Rust => kind == "line_comment" || kind == "block_comment",
         Lang::Ts | Lang::Tsx | Lang::Python | Lang::Go => kind == "comment",
-        // Never reached: SLOP042's `langs: CODE_LANGS` excludes prose and image langs.
+        // Never reached: SLOP042's `langs: CODE_LANGS` excludes prose, css and image langs.
         Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html | Lang::Css | Lang::Image => {
             false
         }

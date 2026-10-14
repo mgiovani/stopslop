@@ -405,7 +405,7 @@ fn line_index(line_starts: &[usize], byte: usize) -> usize {
     }
 }
 
-pub(crate) fn compute_line_col(line_starts: &[usize], text: &str, byte: usize) -> (usize, usize) {
+fn compute_line_col(line_starts: &[usize], text: &str, byte: usize) -> (usize, usize) {
     let idx = line_index(line_starts, byte);
     let line_start = line_starts[idx];
     let col = 1 + text[line_start..byte.min(text.len())].chars().count();
