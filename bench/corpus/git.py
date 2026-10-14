@@ -10,32 +10,51 @@ import sys
 from .common import _slug, read_text_files, sample_indices
 
 
-def git_clone_ref(repo, ref, dest, what, skip_failures):
-    """`git clone --depth 1 [--branch ref]` once, landed atomically.
+# A deleted or privatised repo makes github.com ask for credentials; without a prompt guard (every
+# step) and a timeout (the pinned-set fetches, whose repos are small) that blocks the whole run.
+GIT_STEP_TIMEOUT = 300
 
-    A cache hit (`dest/.git` already present) skips the network entirely. Otherwise this
-    clones into `dest + '.part'` and only `os.replace`s it onto `dest` once `git clone` exits
-    0, so a clone killed halfway never leaves a `.git` directory the next run's cache check
-    would mistake for a complete one; a leftover `.part` from an earlier kill is removed and
-    redone rather than reused.
-    """
+
+def _git(*args, timeout=None):
+    try:
+        return subprocess.run(
+            ["git", *args], capture_output=True, text=True,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(args, 1, "", f"timed out after {timeout}s")
+
+
+def _step_error(step, proc):
+    return None if proc.returncode == 0 else f"git {step} failed:\n{proc.stderr}"
+
+
+def _land(dest, what, skip_failures, build):
+    """Run `build(part)` against `dest + '.part'` and `os.replace` it onto `dest` only once it
+    returns no error, so a git run killed halfway never leaves a `.git` directory the next
+    run's cache check would mistake for a complete one. A cache hit (`dest/.git` present) skips
+    the network entirely; a leftover `.part` from an earlier kill is removed and redone."""
     if os.path.isdir(os.path.join(dest, ".git")):
         return dest
     part = f"{dest}.part"
     shutil.rmtree(part, ignore_errors=True)
     os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
-    cmd = ["git", "clone", "--depth", "1", "--quiet"]
-    if ref:
-        cmd += ["--branch", ref]
-    cmd += [repo, part]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode != 0:
+    error = build(part)
+    if error:
         shutil.rmtree(part, ignore_errors=True)
         if skip_failures:
             return None
-        raise SystemExit(f"{what}: git clone failed:\n{proc.stderr}")
+        raise SystemExit(f"{what}: {error}")
     os.replace(part, dest)
     return dest
+
+
+def git_clone_ref(repo, ref, dest, what, skip_failures):
+    """`git clone --depth 1 [--branch ref]` once, landed atomically."""
+    def build(part):
+        branch = ["--branch", ref] if ref else []
+        return _step_error("clone", _git("clone", "--depth", "1", "--quiet", *branch, repo, part))
+    return _land(dest, what, skip_failures, build)
 
 
 def git_clone_before(repo, cutoff_date, dest, what, skip_failures):
@@ -43,43 +62,35 @@ def git_clone_before(repo, cutoff_date, dest, what, skip_failures):
     result atomically.
 
     Used for a repo with no tag near the wanted date (rust-lang/book): `--shallow-since` one
-    year back keeps the clone small while still reaching a commit before `cutoff_date`. Clone
-    and checkout both happen inside `dest + '.part'`, moved onto `dest` only once both exit 0,
-    matching `git_clone_ref`'s atomicity; a leftover `.part` is removed and redone.
+    year back keeps the clone small while still reaching a commit before `cutoff_date`.
     """
-    if os.path.isdir(os.path.join(dest, ".git")):
-        return dest
-    part = f"{dest}.part"
-    shutil.rmtree(part, ignore_errors=True)
-    os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
     since = f"{int(cutoff_date[:4]) - 1}-{cutoff_date[5:]}"
-    proc = subprocess.run(
-        ["git", "clone", "--quiet", f"--shallow-since={since}", repo, part],
-        capture_output=True, text=True,
-    )
-    if proc.returncode != 0:
-        shutil.rmtree(part, ignore_errors=True)
-        if skip_failures:
-            return None
-        raise SystemExit(f"{what}: git clone failed:\n{proc.stderr}")
-    log = subprocess.run(
-        ["git", "-C", part, "log", f"--until={cutoff_date}T00:00:00", "-1", "--format=%H"],
-        capture_output=True, text=True,
-    )
-    sha = log.stdout.strip()
-    if not sha:
-        shutil.rmtree(part, ignore_errors=True)
-        if skip_failures:
-            return None
-        raise SystemExit(f"{what}: no commit before {cutoff_date} in the shallow history")
-    checkout = subprocess.run(["git", "-C", part, "checkout", "--quiet", sha], capture_output=True, text=True)
-    if checkout.returncode != 0:
-        shutil.rmtree(part, ignore_errors=True)
-        if skip_failures:
-            return None
-        raise SystemExit(f"{what}: git checkout failed:\n{checkout.stderr}")
-    os.replace(part, dest)
-    return dest
+
+    def build(part):
+        error = _step_error("clone", _git("clone", "--quiet", f"--shallow-since={since}", repo, part))
+        if error:
+            return error
+        log = _git("-C", part, "log", f"--until={cutoff_date}T00:00:00", "-1", "--format=%H")
+        sha = log.stdout.strip()
+        if not sha:
+            return f"no commit before {cutoff_date} in the shallow history"
+        return _step_error("checkout", _git("-C", part, "checkout", "--quiet", sha))
+    return _land(dest, what, skip_failures, build)
+
+
+def git_clone_sha(repo, sha, dest, what, skip_failures):
+    """Shallow-fetch one commit and land it atomically, like `git_clone_ref`. Fetching a bare
+    SHA needs the host to allow it; github.com does."""
+    def build(part):
+        os.makedirs(part)
+        for step, args in (("init", ["init", "--quiet"]),
+                           ("fetch", ["fetch", "--depth", "1", "--quiet", repo, sha]),
+                           ("checkout", ["checkout", "--quiet", "FETCH_HEAD"])):
+            error = _step_error(step, _git("-C", part, *args, timeout=GIT_STEP_TIMEOUT))
+            if error:
+                return error
+        return None
+    return _land(dest, what, skip_failures, build)
 
 
 def git_head_sha(clone_dir):
@@ -156,37 +167,6 @@ def fetch_git_before_cell(ds, cell, limit, cache_dir, skip_failures):
     return materialize_from_clone(ds, cell, clone_dir, limit, skip_failures)
 
 
-# A deleted or privatised repo makes github.com ask for credentials; without a prompt guard and a
-# timeout that blocks the whole corpus run.
-GIT_STEP_TIMEOUT = 300
-
-
-def git_clone_sha(repo, sha, dest, what, skip_failures):
-    """Shallow-fetch one commit into `dest + '.part'` and land it atomically, like
-    `git_clone_ref`. Fetching a bare SHA needs the host to allow it; github.com does."""
-    if os.path.isdir(os.path.join(dest, ".git")):
-        return dest
-    part = f"{dest}.part"
-    shutil.rmtree(part, ignore_errors=True)
-    os.makedirs(part)
-    for cmd in (["init", "--quiet"], ["fetch", "--depth", "1", "--quiet", repo, sha],
-                ["checkout", "--quiet", "FETCH_HEAD"]):
-        try:
-            proc = subprocess.run(
-                ["git", "-C", part, *cmd], capture_output=True, text=True,
-                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}, timeout=GIT_STEP_TIMEOUT,
-            )
-        except subprocess.TimeoutExpired:
-            proc = subprocess.CompletedProcess(cmd, 1, "", f"timed out after {GIT_STEP_TIMEOUT}s")
-        if proc.returncode != 0:
-            shutil.rmtree(part, ignore_errors=True)
-            if skip_failures:
-                return None
-            raise SystemExit(f"{what}: git {cmd[0]} failed:\n{proc.stderr}")
-    os.replace(part, dest)
-    return dest
-
-
 def pinned_set_revision(ds):
     """A stable id for the pinned list, so the manifest changes when any pin does."""
     spec = [ds["repos"], [[c.get("subdir"), c["glob"]] for c in ds["cells"]], list(ds.get("exclude", ()))]
@@ -200,7 +180,7 @@ def fetch_git_pinned_set(ds, cell, limit, cache_dir, skip_failures):
     files; each item's `domain` is `owner/repo:path` to keep the origin auditable. A repo that
     fails to clone is skipped under `--skip-failures` (the cell shrinks) and fatal otherwise.
     """
-    pooled = []
+    pooled, origin = [], {}
     for entry in ds["repos"]:
         url = f"https://github.com/{entry['repo']}"
         dest = shared_clone_dir(cache_dir, url, entry["sha"])
@@ -208,15 +188,12 @@ def fetch_git_pinned_set(ds, cell, limit, cache_dir, skip_failures):
             print(f"skipped {entry['repo']}@{entry['sha'][:12]}: clone failed", file=sys.stderr)
             continue
         for rel in git_files(dest, cell["subdir"], cell["glob"], ds.get("exclude", ())):
-            pooled.append((entry["repo"], dest, rel))
+            path = os.path.join(dest, rel)
+            pooled.append(path)
+            origin[path] = f"{entry['repo']}:{rel}"
     if not pooled:
         if skip_failures:
             return None
         raise SystemExit(f"{ds['name']}/{cell['label']}/{cell['lang']}: 0 files across the pinned repos")
-    items = []
-    for i in sample_indices(len(pooled), limit):
-        repo, dest, rel = pooled[i]
-        with open(os.path.join(dest, rel), encoding="utf-8", errors="replace") as fh:
-            items.append((fh.read(), {"generator": cell.get("generator", ds.get("generator", "unknown")),
-                                      "domain": f"{repo}:{rel}"}))
-    return items
+    generator = cell.get("generator", ds.get("generator", "unknown"))
+    return read_text_files("", pooled, limit, lambda path: {"generator": generator, "domain": origin[path]})

@@ -14,13 +14,13 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from corpus.common import APPLICABLE, EXT, PROVENANCE, RESULTS_SCHEMA, VERIFIED, sample_indices
-import corpus.fetchers as fetchers
 from corpus.fetchers import FAIDSET_LABELS, VIETNAMESE, fetch_hf_text_rows, fetch_local_cell, parse_beemo_edits, parse_mage_src
-from corpus.git import clone_dir_for, git_files, shared_clone_dir
+from corpus.git import clone_dir_for, fetch_git_pinned_set, git_files, pinned_set_revision, shared_clone_dir
 from corpus.hf import (
     _looks_retryable, _paged_rows, _windows_overlap, hf_get_cached, scan_order, spread_page_offsets,
     where_predicate,
@@ -43,12 +43,8 @@ class TestHfTextRows(unittest.TestCase):
     cell = {"label": "ai", "lang": "html", "generator": "g"}
 
     def fetch(self, rows):
-        original = fetchers.hf_rows_sample
-        fetchers.hf_rows_sample = lambda *a, **k: rows
-        try:
+        with mock.patch("corpus.fetchers.hf_rows_sample", return_value=rows):
             return fetch_hf_text_rows(self.ds, self.cell, 10, "cache", False)
-        finally:
-            fetchers.hf_rows_sample = original
 
     def test_rows_become_text_and_generator(self):
         self.assertEqual(self.fetch([{"text": "<p>a</p>"}]), [("<p>a</p>", {"generator": "g"})])
@@ -64,10 +60,72 @@ class TestHfTextRows(unittest.TestCase):
 
 
 class TestApplicableDesign(unittest.TestCase):
-    def test_every_design_rule_is_applicable_to_each_style_lang(self):
-        for lang in ("html", "css", "tsx"):
-            for code in ("SLOP052", "SLOP053", "SLOP054"):
-                self.assertIn(code, APPLICABLE[lang])
+    RULES_DOC = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                             "docs", "rules.md")
+    DOC_LANGS = {"CSS": "css", "HTML": "html", "TSX": "tsx"}
+
+    def documented_design_langs(self):
+        """{code: {lang}} read from the design rows of the docs/rules.md table, whose Languages
+        column mirrors each `RuleDef.langs`."""
+        found = {}
+        with open(self.RULES_DOC, encoding="utf-8") as fh:
+            for line in fh:
+                cells = [c.strip() for c in line.split("|")]
+                if len(cells) > 5 and cells[1].startswith("SLOP") and cells[2] == "design":
+                    names = {n.strip() for n in cells[5].split(",")}
+                    found[cells[1]] = {self.DOC_LANGS[n] for n in names if n in self.DOC_LANGS}
+        return found
+
+    def test_applicable_matches_the_documented_languages_of_every_design_rule(self):
+        documented = self.documented_design_langs()
+        self.assertEqual(sorted(documented), ["SLOP052", "SLOP053", "SLOP054", "SLOP055", "SLOP056"])
+        for code, langs in documented.items():
+            applicable = {lang for lang in self.DOC_LANGS.values() if code in APPLICABLE[lang]}
+            self.assertEqual(applicable, langs, code)
+
+
+class TestPinnedSetRevision(unittest.TestCase):
+    base = {
+        "repos": [{"repo": "a/b", "sha": "1"}, {"repo": "c/d", "sha": "2"}],
+        "cells": [{"subdir": "src", "glob": "*.tsx"}],
+    }
+
+    def test_stable_across_dict_order_and_sensitive_to_every_pin(self):
+        reordered = {"cells": self.base["cells"], "repos": self.base["repos"]}
+        self.assertEqual(pinned_set_revision(self.base), pinned_set_revision(reordered))
+        moved_sha = {**self.base, "repos": [{"repo": "a/b", "sha": "9"}, self.base["repos"][1]]}
+        self.assertNotEqual(pinned_set_revision(self.base), pinned_set_revision(moved_sha))
+        new_glob = {**self.base, "cells": [{"subdir": "src", "glob": "*.css"}]}
+        self.assertNotEqual(pinned_set_revision(self.base), pinned_set_revision(new_glob))
+        excluded = {**self.base, "exclude": ("dist/",)}
+        self.assertNotEqual(pinned_set_revision(self.base), pinned_set_revision(excluded))
+
+
+class TestFetchGitPinnedSet(unittest.TestCase):
+    def test_pools_files_across_repos_and_labels_each_with_its_origin(self):
+        ds = {"name": "d", "repos": [{"repo": "a/b", "sha": "1"}, {"repo": "c/d", "sha": "2"}],
+              "exclude": (), "generator": "g"}
+        cell = {"label": "ai", "lang": "css", "subdir": "src", "glob": "*.css"}
+        with tempfile.TemporaryDirectory() as tmp:
+            def clone(url, sha, dest, what, skip_failures):
+                os.makedirs(os.path.join(dest, "src"))
+                with open(os.path.join(dest, "src", f"{sha}.css"), "w", encoding="utf-8") as fh:
+                    fh.write(f"body{sha}")
+                return dest
+            with mock.patch("corpus.git.git_clone_sha", side_effect=clone):
+                items = fetch_git_pinned_set(ds, cell, 10, os.path.join(tmp, "cache", "x"), False)
+        self.assertEqual(
+            sorted((text, meta["domain"], meta["generator"]) for text, meta in items),
+            [("body1", "a/b:src/1.css", "g"), ("body2", "c/d:src/2.css", "g")],
+        )
+
+    def test_a_pin_that_fails_to_clone_is_fatal_unless_failures_are_skipped(self):
+        ds = {"name": "d", "repos": [{"repo": "a/b", "sha": "1"}], "exclude": ()}
+        cell = {"label": "ai", "lang": "css", "subdir": "src", "glob": "*.css"}
+        with mock.patch("corpus.git.git_clone_sha", return_value=None):
+            self.assertIsNone(fetch_git_pinned_set(ds, cell, 10, "cache/x", True))
+            with self.assertRaises(SystemExit):
+                fetch_git_pinned_set(ds, cell, 10, "cache/x", False)
 
 
 class TestMetrics(unittest.TestCase):
@@ -187,6 +245,17 @@ class TestGit(unittest.TestCase):
                     fh.write("x")
             found = git_files(tmp, "src", "*.py", exclude=("_test/",))
             self.assertEqual(found, ["src/a.py", "src/sub/b.py"])
+
+    def test_git_files_reads_a_single_file_root_and_prunes_vcs_and_dependency_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for rel in ("index.html", "src/a.html", "src/node_modules/b.html", "src/.git/c.html"):
+                path = os.path.join(tmp, rel)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w", encoding="utf-8") as fh:
+                    fh.write("x")
+            self.assertEqual(git_files(tmp, ("src", "index.html"), "*.html"), ["index.html", "src/a.html"])
+            self.assertEqual(git_files(tmp, ("src", "index.html"), "*.html", exclude=("index",)), ["src/a.html"])
+            self.assertEqual(git_files(tmp, "missing", "*.html"), [])
 
     def test_clone_dir_is_stable_per_repo_and_ref(self):
         cache_dir = "/tmp/does-not-need-to-exist/cache/go-std"

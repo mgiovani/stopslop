@@ -152,12 +152,14 @@ def _slug(text):
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
 
 
-def read_text_files(clone_dir, files, limit):
+def read_text_files(clone_dir, files, limit, meta=None):
+    """Sample `files` (paths under `clone_dir`) and read them; `meta(path)` supplies each item's
+    metadata, defaulting to a human file named by its path."""
     idx = sample_indices(len(files), limit)
     items = []
     for i in idx:
         rel = files[i]
         with open(os.path.join(clone_dir, rel), encoding="utf-8", errors="replace") as fh:
             text = fh.read()
-        items.append((text, {"generator": "human", "domain": rel}))
+        items.append((text, meta(rel) if meta else {"generator": "human", "domain": rel}))
     return items

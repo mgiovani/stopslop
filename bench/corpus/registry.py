@@ -44,6 +44,19 @@ from .git import fetch_git_before_cell, fetch_git_cell, fetch_git_pinned_set
 
 UI_EXCLUDE = ("components/ui/", ".min.", "node_modules/", "dist/", "build/", ".next/", "__tests__/",
               "tests/", "e2e/", "cypress/", ".test.", ".spec.", ".stories.")
+UI_SCOPE_CAVEAT = "Only .tsx, .css and .html under src/ and client/src/ (plus index.html) are scored; components/ui/ vendored shadcn primitives and *.min.* files are excluded, so no hand-copied primitive counts as builder output."
+UI_MARKER_CAVEAT = "The marker proves the builder created the project, not that it wrote every line: an owner may have edited files before the pin."
+
+
+def ui_cells(generator):
+    roots = ("src", "client/src")
+    return [
+        {"label": "ai", "lang": "tsx", "generator": generator, "subdir": roots, "glob": "*.tsx"},
+        {"label": "ai", "lang": "css", "generator": generator, "subdir": roots, "glob": "*.css"},
+        {"label": "ai", "lang": "html", "generator": generator,
+         "subdir": (*roots, "index.html", "client/index.html"), "glob": "*.html"},
+    ]
+
 
 AIGCODESET_BASE = "https://huggingface.co/datasets/basakdemirok/AIGCodeSet/resolve/main/data"
 
@@ -797,8 +810,8 @@ DATASETS = {
         "human_note": None,
         "caveats": [
             "28 public repos pinned by SHA. Provenance marker: at least half of each pinned repo's recent commits are authored or co-authored by gpt-engineer-app[bot], Lovable's committer identity; each pin is the newest such commit.",
-            "Only .tsx, .css and .html under src/ and client/src/ (plus index.html) are scored; components/ui/ vendored shadcn primitives and *.min.* files are excluded, so no hand-copied primitive counts as builder output.",
-            "The marker proves the builder created the project, not that it wrote every line: an owner may have edited files before the pin.",
+            UI_SCOPE_CAVEAT,
+            UI_MARKER_CAVEAT,
         ],
         "fetch": fetch_git_pinned_set,
         "repos": [
@@ -831,11 +844,7 @@ DATASETS = {
             {"repo": "sanvicpalawan/kapwa-resort-webapp", "sha": "b7e04a202db6b01d795251c9035802338a53c3fc"},
             {"repo": "sar-star1/peremogabetasite", "sha": "e20ca5479f61c0ad66423f48243d70eec7b5e9f8"},
         ],
-        "cells": [
-            {"label": "ai", "lang": "tsx", "generator": "Lovable", "subdir": ("src", "client/src"), "glob": "*.tsx"},
-            {"label": "ai", "lang": "css", "generator": "Lovable", "subdir": ("src", "client/src"), "glob": "*.css"},
-            {"label": "ai", "lang": "html", "generator": "Lovable", "subdir": ("src", "client/src", "index.html", "client/index.html"), "glob": "*.html"},
-        ],
+        "cells": ui_cells("Lovable"),
         "exclude": UI_EXCLUDE,
     },
     "bolt-ui": {
@@ -847,8 +856,8 @@ DATASETS = {
         "human_note": None,
         "caveats": [
             "12 public repos pinned by SHA. Provenance marker: each pinned repo carries .bolt/config.json or .bolt/prompt at the pinned HEAD, files bolt.new writes into every project; repos are capped at 15 commits to skip heavy human follow-up.",
-            "Only .tsx, .css and .html under src/ and client/src/ (plus index.html) are scored; components/ui/ vendored shadcn primitives and *.min.* files are excluded, so no hand-copied primitive counts as builder output.",
-            "The marker proves the builder created the project, not that it wrote every line: an owner may have edited files before the pin.",
+            UI_SCOPE_CAVEAT,
+            UI_MARKER_CAVEAT,
         ],
         "fetch": fetch_git_pinned_set,
         "repos": [
@@ -865,11 +874,7 @@ DATASETS = {
             {"repo": "prem22k/MemeCoin-Roulette", "sha": "25b57c717d40c5a940be22cc7bd496e60d74d466"},
             {"repo": "umer4447/Stock-Exchange-Web-Template", "sha": "fcf453b9d94e4b0ae480b832b28800dcac942ff3"},
         ],
-        "cells": [
-            {"label": "ai", "lang": "tsx", "generator": "bolt.new", "subdir": ("src", "client/src"), "glob": "*.tsx"},
-            {"label": "ai", "lang": "css", "generator": "bolt.new", "subdir": ("src", "client/src"), "glob": "*.css"},
-            {"label": "ai", "lang": "html", "generator": "bolt.new", "subdir": ("src", "client/src", "index.html", "client/index.html"), "glob": "*.html"},
-        ],
+        "cells": ui_cells("bolt.new"),
         "exclude": UI_EXCLUDE,
     },
     "same-ui": {
@@ -881,8 +886,8 @@ DATASETS = {
         "human_note": None,
         "caveats": [
             "12 public repos pinned by SHA. Provenance marker: each pinned repo carries .same/todos.md at the pinned HEAD, the task file the Same agent keeps; repos are capped at 15 commits to skip heavy human follow-up.",
-            "Only .tsx, .css and .html under src/ and client/src/ (plus index.html) are scored; components/ui/ vendored shadcn primitives and *.min.* files are excluded, so no hand-copied primitive counts as builder output.",
-            "The marker proves the builder created the project, not that it wrote every line: an owner may have edited files before the pin.",
+            UI_SCOPE_CAVEAT,
+            UI_MARKER_CAVEAT,
         ],
         "fetch": fetch_git_pinned_set,
         "repos": [
@@ -899,11 +904,7 @@ DATASETS = {
             {"repo": "ovalaiops/figma-design-generator", "sha": "35a1f47975c7ee4d0347a492ff6d55875a85f4be"},
             {"repo": "tuttoxa9/advahta4", "sha": "309c4f482a6db299c030f7c8fd795858f2ac11d2"},
         ],
-        "cells": [
-            {"label": "ai", "lang": "tsx", "generator": "Same", "subdir": ("src", "client/src"), "glob": "*.tsx"},
-            {"label": "ai", "lang": "css", "generator": "Same", "subdir": ("src", "client/src"), "glob": "*.css"},
-            {"label": "ai", "lang": "html", "generator": "Same", "subdir": ("src", "client/src", "index.html", "client/index.html"), "glob": "*.html"},
-        ],
+        "cells": ui_cells("Same"),
         "exclude": UI_EXCLUDE,
     },
     "replit-ui": {
@@ -915,8 +916,8 @@ DATASETS = {
         "human_note": None,
         "caveats": [
             "12 public repos pinned by SHA. Provenance marker: at least 40% of each pinned repo's recent commits carry the Replit-Commit-Author: Agent trailer; each pin is the newest such commit.",
-            "Only .tsx, .css and .html under src/ and client/src/ (plus index.html) are scored; components/ui/ vendored shadcn primitives and *.min.* files are excluded, so no hand-copied primitive counts as builder output.",
-            "The marker proves the builder created the project, not that it wrote every line: an owner may have edited files before the pin.",
+            UI_SCOPE_CAVEAT,
+            UI_MARKER_CAVEAT,
         ],
         "fetch": fetch_git_pinned_set,
         "repos": [
@@ -933,11 +934,7 @@ DATASETS = {
             {"repo": "wwwtrendwearsshop-lab/Hi", "sha": "aadebbbb55d21f6c4c2d4607b50d5a97e94b9552"},
             {"repo": "yanliudesign/Vocalize", "sha": "8d0d0867bfee4261f4dec5b318b3c878ad2b5126"},
         ],
-        "cells": [
-            {"label": "ai", "lang": "tsx", "generator": "Replit Agent", "subdir": ("src", "client/src"), "glob": "*.tsx"},
-            {"label": "ai", "lang": "css", "generator": "Replit Agent", "subdir": ("src", "client/src"), "glob": "*.css"},
-            {"label": "ai", "lang": "html", "generator": "Replit Agent", "subdir": ("src", "client/src", "index.html", "client/index.html"), "glob": "*.html"},
-        ],
+        "cells": ui_cells("Replit Agent"),
         "exclude": UI_EXCLUDE,
     },
     "tailwind-tsx-2022": {
