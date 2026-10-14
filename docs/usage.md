@@ -68,7 +68,7 @@ are not counted.
 
 ![stopslop --format json output](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/formats.png)
 
-## Rule groups
+## Selecting by group
 
 `SLOP0NN` numbers are chronological, not thematic, so a numeric prefix can't
 express "just the rhetoric rules". Named groups can. They work anywhere a rule

@@ -10,7 +10,7 @@ A deterministic linter, written in Rust, for the tells AI leaves in code and pro
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/mgiovani/stopslop/blob/main/LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/stopslop.svg)](https://crates.io/crates/stopslop)
 
-[Docs](docs/README.md) · [Rules](docs/rules.md) · [Changelog](CHANGELOG.md)
+[Docs](https://github.com/mgiovani/stopslop/blob/main/docs/README.md) · [Rules](https://github.com/mgiovani/stopslop/blob/main/docs/rules.md) · [Changelog](https://github.com/mgiovani/stopslop/blob/main/CHANGELOG.md)
 
 ![stopslop demo](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/demo.gif)
 
@@ -41,16 +41,16 @@ tests/fixtures/markdown/slop_residue.md:3:1 SLOP011 unedited assistant-response 
     fix: delete the sentence
 ```
 
-Tier A findings exit 1 and fail CI. Tier B findings warn. See [usage](docs/usage.md) for formats (text, JSON, SARIF, Markdown), baselines and exit codes.
+Tier A findings exit 1 and fail CI. Tier B findings warn. See [usage](https://github.com/mgiovani/stopslop/blob/main/docs/usage.md) for formats (text, JSON, SARIF, Markdown), baselines and exit codes.
 
 ## Why stopslop
 
-- **Reads what other linters skip.** ESLint, Ruff, and Clippy treat comment and string content as trivia, which is where `// ... rest of code unchanged` and a leaked "Certainly! Here's..." preamble end up. See [why](docs/why.md).
+- **Reads what other linters skip.** ESLint, Ruff, and Clippy treat comment and string content as trivia, which is where `// ... rest of code unchanged` and a leaked "Certainly! Here's..." preamble end up. See [why](https://github.com/mgiovani/stopslop/blob/main/docs/why.md).
 - **Deterministic.** Every rule is a tree-sitter AST match or a regex over extracted comment, string or prose text. Same input, same output, with no LLM call, API call, or network access at scan time.
 - **CI-ready tiers.** Tier A is mechanical and fails the run; Tier B warns. Tier C stays opt-in until a labelled corpus has scored it.
 - **Code, prose, and images.** Source code and documents, plus the metadata of PNG, JPEG and WebP images.
 - **English and Brazilian Portuguese.** Phrase panels for both run by default.
-- **Measured.** `just corpus` scores every rule against labelled human and AI corpora; see [benchmarks](docs/benchmarks.md).
+- **Measured.** `just corpus` scores every rule against labelled human and AI corpora; see [benchmarks](https://github.com/mgiovani/stopslop/blob/main/docs/benchmarks.md).
 - **Fast and quiet to adopt.** One binary and no config to start. `--staged` and `--since` lint only a diff, and a baseline grandfathers old findings.
 
 ## What it catches
@@ -68,7 +68,7 @@ Tier A findings exit 1 and fail CI. Tier B findings warn. See [usage](docs/usage
 | `format` | Typographic and Markdown affectations |
 | `provenance` | Embedded image metadata that names how or by what an image was made |
 
-The per-rule table is in [docs/rules.md](docs/rules.md).
+The per-rule table is in [docs/rules.md](https://github.com/mgiovani/stopslop/blob/main/docs/rules.md).
 
 | Tier | Default | Effect |
 |------|---------|--------|
@@ -88,7 +88,7 @@ fail-on-tier = "A"                  # lowest tier that exits 1
 "docs/**" = ["SLOP036"]
 ```
 
-`stopslop --help-config` prints an annotated file with every key. Details, user-defined rules, and `--check-imports` are in [docs/configuration.md](docs/configuration.md). To silence one finding, put `// ai-slop-ignore` above it; see [suppression](docs/suppression.md).
+`stopslop --help-config` prints an annotated file with every key. Details, user-defined rules, and `--check-imports` are in [docs/configuration.md](https://github.com/mgiovani/stopslop/blob/main/docs/configuration.md). To silence one finding, put `// ai-slop-ignore` above it; see [suppression](https://github.com/mgiovani/stopslop/blob/main/docs/suppression.md).
 
 ## CI
 
@@ -104,11 +104,11 @@ stopslop --format sarif .    # GitHub code scanning
 - Not a correctness checker. It does not run your code or detect hallucinated methods.
 - `[[custom-rule]]` is a phrase matcher, not a plugin system.
 
-The full list is in [docs/why.md](docs/why.md).
+The full list is in [docs/why.md](https://github.com/mgiovani/stopslop/blob/main/docs/why.md).
 
 ## Contributing
 
-Read [AGENTS.md](AGENTS.md) for the architecture, the checklist for adding a rule, and the test gates.
+Read [AGENTS.md](https://github.com/mgiovani/stopslop/blob/main/AGENTS.md) for the architecture, the checklist for adding a rule, and the test gates.
 
 ## License
 
