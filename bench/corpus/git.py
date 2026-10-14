@@ -1,9 +1,11 @@
 """Git-backed cells: clone once (by tag or by cutoff date), read files out of the clone, land
 both atomically the same way `common.fetch` lands a download."""
 import fnmatch
+import json
 import os
 import shutil
 import subprocess
+import sys
 
 from .common import _slug, read_text_files, sample_indices
 
@@ -103,7 +105,8 @@ def git_files(clone_dir, subdirs, glob_pat, exclude=()):
             continue
         if not os.path.isdir(root):
             continue
-        for dirpath, _dirnames, filenames in os.walk(root):
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in (".git", "node_modules")]
             for name in fnmatch.filter(filenames, glob_pat):
                 rel = os.path.relpath(os.path.join(dirpath, name), clone_dir).replace(os.sep, "/")
                 if any(x in rel for x in exclude):
@@ -153,6 +156,11 @@ def fetch_git_before_cell(ds, cell, limit, cache_dir, skip_failures):
     return materialize_from_clone(ds, cell, clone_dir, limit, skip_failures)
 
 
+# A deleted or privatised repo makes github.com ask for credentials; without a prompt guard and a
+# timeout that blocks the whole corpus run.
+GIT_STEP_TIMEOUT = 300
+
+
 def git_clone_sha(repo, sha, dest, what, skip_failures):
     """Shallow-fetch one commit into `dest + '.part'` and land it atomically, like
     `git_clone_ref`. Fetching a bare SHA needs the host to allow it; github.com does."""
@@ -163,7 +171,13 @@ def git_clone_sha(repo, sha, dest, what, skip_failures):
     os.makedirs(part)
     for cmd in (["init", "--quiet"], ["fetch", "--depth", "1", "--quiet", repo, sha],
                 ["checkout", "--quiet", "FETCH_HEAD"]):
-        proc = subprocess.run(["git", "-C", part, *cmd], capture_output=True, text=True)
+        try:
+            proc = subprocess.run(
+                ["git", "-C", part, *cmd], capture_output=True, text=True,
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}, timeout=GIT_STEP_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            proc = subprocess.CompletedProcess(cmd, 1, "", f"timed out after {GIT_STEP_TIMEOUT}s")
         if proc.returncode != 0:
             shutil.rmtree(part, ignore_errors=True)
             if skip_failures:
@@ -175,7 +189,8 @@ def git_clone_sha(repo, sha, dest, what, skip_failures):
 
 def pinned_set_revision(ds):
     """A stable id for the pinned list, so the manifest changes when any pin does."""
-    return "pinned-set:" + _slug("".join(r["sha"] for r in ds["repos"]))
+    spec = [ds["repos"], [[c.get("subdir"), c["glob"]] for c in ds["cells"]], list(ds.get("exclude", ()))]
+    return "pinned-set:" + _slug(json.dumps(spec, sort_keys=True))
 
 
 def fetch_git_pinned_set(ds, cell, limit, cache_dir, skip_failures):
@@ -190,6 +205,7 @@ def fetch_git_pinned_set(ds, cell, limit, cache_dir, skip_failures):
         url = f"https://github.com/{entry['repo']}"
         dest = shared_clone_dir(cache_dir, url, entry["sha"])
         if git_clone_sha(url, entry["sha"], dest, entry["repo"], skip_failures) is None:
+            print(f"skipped {entry['repo']}@{entry['sha'][:12]}: clone failed", file=sys.stderr)
             continue
         for rel in git_files(dest, cell["subdir"], cell["glob"], ds.get("exclude", ())):
             pooled.append((entry["repo"], dest, rel))

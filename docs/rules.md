@@ -93,8 +93,8 @@ entries from your config. SLOP010 is the one exception: it stays off until
 | SLOP052 | design | Gradient text | B, on | CSS, SCSS, HTML, TSX | en, pt-BR | A declaration block that pairs `background-clip: text` with a `*-gradient(` background, or a class list that pairs `bg-clip-text` with a `bg-gradient-to-*`, `bg-linear-*`, `bg-radial*` or `bg-conic*` utility. Reads `<style>` bodies, `style=` attributes and JSX `style={{}}` objects as well as stylesheets |
 | SLOP053 | design | Purple-blue gradient | B, on | CSS, SCSS, HTML, TSX | en, pt-BR | A gradient whose colored stops all sit in HSL hue 225-330 with saturation of at least 0.35 and at least one in 255-290, or a class list running `from-purple\|violet\|indigo-N` into a `via-`/`to-` purple, violet, indigo, blue, cyan, pink or fuchsia shade. Transparent stops do not count |
 | SLOP054 | design | Hand-copied Tailwind violet hex | C, off | CSS, SCSS, HTML, TSX | en, pt-BR | One of nine Tailwind violet and indigo hex values (`#7c3aed`, `#8b5cf6`, `#a855f7`, `#9333ea`, `#7e22ce`, `#6d28d9`, `#6366f1`, and the stock `#764ba2` / `#667eea` pair) written outside a gradient, in a declaration or an arbitrary-value class. Skips custom-property definitions (`--brand: #6366f1` is where the token lives) and gradient stops, which belong to SLOP053 |
-| SLOP055 | design | Violet Tailwind accent | B, on | TSX, HTML | en, pt-BR | A class list holding a `text`, `bg`, `border`, `ring`, `fill`, `stroke`, `outline`, `decoration`, `accent`, `caret`, `divide` or `shadow` utility in purple, violet or indigo 400-700, with variants and `/NN` opacity allowed. One finding per class list, at its first match. Gradient stops (`from-`, `via-`, `to-`) belong to SLOP053 and lists with `bg-clip-text` to SLOP052; raw CSS is never read, because syntax-highlighting themes are legitimately blue-violet. Flags the look, not the author |
-| SLOP056 | design | Violet shadcn theme preset | B, on | CSS, HTML | en, pt-BR | A theme block that defines a shadcn token (`--primary`, `--ring`, `--accent`, `--sidebar-primary`, `--chart-1`, or the `--color-` form in `@theme`) with a violet value: the v3-era bare HSL triplet (`262.1 83.3% 57.8%`), `oklch()`, hex or `rgb()`/`hsl()`, hue 240-300 with saturation of at least 0.35. One finding per block, at its first violet token. Zinc, slate and blue presets stay quiet |
+| SLOP055 | design | Violet Tailwind accent | B, on | TSX, HTML | en, pt-BR | A class list holding a `text`, `bg`, `border` (and side forms such as `border-t`), `ring`, `ring-offset`, `inset-ring`, `inset-shadow`, `fill`, `stroke`, `outline`, `decoration`, `accent`, `caret`, `divide`, `shadow` or `placeholder` utility in purple, violet or indigo 400-700, with variants, the `!` marker and `/NN`, `/[..]` or `/(--var)` opacity allowed. One finding per class list, at its first match. Gradient stops (`from-`, `via-`, `to-`) belong to SLOP053 and lists that clip a gradient to text (`bg-clip-text` plus a gradient utility) to SLOP052; raw CSS is never read, because syntax-highlighting themes are legitimately blue-violet. A v3 `tw-` config prefix is not read. Flags the look, not the author |
+| SLOP056 | design | Violet shadcn theme preset | B, on | CSS, HTML | en, pt-BR | A theme block that defines a shadcn token (`--primary`, `--ring`, `--accent`, `--sidebar-primary`, `--chart-1`, or the `--color-` form in `@theme`) with a violet value (HSL hue 245-285, saturation of at least 0.35; bare HSL triplet, `oklch()`, `oklab()`, hex, `rgb()` or `hsl()`). The block must also define at least two shadcn-specific tokens (`--card`, `--popover`, `--primary-foreground`, `--muted-foreground`, `--destructive`, `--sidebar`, `--radius` and a few more), so a lone `--primary: #9146ff` stays quiet. One finding per block, at its first violet token. Indigo, blue, fuchsia and the zinc, slate and blue presets stay quiet. SCSS files are read with the CSS grammar |
 
 Every rule is exactly one of four states, `--list-rules` prints the TIER,
 DEFAULT (built-in) and ACTIVE (under your config) columns so you can check any given rule at a glance:
@@ -140,10 +140,10 @@ will be read in full: add `*.min.css` to `exclude`. A suppression directive work
 file, and in an HTML comment for `.html`; a `/* */` comment inside a `<style>`
 body is not read as a directive.
 
-SLOP052, SLOP053, SLOP055 and SLOP056 are Tier B and on by default: across 1,455 files from four
-AI app builders they fire on 2.0% and 4.9% against 0.08% of 1,186 verified
-human files. SLOP054 stays Tier C and opt-in (`--extend-select SLOP054`); see
-`bench/candidates.toml` for the measured rates.
+SLOP052, SLOP053, SLOP055 and SLOP056 are Tier B and on by default. Each fires
+on a few percent to a few tenths of ten percent of files from four AI app
+builders and almost never on verified human files. SLOP054 stays Tier C and
+opt-in (`--extend-select SLOP054`); see `bench/candidates.toml` for the measured rates.
 
 Findings that have one concrete replacement print it on a second line:
 

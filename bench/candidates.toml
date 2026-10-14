@@ -460,7 +460,7 @@ scope = "line"
 regex = '''(?:-webkit-)?background-clip\s*:\s*text|\bbg-clip-text\b'''
 relation = "SLOP052"
 tier = "B"
-notes = "Scored 2026-10-14 on 1,455 files from 64 pinned AI app-builder repos (Lovable, bolt.new, Same.new, Replit Agent; tsx, css, html) against 1,186 verified human files (Ant Design TSX, 11 pinned 2022 Tailwind React apps, three pinned CSS repos). Per builder: bolt.new 13/526 (2.47%), Lovable 9/558 (1.61%), Replit Agent 3/188 (1.60%), Same.new 4/183 (2.19%). Pooled AI 29/1455 (1.99%) against verified human 1/1186 (0.08%); the Tailwind 2022 TSX baseline alone is 1/500 (0.20%). Separates the classes by 25x; the AI rate sits a hair under the 2% guidance floor, which was our own threshold, so the rule ships at Tier B, on by default."
+notes = "Re-scored 2026-10-14 through the Rust rule on 64 pinned AI app-builder repos (Lovable, bolt.new, Same.new, Replit Agent) against verified human files (Ant Design TSX, 11 pinned 2022 Tailwind React apps with their CSS, three pinned CSS repos). Per builder: bolt.new 13/526 (2.47%), Lovable 6/558 (1.08%), Replit Agent 3/188 (1.60%), Same.new 4/183 (2.19%). Pooled AI 26/1455 (1.79%) against verified human 1/1275 (0.08%), 22x; the Tailwind 2022 baseline alone is 1/589. The AI rate sits under the 2% guidance floor, which was our own threshold, so the rule ships at Tier B, on by default."
 
 [[candidate]]
 name = "Tailwind gradient from a purple, violet or indigo shade"
@@ -470,7 +470,7 @@ scope = "line"
 regex = '''\bfrom-(?:purple|violet|indigo)-\d'''
 relation = "SLOP053"
 tier = "B"
-notes = "Scored 2026-10-14 on 1,455 files from 64 pinned AI app-builder repos (Lovable, bolt.new, Same.new, Replit Agent; tsx, css, html) against 1,186 verified human files (Ant Design TSX, 11 pinned 2022 Tailwind React apps, three pinned CSS repos). Per builder: bolt.new 33/526 (6.27%), Lovable 5/558 (0.90%), Replit Agent 14/188 (7.45%), Same.new 19/183 (10.38%). Pooled AI 71/1455 (4.88%) against verified human 1/1186 (0.08%); the Tailwind 2022 TSX baseline alone is 0/500 (0.00%). Clears the bar (3x, AI at least 2%, human at most 1%), so it ships at Tier B, on by default. Lovable alone is under 2%: its generated pages lean on semantic tokens rather than named palette colors."
+notes = "Re-scored 2026-10-14 through the Rust rule on 64 pinned AI app-builder repos (Lovable, bolt.new, Same.new, Replit Agent) against verified human files (Ant Design TSX, 11 pinned 2022 Tailwind React apps with their CSS, three pinned CSS repos). Per builder: bolt.new 33/526 (6.27%), Lovable 6/558 (1.08%), Replit Agent 14/188 (7.45%), Same.new 19/183 (10.38%). Pooled AI 72/1455 (4.95%) against verified human 1/1275 (0.08%); Design2Code (unverified) 3/484. Clears the bar (3x, AI at least 2%, human at most 1%), so it ships at Tier B, on by default."
 
 [[candidate]]
 name = "Hand-copied Tailwind violet hex"
@@ -491,7 +491,7 @@ scope = "line"
 regex = '''(?:text|bg|border|ring|fill|stroke|outline|decoration|accent|caret|divide|shadow)-(?:purple|violet|indigo)-(?:400|500|600|700)'''
 relation = "SLOP055"
 tier = "B"
-notes = "Scored 2026-10-14 through the Rust rule on 64 pinned AI app-builder repos (tsx, css, html) against 1,186 verified human files. Per builder: bolt.new 100/526 (19.01%), Lovable 18/558 (3.23%), Replit Agent 16/188 (8.51%), Same.new 23/183 (12.57%). Pooled AI 157/1455 (10.79%) against verified human 6/1186 (0.51%), 21x; the Tailwind 2022 TSX baseline alone is 6/500 (1.20%), 9x, and Design2Code (unverified) 0/484. Humans on Tailwind do reach for these shades, so the rule flags the look, not the author. It reads class lists only: a hue-band variant over raw CSS fired on 38% of codemirror and 33% of highlight.js themes and was rejected (see SLOP054)."
+notes = "Re-scored 2026-10-14 through the Rust rule on the tsx and html files of 64 pinned AI app-builder repos against 1,000 verified human tsx files. Per builder: bolt.new 100/509 (19.65%), Lovable 13/513 (2.53%), Replit Agent 16/165 (9.70%), Same.new 23/171 (13.45%). Pooled AI 152/1358 (11.19%) against verified human 6/1000 (0.60%), 19x; the Tailwind 2022 TSX baseline alone is 6/500 (1.20%), 9x, and Design2Code (unverified) 0/484. Humans on Tailwind do reach for these shades, so the rule flags the look, not the author. It reads class lists only: a hue-band variant over raw CSS fired on 38% of codemirror and 33% of highlight.js themes and was rejected (see SLOP054)."
 
 [[candidate]]
 name = "Violet shadcn theme preset"
@@ -501,7 +501,7 @@ scope = "file"
 regex = '''--(?:color-)?(?:primary|ring|accent|sidebar-primary|chart-1)\s*:\s*(?:2[4-9]\d|300)(?:\.\d+)?\s+\d+(?:\.\d+)?%'''
 relation = "SLOP056"
 tier = "B"
-notes = "Scored 2026-10-14 through the Rust rule on the css and html files of the pinned AI app-builder repos (129 files) against 275 verified human css and html files (Bootstrap, CodeMirror and highlight.js stylesheets plus the CSS of 11 pinned 2022 Tailwind React apps, including shadcn taxonomy). AI: bolt.new 2/27, Lovable 5/58, Replit Agent 3/29, Same.new 0/15, pooled 10/129 (7.75%). Human 0/275 (0.00%); the Tailwind 2022 CSS alone 0/89. Design2Code 0/484. Hits are real presets (`--primary: 262 83% 58%`, `271 81% 56%`, `oklch(0.64 0.21 295)`). Denominators are small because most builder output keeps its theme in a few index.css files, so the rate is a floor on uncertainty, not a tight estimate."
+notes = "Re-scored 2026-10-14 through the Rust rule on the css and html files of the pinned AI app-builder repos (129 files) against 275 verified human css and html files (Bootstrap, CodeMirror and highlight.js stylesheets plus the CSS of 11 pinned 2022 Tailwind React apps, including shadcn taxonomy). A block needs two shadcn marker tokens besides the violet one and a violet value (HSL hue 245-285, saturation at least 0.35). AI: bolt.new 1/27, Lovable 5/58, Replit Agent 1/29, Same.new 0/15, pooled 7/129 (5.43%). Human 0/275 (0.00%); the Tailwind 2022 CSS alone 0/89. Design2Code 0/484. Denominators are small because most builder output keeps its theme in one index.css, so the rate is a floor on uncertainty, not a tight estimate. The marker requirement and the narrower band cost 3 of the 10 earlier hits (a lone `--color-primary: rgb(79, 70, 229)` indigo and similar)."
 
 [[miss]]
 rule = "SLOP011"

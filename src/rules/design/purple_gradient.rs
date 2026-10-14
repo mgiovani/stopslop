@@ -102,13 +102,15 @@ fn is_purple_blue_stops(colors: Vec<Rgba>) -> bool {
         && stops.iter().any(|(h, _)| PURPLE_CORE.contains(h))
 }
 
-/// The color of a bracketed gradient stop such as `from-[#7c3aed]` or `to-[rgb(99,102,241)]`.
+/// The color of a bracketed gradient stop such as `from-[#7c3aed]`, `to-[rgb(99,102,241)]`,
+/// `from-[color:oklch(0.6_0.25_292)]` or `from-[#7c3aed]/50`. Tailwind writes a space as `_`.
 fn arbitrary_stop(utility: &str) -> Option<Rgba> {
     let rest = ["from-", "via-", "to-"]
         .iter()
         .find_map(|p| utility.strip_prefix(p))?;
-    let inner = rest.strip_prefix('[')?.strip_suffix(']')?.replace('_', " ");
-    colors_in(&inner).first().map(|&(_, _, c)| c)
+    let inner = rest.strip_prefix('[')?[..rest.rfind(']')? - 1].replace('_', " ");
+    let inner = inner.strip_prefix("color:").unwrap_or(&inner);
+    colors_in(inner).first().map(|&(_, _, c)| c)
 }
 
 /// True for `<prefix><name>-<shade>` (optionally `/<opacity>`) with `name` in `names`.
@@ -213,6 +215,9 @@ mod tests {
         assert!(diagnostics_for(Lang::Css, warm).is_empty());
         let html = "<i class=\"bg-linear-to-r from-[oklch(0.606_0.25_292.717)] to-[oklch(0.585_0.233_277.117)]\">x</i>\n";
         assert_eq!(diagnostics_for(Lang::Html, html).len(), 1);
+        let slashed =
+            "<i class=\"from-[color:oklch(0.606_0.25_292.717)]/50 to-[#6366f1]/40\">x</i>\n";
+        assert_eq!(diagnostics_for(Lang::Html, slashed).len(), 1);
         let comma = "<i class=\"from-[oklch(0.606,0.25,292.717)] to-[#6366f1]\">x</i>\n";
         assert_eq!(diagnostics_for(Lang::Html, comma).len(), 1);
     }

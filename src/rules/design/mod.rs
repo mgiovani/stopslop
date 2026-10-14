@@ -6,6 +6,14 @@ pub mod violet_theme;
 
 use crate::style::Decl;
 
+pub(crate) fn is_gradient_utility(u: &str) -> bool {
+    u.starts_with("bg-gradient-to-")
+        || u.starts_with("bg-linear-")
+        || u.starts_with("bg-radial")
+        || u.starts_with("bg-conic")
+        || (u.starts_with("bg-[") && u.contains("gradient("))
+}
+
 pub(crate) fn is_gradient(value: &str) -> bool {
     value.contains("gradient(")
 }

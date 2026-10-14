@@ -1,3 +1,4 @@
+use super::is_gradient_utility;
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{Lang, ALL_NATLANGS};
@@ -19,22 +20,27 @@ pub static RULE: RuleDef = RuleDef {
 
 static ACCENT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"^(?:text|bg|border|ring|fill|stroke|outline|decoration|accent|caret|divide|shadow)-(?:purple|violet|indigo)-(?:400|500|600|700)(?:/\d+)?$",
+        r"^(?:text|bg|border(?:-[xytrblse])?|ring(?:-offset)?|inset-ring|inset-shadow|fill|stroke|outline|decoration|accent|caret|divide|shadow|placeholder)-(?:purple|violet|indigo)-(?:400|500|600|700)(?:/(?:\d+|\[[^\]]+\]|\(--[\w-]+\)))?$",
     )
     .unwrap()
 });
 
 const FIX: &str = "use the project's brand color token";
 
-/// Gradient stops (`from-`, `via-`, `to-`) never match `ACCENT`, so SLOP053 keeps them; a list
-/// with `bg-clip-text` is SLOP052's. One diagnostic per class list keeps a styled button quiet.
+/// Gradient stops (`from-`, `via-`, `to-`) never match `ACCENT`, so SLOP053 keeps them. A list that
+/// clips a gradient to its text is SLOP052's; `bg-clip-text` without a gradient is left alone here.
+/// One diagnostic per class list keeps a styled button quiet. A v3 `tw-` config prefix is not
+/// read: that needs the project's tailwind config.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let Some(style) = ctx.style else { return };
     for list in &style.class_lists {
-        if list.iter().any(|t| utility(t.text) == "bg-clip-text") {
+        let utilities: Vec<_> = list.iter().map(|t| (t, utility(t.text))).collect();
+        let clips_gradient = utilities.iter().any(|&(_, u)| u == "bg-clip-text")
+            && utilities.iter().any(|&(_, u)| is_gradient_utility(u));
+        if clips_gradient {
             continue;
         }
-        if let Some(token) = list.iter().find(|t| ACCENT.is_match(utility(t.text))) {
+        if let Some((token, _)) = utilities.iter().find(|&&(_, u)| ACCENT.is_match(u)) {
             let (line, col) = style.line_col(token.start);
             out.push(Diagnostic::at_fix(
                 rule,
@@ -57,6 +63,10 @@ mod tests {
         run(&RULE, lang, src)
     }
 
+    fn html(class: &str) -> Vec<Diagnostic> {
+        diagnostics_for(Lang::Html, &format!("<a class=\"{class}\">x</a>\n"))
+    }
+
     #[test]
     fn flags_accent_utilities_with_variants_and_opacity() {
         for class in [
@@ -65,8 +75,7 @@ mod tests {
             "ring-purple-500/50",
             "md:!border-violet-700",
         ] {
-            let src = format!("<a class=\"p-2 {class}\">x</a>\n");
-            assert_eq!(diagnostics_for(Lang::Html, &src).len(), 1, "{class}");
+            assert_eq!(html(&format!("p-2 {class}")).len(), 1, "{class}");
         }
     }
 
@@ -80,17 +89,59 @@ mod tests {
     }
 
     #[test]
-    fn skips_tints_shades_and_other_hues() {
-        let src = "<a class=\"bg-purple-50 text-violet-900 bg-violet-300 bg-blue-600 border-indigo-800\">x</a>\n";
-        assert!(diagnostics_for(Lang::Html, src).is_empty());
+    fn skips_tints_shades_and_other_hues_one_edge_at_a_time() {
+        for class in [
+            "bg-purple-50",
+            "text-violet-900",
+            "bg-violet-300",
+            "bg-violet-800",
+            "bg-blue-600",
+            "border-indigo-800",
+            "bg-fuchsia-500",
+            "from-violet-500",
+            "bg-violet-5000",
+        ] {
+            assert!(html(class).is_empty(), "{class}");
+        }
+        for class in ["bg-violet-400", "bg-violet-700"] {
+            assert_eq!(html(class).len(), 1, "{class}");
+        }
     }
 
     #[test]
-    fn leaves_gradients_to_their_rules() {
-        let stops = "<a class=\"from-violet-500 via-purple-500 to-indigo-600\">x</a>\n";
-        assert!(diagnostics_for(Lang::Html, stops).is_empty());
-        let clip = "<h1 class=\"bg-clip-text text-violet-500\">x</h1>\n";
-        assert!(diagnostics_for(Lang::Html, clip).is_empty());
+    fn leaves_gradient_stops_and_gradient_text_to_their_rules() {
+        assert!(html("from-violet-500 via-purple-500 to-indigo-600").is_empty());
+        for clip in [
+            "bg-clip-text",
+            "md:bg-clip-text",
+            "!bg-clip-text",
+            "bg-clip-text!",
+        ] {
+            assert!(
+                html(&format!("{clip} bg-gradient-to-r text-violet-500")).is_empty(),
+                "{clip}"
+            );
+        }
+    }
+
+    #[test]
+    fn bg_clip_text_without_a_gradient_is_not_slop052_so_the_accent_still_counts() {
+        assert_eq!(html("bg-clip-text text-violet-500").len(), 1);
+    }
+
+    #[test]
+    fn reads_side_specific_offset_placeholder_and_arbitrary_opacity_forms() {
+        for class in [
+            "border-t-violet-500",
+            "ring-offset-violet-500",
+            "placeholder-violet-500",
+            "inset-ring-indigo-600",
+            "bg-violet-600/[0.5]",
+            "bg-violet-600/(--o)",
+            "peer-hover:text-purple-400",
+        ] {
+            assert_eq!(html(class).len(), 1, "{class}");
+        }
     }
 
     #[test]
@@ -113,11 +164,18 @@ mod tests {
     }
 
     #[test]
-    fn clean_twin_and_empty_input() {
-        assert!(
-            diagnostics_for(Lang::Html, "<a class=\"bg-slate-900 text-white\">x</a>\n").is_empty()
-        );
+    fn clean_twin() {
+        assert!(html("bg-slate-900 text-white").is_empty());
+    }
+
+    #[test]
+    fn empty_input_and_the_fix_text() {
         assert!(diagnostics_for(Lang::Html, "").is_empty());
+        let d = html("bg-violet-600");
+        assert_eq!(
+            d[0].fix.as_deref(),
+            Some("use the project's brand color token")
+        );
     }
 
     #[test]
@@ -128,22 +186,17 @@ mod tests {
             "tw:bg-violet-600",
             "tw:hover:bg-violet-600",
         ] {
-            let src = format!("<a class=\"{class}\">x</a>\n");
-            assert_eq!(diagnostics_for(Lang::Html, &src).len(), 1, "{class}");
+            assert_eq!(html(class).len(), 1, "{class}");
         }
     }
 
     #[test]
     fn skips_the_v4_variable_shorthand_and_arbitrary_values() {
-        let src =
-            "<a class=\"bg-(--brand) text-[#7c3aed] border-[oklch(0.606_0.25_292.717)]\">x</a>\n";
-        assert!(diagnostics_for(Lang::Html, src).is_empty());
+        assert!(html("bg-(--brand) text-[#7c3aed] border-[oklch(0.606_0.25_292.717)]").is_empty());
     }
 
-    // ponytail: a v3 `tw-` config prefix (`tw-bg-violet-600`) is not matched; reading it needs the
-    // project's tailwind config, so a prefixed v3 project is a known miss.
     #[test]
     fn v3_config_prefixes_are_a_known_ceiling() {
-        assert!(diagnostics_for(Lang::Html, "<a class=\"tw-bg-violet-600\">x</a>\n").is_empty());
+        assert!(html("tw-bg-violet-600").is_empty());
     }
 }

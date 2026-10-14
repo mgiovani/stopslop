@@ -42,8 +42,8 @@ from .fetchers import (
 )
 from .git import fetch_git_before_cell, fetch_git_cell, fetch_git_pinned_set
 
-UI_EXCLUDE = ("components/ui/", ".min.", "node_modules/", "/dist/", "/build/", ".next/",
-              "/__tests__/", ".test.", ".spec.", ".stories.")
+UI_EXCLUDE = ("components/ui/", ".min.", "node_modules/", "dist/", "build/", ".next/", "__tests__/",
+              "tests/", "e2e/", "cypress/", ".test.", ".spec.", ".stories.")
 
 AIGCODESET_BASE = "https://huggingface.co/datasets/basakdemirok/AIGCodeSet/resolve/main/data"
 

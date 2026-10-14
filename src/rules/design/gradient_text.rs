@@ -1,4 +1,4 @@
-use super::{is_gradient_background, unprefixed};
+use super::{is_gradient_background, is_gradient_utility, unprefixed};
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{ALL_NATLANGS, STYLE_LANGS};
@@ -51,14 +51,6 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
             ));
         }
     }
-}
-
-fn is_gradient_utility(u: &str) -> bool {
-    u.starts_with("bg-gradient-to-")
-        || u.starts_with("bg-linear-")
-        || u.starts_with("bg-radial")
-        || u.starts_with("bg-conic")
-        || (u.starts_with("bg-[") && u.contains("gradient("))
 }
 
 #[cfg(test)]

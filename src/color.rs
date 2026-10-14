@@ -74,11 +74,22 @@ pub fn parse(token: &str) -> Option<Rgba> {
 /// A shadcn theme value: the bare `H S% L%` triplet its v3-era tokens use (`262.1 83.3% 57.8%`),
 /// which is not valid CSS by itself and so is not accepted by `parse`.
 pub fn parse_hsl_triplet(value: &str) -> Option<Rgba> {
-    let p: Vec<&str> = value.split_whitespace().collect();
-    if p.len() != 3 || !p[1].ends_with('%') || !p[2].ends_with('%') {
+    let color = value.split('/').next().unwrap_or(value);
+    let mut parts = color.split_whitespace();
+    let (_, s, l) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() || !s.ends_with('%') || !l.ends_with('%') {
         return None;
     }
-    parse_hsl(&p.join(" "))
+    parse_hsl(value)
+}
+
+/// Violet and purple, the hues a stock "AI" theme picks: HSL hue 245-285 with saturation of at
+/// least 0.35. The floor sits above pure blue and Tailwind indigo-500 (hue 239-241 depending on
+/// notation) and the ceiling below fuchsia (292) and magenta (300), so one palette stop reads the
+/// same in hex and `oklch()`.
+pub fn is_violet(c: Rgba) -> bool {
+    let (h, s, _) = hsl(c);
+    s >= 0.35 && (245.0..=285.0).contains(&h)
 }
 
 /// Every color token in `value` with its byte span, in source order. Tokens inside `var()` and
@@ -194,10 +205,33 @@ fn split_args(args: &str) -> Vec<&str> {
 }
 
 fn number(p: &str, scale: f32) -> Option<f32> {
-    match p.strip_suffix('%') {
+    let n = match p.strip_suffix('%') {
         Some(v) => v.parse::<f32>().ok().map(|v| v / 100.0 * scale),
+        None if p == "none" => Some(0.0),
         None => p.parse::<f32>().ok(),
-    }
+    };
+    n.filter(|n| n.is_finite())
+}
+
+/// A CSS `<hue>` in degrees: unitless, `deg`, `grad`, `rad`, `turn`, or `none`.
+fn hue(p: &str) -> Option<f32> {
+    let (value, per_unit) = if let Some(v) = p.strip_suffix("deg") {
+        (v, 1.0)
+    } else if let Some(v) = p.strip_suffix("grad") {
+        (v, 0.9)
+    } else if let Some(v) = p.strip_suffix("rad") {
+        (v, 180.0 / std::f32::consts::PI)
+    } else if let Some(v) = p.strip_suffix("turn") {
+        (v, 360.0)
+    } else {
+        (p, 1.0)
+    };
+    let degrees = if value == "none" {
+        0.0
+    } else {
+        value.parse::<f32>().ok()? * per_unit
+    };
+    degrees.is_finite().then_some(degrees)
 }
 
 fn alpha(parts: &[&str]) -> Option<f32> {
@@ -226,7 +260,7 @@ fn parse_hsl(args: &str) -> Option<Rgba> {
     if p.len() < 3 {
         return None;
     }
-    let h = p[0].trim_end_matches("deg").parse::<f32>().ok()?;
+    let h = hue(p[0])?;
     let s = number(p[1], 1.0)?.clamp(0.0, 1.0);
     let l = number(p[2], 1.0)?.clamp(0.0, 1.0);
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
@@ -257,12 +291,13 @@ fn parse_oklch(args: &str) -> Option<Rgba> {
     }
     let l = number(p[0], 1.0)?;
     let chroma = number(p[1], 0.4)?;
-    let h = p[2]
-        .trim_end_matches("deg")
-        .parse::<f32>()
-        .ok()?
-        .to_radians();
-    oklab_to_rgba(l, chroma * h.cos(), chroma * h.sin(), alpha(&p)?)
+    let h = hue(p[2])?.to_radians();
+    Some(oklab_to_rgba(
+        l,
+        chroma * h.cos(),
+        chroma * h.sin(),
+        alpha(&p)?,
+    ))
 }
 
 fn parse_oklab(args: &str) -> Option<Rgba> {
@@ -270,15 +305,15 @@ fn parse_oklab(args: &str) -> Option<Rgba> {
     if p.len() < 3 {
         return None;
     }
-    oklab_to_rgba(
+    Some(oklab_to_rgba(
         number(p[0], 1.0)?,
         number(p[1], 0.4)?,
         number(p[2], 0.4)?,
         alpha(&p)?,
-    )
+    ))
 }
 
-fn oklab_to_rgba(l: f32, a: f32, b: f32, alpha: f32) -> Option<Rgba> {
+fn oklab_to_rgba(l: f32, a: f32, b: f32, alpha: f32) -> Rgba {
     let l_ = (l + 0.396_337_78 * a + 0.215_803_76 * b).powi(3);
     let m_ = (l - 0.105_561_346 * a - 0.063_854_17 * b).powi(3);
     let s_ = (l - 0.089_484_18 * a - 1.291_485_5 * b).powi(3);
@@ -296,12 +331,12 @@ fn oklab_to_rgba(l: f32, a: f32, b: f32, alpha: f32) -> Option<Rgba> {
         };
         (encoded * 255.0).round() as u8
     };
-    Some(Rgba {
+    Rgba {
         r: byte(linear[0]),
         g: byte(linear[1]),
         b: byte(linear[2]),
         a: alpha,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -407,5 +442,67 @@ mod tests {
         assert_eq!(parse_hsl_triplet("#7c3aed"), None);
         assert_eq!(parse_hsl_triplet("262 83 57"), None);
         assert_eq!(parse("262.1 83.3% 57.8%"), None);
+    }
+
+    #[test]
+    fn is_violet_separates_tailwind_violet_from_blue_indigo_and_fuchsia() {
+        for hex in [
+            "#8b5cf6", "#7c3aed", "#6d28d9", "#a855f7", "#9333ea", "#7e22ce",
+        ] {
+            assert!(is_violet(parse(hex).unwrap()), "{hex}");
+        }
+        for hex in [
+            "#6366f1", "#4f46e5", "#3b82f6", "#1d4ed8", "#0000ff", "#d946ef", "#c026d3", "#ff00ff",
+            "#808080",
+        ] {
+            assert!(!is_violet(parse(hex).unwrap()), "{hex}");
+        }
+        for v4 in [
+            "oklch(0.606 0.25 292.717)",
+            "oklch(0.541 0.281 293.009)",
+            "oklch(0.627 0.265 303.9)",
+        ] {
+            assert!(is_violet(parse(v4).unwrap()), "{v4}");
+        }
+        for v4 in [
+            "oklch(0.585 0.233 277.117)",
+            "oklch(0.623 0.214 259.815)",
+            "oklch(0.546 0.245 262.881)",
+            "oklch(0.667 0.295 322.15)",
+        ] {
+            assert!(!is_violet(parse(v4).unwrap()), "{v4}");
+        }
+    }
+
+    #[test]
+    fn malformed_and_exotic_angles_and_keywords() {
+        assert_eq!(parse("oklch(0.5 0.1 abc)"), None);
+        assert_eq!(parse("oklch(0.5 0.1 inf)"), None);
+        assert_eq!(parse("oklch(nan 0.1 10)"), None);
+        assert_eq!(parse("oklch(-0.5 -0.1 10deg)").map(|c| c.a), Some(1.0));
+        assert_eq!(
+            parse("oklch(0.606 0.25 0.8turn)"),
+            parse("oklch(0.606 0.25 288)")
+        );
+        assert_eq!(
+            parse("oklch(0.606 0.25 288deg)"),
+            parse("oklch(0.606 0.25 288)")
+        );
+        assert_eq!(
+            parse("oklch(0.606 0.25 320grad)"),
+            parse("oklch(0.606 0.25 288)")
+        );
+        assert!(parse("oklch(0.606 0.25 5.0265rad)").is_some());
+        assert_eq!(parse("oklch(0.5 none none)"), parse("oklch(0.5 0 0)"));
+        assert_eq!(parse("hsl(0.5turn 100% 50%)"), parse("hsl(180, 100%, 50%)"));
+        assert_eq!(parse("oklab(from var(--x) l a b)"), None);
+        assert_eq!(parse("oklch(0.5 0.1)"), None);
+    }
+
+    #[test]
+    fn hsl_triplet_accepts_an_alpha_tail_and_rejects_commas() {
+        assert!(parse_hsl_triplet("262.1 83.3% 57.8% / 0.5").is_some_and(|c| c.a == 0.5));
+        assert_eq!(parse_hsl_triplet("262, 83%, 58%"), None);
+        assert_eq!(parse_hsl_triplet("262 83% 58% 1"), None);
     }
 }
