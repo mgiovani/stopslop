@@ -94,7 +94,7 @@ def main():
     ap.add_argument("--no-fetch", action="store_true",
                      help="score the cells <dir>/fetched.json lists; no network, no rewrite")
     ap.add_argument("--json", help="write results.json (rules, cells, per-message tallies, flagged lines)")
-    ap.add_argument("--readme", default="README.md", help="README holding the rule table")
+    ap.add_argument("--rules-doc", default="docs/rules.md", help="Markdown file holding the rule table")
     ap.add_argument("--self-check", action="store_true", help="assert the metric math and exit")
     args = ap.parse_args()
     if args.self_check:
@@ -180,7 +180,7 @@ def main():
     else:
         sys.stdout.write(out)
     if args.json:
-        rules = load_rules(args.bin, args.readme)
+        rules = load_rules(args.bin, args.rules_doc)
         payload = results_payload(datasets_built, revisions, selected, args, rules, not_fetched)
         with open(args.json, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, ensure_ascii=False, sort_keys=True)

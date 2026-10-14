@@ -101,7 +101,7 @@ fn emit_sarif(
                 "id": r.code,
                 "shortDescription": { "text": r.name },
                 "helpUri": format!(
-                    "https://github.com/mgiovani/stopslop/blob/main/README.md#{}",
+                    "https://github.com/mgiovani/stopslop/blob/main/docs/rules.md#{}",
                     r.code.to_lowercase()
                 ),
             })

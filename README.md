@@ -4,47 +4,15 @@
 
 # stopslop
 
-Catch the junk AI leaves in your code.
+A deterministic linter, written in Rust, for the tells AI leaves in code and prose: 51 rules, one static binary, no model at scan time.
 
 [![CI](https://github.com/mgiovani/stopslop/actions/workflows/ci.yml/badge.svg)](https://github.com/mgiovani/stopslop/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/mgiovani/stopslop/blob/main/LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/stopslop.svg)](https://crates.io/crates/stopslop)
 
+[Docs](docs/README.md) · [Rules](docs/rules.md) · [Changelog](CHANGELOG.md)
+
 ![stopslop demo](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/demo.gif)
-
-Your linter can't see `// ... rest of code unchanged`. ESLint, Ruff, and
-Clippy throw away comment and string content before analysis: exactly
-where AI coding artifacts live. stopslop reads what they discard: leaked
-chat preambles, elision comments that silently deleted code, stray markdown
-fences, placeholder credentials, and package imports that don't resolve to
-anything you declared. It reads your prose too: Markdown, MDX, plain text,
-reST, and HTML get the same deterministic treatment. One static binary, no
-LLM at scan time: same input, same output, every run.
-
-- One fast static binary, zero config to get started.
-- Deterministic: no LLM calls, no API calls, no network access at scan time.
-- Built for CI: exit codes, SARIF, JSON, and inline suppressions.
-
-## Why your existing linter misses this
-
-ESLint, Ruff, and Clippy parse comments and strings as trivia their default
-rule sets don't inspect, which is exactly where copy-pasted chat output and
-truncated edits land. A few examples:
-
-| Artifact | ESLint / Ruff / Clippy | stopslop |
-|---|---|---|
-| `// ... rest of code unchanged` | Not linted (comment content is ignored by default rules) | SLOP001 |
-| Leaked chat preamble ("Certainly! Here's...") | Not linted (same reason) | SLOP002 |
-| `x as unknown as T` type-escape chain | No stock rule (`as unknown` alone is valid, idiomatic TS) | SLOP007 |
-| `YOUR_API_KEY`, `sk-...`-shaped secret | Not linted (string literal content is ignored by default rules) | SLOP009 |
-
-`stopslop` is a deterministic linter for TypeScript, Python, Go, and Rust.
-Every rule is a tree-sitter AST match or a regex over extracted
-comments/strings: same input, same output, every time. This is a
-**quality gate that also names AI tells**: it flags patterns that are junk
-regardless of who (or what) produced them, and patterns that are known
-giveaways of machine-generated text or code, so you can rewrite either. It
-never scores a file as "written by AI" and never needs a model to say so.
 
 ## Install
 
@@ -52,74 +20,42 @@ never scores a file as "written by AI" and never needs a model to say so.
 cargo install stopslop
 ```
 
-Once a day, an outdated install prints a one-line update notice to stderr
-(never in CI, never for `--format json|sarif|markdown`, never when stderr is
-not a terminal). Set `STOPSLOP_NO_UPDATE_CHECK=1` (or `NO_UPDATE_NOTIFIER=1`)
-to turn it off.
-
-**Alternatives:**
+From the latest main, or from a local checkout:
 
 ```bash
-# latest main, for a merged-but-unreleased fix
 cargo install --git https://github.com/mgiovani/stopslop
-
-# local checkout, for hacking on stopslop itself
-git clone https://github.com/mgiovani/stopslop
-cd stopslop
 cargo install --path .
 ```
 
 ## Usage
 
 ```bash
-stopslop                          # lint the current directory
-stopslop src/ lib/                 # lint specific paths
-stopslop --format json .           # machine-readable output
-stopslop --stats .                 # throughput and per-rule finding counts (stderr)
-stopslop -j 1 .                    # single worker thread (perf work; 0 = automatic)
-stopslop --select SLOP001          # run only the elision rule
-stopslop --select rhetoric         # run one rule group (see "Rule groups" below)
-stopslop --select ALL              # every rule (SLOP010 still needs --check-imports)
-stopslop --ignore SLOP008          # run everything except stub detection
-stopslop --select artifact --extend-select SLOP033  # add a rule on top of a narrower select
-stopslop --list-rules              # print every rule with its group, tier, default, and active state
-stopslop --check-imports .         # also run SLOP010 (unresolved import) — opt-in
-stopslop --config path.toml        # use a specific config file instead of the discovered one
-stopslop --no-config               # ignore any project or user-level stopslop.toml, CLI flags only
-stopslop --write-baseline .        # record today's findings (see "Baseline" below)
-stopslop --baseline .              # report only findings that aren't in the baseline
-stopslop --staged                  # lint what is about to be committed (index content, not disk)
-stopslop --changed                 # staged + unstaged changes against HEAD
-stopslop --since origin/main       # files changed on this branch, for PR checks
+stopslop .                 # lint the current directory
+stopslop --since origin/main   # lint only the files changed on this branch
 ```
 
-Example output:
+```
+tests/fixtures/typescript/slop_attribution.ts:1:1 SLOP004 AI attribution / chat-export artifact in comment
+tests/fixtures/typescript/slop_elision.ts:3:3 SLOP001 elision comment may have replaced real code
+tests/fixtures/markdown/slop_residue.md:3:1 SLOP011 unedited assistant-response residue in prose
+    fix: delete the sentence
+```
 
-![stopslop findings across Python and TypeScript files](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/findings.png)
+Tier A findings exit 1 and fail CI. Tier B findings warn. See [usage](docs/usage.md) for formats (text, JSON, SARIF, Markdown), baselines and exit codes.
 
-`--format json` emits a flat array of findings; `--format sarif` emits a
-SARIF 2.1.0 document for GitHub code scanning and similar tools;
-`--format markdown` emits the findings grouped under one heading per tier, for
-pasting into a PR comment or a report. `--stats` prints a
-files/lines/wall-time/throughput summary, followed by one row per rule with
-findings (count, code, tier, name, distinct files), to stderr in text and
-markdown modes; with `--format json` the output becomes
-`{"findings": [...], "stats": {...}}`, and with `--format sarif` the same
-object lands in `runs[0].properties.stats`. In both, `stats` also carries
-`findings` (total) and `rules`, an array of `{code, tier, name, count, files}`. Wall time runs from startup
-through the walk, so it lines up with an external `time`. "skipped" counts
-files the walk reached but could not lint (unsupported extension or
-unreadable); paths dropped by `.gitignore` or `exclude` are never walked and
-are not counted.
+## Why stopslop
 
-![stopslop --format json output](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/formats.png)
+- **Reads what other linters skip.** ESLint, Ruff, and Clippy treat comment and string content as trivia, which is where `// ... rest of code unchanged` and a leaked "Certainly! Here's..." preamble end up. See [why](docs/why.md).
+- **Deterministic.** Every rule is a tree-sitter AST match or a regex over extracted comment, string or prose text. Same input, same output, with no LLM call, API call, or network access at scan time.
+- **CI-ready tiers.** Tier A is mechanical and fails the run; Tier B warns. Tier C stays opt-in until a labelled corpus has scored it.
+- **Code, prose, and images.** Source code and documents, plus the metadata of PNG, JPEG and WebP images.
+- **English and Brazilian Portuguese.** Phrase panels for both run by default.
+- **Measured.** `just corpus` scores every rule against labelled human and AI corpora; see [benchmarks](docs/benchmarks.md).
+- **Fast and quiet to adopt.** One binary and no config to start. `--staged` and `--since` lint only a diff, and a baseline grandfathers old findings.
 
-## Rule groups
+## What it catches
 
-`SLOP0NN` numbers are chronological, not thematic, so a numeric prefix can't
-express "just the rhetoric rules". Named groups can. They work anywhere a rule
-code or prefix does, including `--select`, `--ignore`, and the
-`select`/`ignore` keys in `stopslop.toml`:
+51 rules in 8 groups. `--list-rules` prints every rule with its group, tier, and state.
 
 | Group | What it covers |
 |-------|----------------|
@@ -130,592 +66,52 @@ code or prefix does, including `--select`, `--ignore`, and the
 | `verbosity` | Words that cost the reader something and return nothing: hedging, filler, padding |
 | `sourcing` | Claims with no checkable source behind them |
 | `format` | Typographic and Markdown affectations |
+| `provenance` | Embedded image metadata that names how or by what an image was made |
 
-```bash
-stopslop --select artifact,structure   # the mechanical, high-confidence rules only
-stopslop --select SLOP --ignore verbosity  # everything except the density rules
-```
+The per-rule table is in [docs/rules.md](docs/rules.md).
 
-Every rule belongs to exactly one group; a test enforces that the table stays
-exhaustive, so a new rule can't quietly escape group selection. `--list-rules`
-prints the full mapping.
+| Tier | Default | Effect |
+|------|---------|--------|
+| A | on (14 rules) | A finding exits 1 and blocks CI. Mechanical artifacts with no legitimate reading. |
+| B | on (32 rules) or off (3 rules) | Judgment calls that warn and never exit 1. `fail-on-tier = "B"` makes them fail. |
+| C | off (2 rules) | Thresholds not yet scored against a labelled corpus. Opt in with `--extend-select`. |
 
-`ALL` is a reserved selector, not a group: `--select ALL` (or `select =
-["ALL"]` in config) runs every registered rule plus any `[[custom-rule]]`
-entries from your config. SLOP010 is the one exception: it stays off until
-`--check-imports` is passed.
-
-## Baseline
-
-Turning stopslop on for an existing codebase usually surfaces findings nobody
-plans to fix today. A baseline grandfathers them so CI only fails on findings
-that are **new**:
-
-```bash
-stopslop --write-baseline .   # writes .stopslop-baseline.json, exits 0
-stopslop --baseline .         # later runs report only what isn't in it
-```
-
-Use `--baseline=path.json` / `--write-baseline=path.json` for a different file
-(the `=` is required, so a bare `--baseline` doesn't swallow your scan path),
-or set `baseline = ".stopslop-baseline.json"` in `stopslop.toml`.
-
-Findings are matched by a fingerprint of `code + path + message` with digits
-normalized out, not by line number, so editing above a finding doesn't
-resurrect it and a density count drifting by one doesn't either. Paths are
-normalized as well, with a leading `./` stripped, so a baseline written from
-`git ls-files` (`foo.md`) still matches a `stopslop .` run (`./foo.md`). The file
-stores a **count** per fingerprint: if a file has three accepted findings from
-one rule, it absorbs exactly three, and a fourth is reported. Fix one and the
-budget shrinks with it. The count ratchets down on its own; raising it takes a
-deliberate `--write-baseline`.
-
-Commit the baseline file so CI and local runs agree.
-
-## Git-aware selection
-
-`--staged`, `--changed`, and `--since REF` (mutually exclusive) replace the walk
-with a git-selected file list, so linting scales with the size of a diff
-instead of the whole tree. Positional paths, if given, act as git pathspecs
-(`stopslop --staged src/` lints only staged files under `src`).
-
-- `--staged` reads each file's **staged** content (`git show :./path`), so a
-  partially staged file is checked as it will be committed, not as it sits on
-  disk.
-- `--changed` includes both staged and unstaged changes against `HEAD`;
-  untracked files are not included.
-- `--since REF` diffs against the merge base of `REF` and `HEAD` (git 2.30+),
-  so `REF` advancing after the branch forked doesn't pull in its changes.
-  Built for `stopslop --since origin/main` on a PR.
-- An empty selection exits 0. All three compose with `--baseline`, `exclude`,
-  and `[per-file-ignores]` exactly like a normal scan.
-
-Pre-commit hook: `stopslop --staged`.
-
-## Rules
-
-| Code | Group | Name | Tier | Langs | NL | Description |
-|------|-------|------|------|-------|----|--------------|
-| SLOP001 | artifact | Elision / "rest unchanged" comment | A, on | TS, TSX, Python, Go, Rust, HTML | en, pt-BR | A comment like `// ... rest unchanged` may mark code an AI dropped while truncating an edit |
-| SLOP002 | artifact | Chat preamble leaked into code | A, on | TS, TSX, Python, Go, Rust | en, pt-BR | Chat-assistant preamble ("Certainly! Here's the updated...") pasted straight into a source comment |
-| SLOP003 | artifact | Stray markdown code fence in source | A, on | TS, TSX, Python, Go, Rust | en, pt-BR | A bare ` ``` ` fence line left in source, usually from a whole file pasted out of a chat reply |
-| SLOP004 | artifact | AI attribution / chat-share artifact | A, on | TS, TSX, Python, Go, Rust | en, pt-BR | "Generated by ChatGPT", a `claude.ai/share` link, or other chat-export junk in a comment |
-| SLOP005 | structure | Empty / log-only catch | A, on | TS, TSX, Go, Rust | en, pt-BR | A `catch`/error branch that swallows the error with an empty body or just a log call |
-| SLOP006 | structure | Broad / swallowing except | A, on | Python | en, pt-BR | A bare `except:` or an `except Exception`/`BaseException` whose body only passes or logs, swallowing the exception instead of handling it. A narrow named exception (`except KeyError: pass`) is a deliberate recovery and stays clean |
-| SLOP007 | structure | Type-escape (`as any`/`as unknown`/`@ts-ignore`) | A, on | TS, TSX | en, pt-BR | `as any`, an `x as unknown as T` chain that fully escapes the type checker, or `@ts-ignore`/`@ts-nocheck` |
-| SLOP008 | structure | Stub-only / unimplemented body | A, on | TS, TSX, Python, Go, Rust | en, pt-BR | A function whose entire body is `pass`/`...`/`throw new Error("not implemented")`/`todo!()`/empty. A Python body that documents itself with a docstring before its `pass`/`...` is a deliberate no-op hook and stays clean |
-| SLOP009 | structure | Placeholder / sample credential value | A, on | TS, TSX, Python, Go, Rust, HTML | en, pt-BR | A hardcoded `YOUR_API_KEY`, `example.com`, `sk-...`-shaped secret, or other sample value; in HTML attributes also a placeholder-image host (`via.placeholder.com`, `placehold.co`) or an `alt` that is just `image` |
-| SLOP010 | structure | Unresolved package import | B, off | TS, TSX, Python, Go, Rust | en, pt-BR | An imported package that isn't declared in the project's manifest or stdlib (opt-in, `--check-imports`) |
-| SLOP011 | artifact | Assistant-response residue in prose | A, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A leftover chat-turn phrase (self-ID disclaimer, refusal boilerplate, a line-initial `Certainly!` opener, a trailing `let me know if you have` closer, reasoning-chain scaffolding like `let's think about this`, a mid-sentence `step 1:` that isn't heading a section or list item, or a paragraph-initial acknowledgment loop like `To answer your question, ...`) left unedited in prose |
-| SLOP012 | artifact | LLM tool / citation artifact tokens | A, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A leftover search/citation-tool token (`turn0search0`, `:contentReference[oaicite:1]`, a `【12†L3】` marker, `utm_source=chatgpt.com`) left in text |
-| SLOP013 | artifact | Unfilled template placeholder text | A, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | An unfilled placeholder (`[Your Name]`, `INSERT_SOURCE_URL_30`, a `date: 2025-XX-XX` stub) left in place of real content |
-| SLOP014 | rhetoric | Formulaic cliché phrase | B, on | Markdown, MDX, Text, reST, HTML | en | A stock marketing/narrative cliché (`unlock the power of`, `in today's fast-paced world`, `a testament to`) |
-| SLOP015 | verbosity | Hedging & filler-phrase density | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A document-wide density of hedging/filler phrases (`it's worth noting that`, `in conclusion`, `first and foremost`); an adjacent hedge stack like `might potentially` fires on its own, without waiting for the density threshold |
-| SLOP016 | verbosity | Overused-vocabulary density | B, on  | Markdown, MDX, Text, reST, HTML | en | A document-wide density of overused vocabulary (`delve`, `tapestry`, `robust`, `leverage`) across enough distinct terms to read as filler |
-| SLOP017 | rhetoric | Rhetorical parallelism / false-depth scaffolding density | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A document-wide density of three-item rhetorical lists and `not only X but also Y` phrasing. Trailing `, underscoring its...` participles count toward the same threshold. Longer enumerations and lists of proper nouns are not counted |
-| SLOP018 | format | Mid-prose em/en dash | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A mid-sentence em dash (`—`) or en dash (`–`) that should be rewritten out of the sentence (numeric ranges like `2020–2024` or `3 – 5`, and an attribution dash opening a block or blockquote like `— Oscar Wilde`, are exempt) |
-| SLOP019 | format | Boldface & bold-lead-in list overuse | B, on  | Markdown, MDX, HTML | en, pt-BR | Boldface overuse in body prose, or 3+ consecutive `- **Term**: ...` bold-lead-in list items |
-| SLOP020 | format | Typographic (smart) quotes in source | B, off | Markdown, MDX, Text, reST, HTML | en, pt-BR | Curly quotes/apostrophes in source where straight ASCII quotes are expected |
-| SLOP021 | format | Heading & marker formatting affectations | B, on  | Markdown, MDX, HTML | en, pt-BR | Emoji or a decorative technical symbol used as a heading/list marker (counted and reported separately), headings written in Title Case against an otherwise sentence-case document, or headings stacked over two-sentence sections |
-| SLOP022 | rhetoric | Formulaic opener / rhetorical setup | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A throat-clearing or faux-insight opener (`Here's the thing`, `What nobody tells you`, `Plot twist:`), or a self-answered `Question? Answer.` pair opening a line |
-| SLOP023 | rhetoric | Binary contrast / negative listing | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | The `It's not X. It's Y.` / `The question isn't X, it's Y` shape, or a `Not a X. Not a Y.` fragment run |
-| SLOP024 | rhetoric | Importance puffery / fake-strong verb | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | An inflated significance claim (`marks a pivotal moment`, `solidifies its position`), a `serves as a centralized hub`-style linking verb where plain `is` reads better, or a faux-scale range (`from the singularity of the Big Bang to the enigmatic dance of dark matter`) standing in for an actual magnitude |
-| SLOP025 | sourcing | Unsourced weasel attribution | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | Anonymous authority (`experts agree`, `studies show`) with nothing citing it anywhere on the line, whether a link or a footnote. Also flags notability by name-dropping three-plus outlets (`cited in TechCrunch, Forbes, and Wired`) with no per-citation context |
-| SLOP026 | rhetoric | Dramatic colon reveal | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A short noun phrase, a colon, then a lowercase dramatic reveal (`The best part: it learns`) |
-| SLOP027 | verbosity | Empty filler phrase & adverb density | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A document-wide density of empty phrases (`when it comes to`, `at its core`) and filler adverbs (`simply`, `actually`) |
-| SLOP028 | verbosity | Weak verb phrase / vague quantifier | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A document-wide density of nominalizations (`made a decision`, `has the ability to`) and vague quantifiers used where a number belongs (`significantly improves`) |
-| SLOP029 | rhetoric | Summary-recap ending / fake-profound kicker | B, on | Markdown, MDX, Text, reST, HTML | en, pt-BR | A closing block that restates the piece (`In conclusion`, `Overall`) or lands a mic-drop line (`It's already here.`) |
-| SLOP030 | rhetoric | Dramatic fragmentation / robotic rhythm | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | Stacked one-clause fragments (`That's it. That's the whole thing.`), consecutive `And`-initial sentences, or paragraph-wide repeated sentence shapes |
-| SLOP031 | rhetoric | Promotional / advertisement language | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | Brochure register in technical prose (`boasts a`, `industry-leading`, `a hidden gem`) at document-wide density |
-| SLOP032 | verbosity | Hyphenated-compound overuse | B, on  | Markdown, MDX, Text, reST, HTML | en | Stacked hyphenated modifiers used as filler (`end-to-end`, `data-driven`, `battle-tested`) at document-wide density |
-| SLOP033 | verbosity | Overlong sentence | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A sentence over 50 words, reported with its actual word count (URLs count as one word) |
-| SLOP034 | verbosity | Synonym rotation across a closed concept set | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | One concept named two ways within 200 words of one section's running prose (`check` and `verify`, `config` and `settings`) where technical writing should fix one term. Bullet lists and tables are excluded, so a catalog of differently-named things doesn't count as rotation |
-| SLOP035 | rhetoric | Outline-shaped filler section | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A `Challenges and Future Prospects`-style section heading, or `despite these challenges` boilerplate, standing in for specifics |
-| SLOP036 | rhetoric | Diff-anchored documentation | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | Docs narrating a change (`was added to replace`, `no longer requires`) instead of describing current behavior; changelogs, migration guides and files under a `whatsnew/`, `changelog/` or `release-notes/` directory are exempt |
-| SLOP037 | stdlib | Reinvented stdlib / native platform feature | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | Hand-rolled code where a standard-library or platform primitive exists (`JSON.parse(JSON.stringify(x))`, `for i in range(len(xs))`, `ioutil.ReadFile`) |
-| SLOP038 | stdlib | Dependency with a stdlib equivalent | B, on  | TS, TSX | en, pt-BR | An import of a package the platform already covers (`moment`, `uuid`, `node-fetch`, `left-pad`) |
-| SLOP039 | structure | Pass-through wrapper function | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | A function whose whole body forwards its own parameters, unchanged, to another function. A Python method forwarding `self`/`cls` is a call-site adapter and stays clean |
-| SLOP040 | structure | Single-implementation interface / abstract | B, on  | TS, TSX, Python | en, pt-BR | An interface or abstract class with exactly one implementor in the same file: abstraction with no second user |
-| SLOP041 | verbosity | Mechanical uniformity (templated prose) | B, on  | Markdown, MDX, Text, reST, HTML | en, pt-BR | A document of 200+ words where flat sentence-length burstiness trips together with at least one of low type-token vocabulary ratio or repeated word-trigrams |
-| SLOP042 | verbosity | Comment that restates the code | B, on  | TS, TSX, Python, Go, Rust | en, pt-BR | A plain comment of 2 to 12 words whose content words all already appear in the one statement it sits on, or only name the construct that statement is (`// increment the counter` above `counter += 1`), so it adds nothing the code doesn't say. Doc comments (and the plain comments that serve as docs where a language has no doc syntax: Go file scope and struct fields, Python module and class attributes), pragmas, banners, questions, comments with code symbols or quotes in them, comments naming an identifier the statement lacks, and any comment carrying a *why* (`because`, `otherwise`, `workaround`, a URL, an issue number), a constraint (`not`, `only`, `unless`, `before`) or a warning (`careful`, `subtle`) are exempt. Inflection is ignored (`parsed` matches `parse_header`) but abbreviations are not (`max` is not `maximum`) |
-| SLOP043 | verbosity | Comment that runs long | B, off | TS, TSX, Python, Go, Rust | en, pt-BR | A plain comment block (consecutive comment lines count as one) of more than 40 words. A reason fits in a sentence or two; a comment that needs three full lines is narrating the code or carrying a design note that belongs in a doc comment, the README or the commit message. Doc comments, godoc (any Go comment outside a function body), license headers, generated files and commented-out code are exempt |
-| SLOP044 | artifact | Boilerplate or empty page title | B, on  | HTML | en, pt-BR | A `<title>Document</title>` (the editor's `!` expansion left in place) or an empty `<title>` |
-| SLOP045 | format | Mechanical uniformity (code formatting) | C, off | TS, TSX, Python, Rust | en, pt-BR | A source file of 60+ non-blank lines whose line lengths AND block lengths both barely vary: stddev/mean under 0.30 across content lines and under 0.25 across runs of consecutive non-blank lines. Both must trip. Files with any trailing whitespace (never formatter-touched), flat files under three indent depths, generated files, test paths and Go (gofmt is not optional) are exempt. Thresholds are fitted to human code only and are provisional until issue #39 scores them against a labelled corpus, which is why this is the one Tier C rule |
-| SLOP046 | provenance | Generation prompt shipped in image | A, on | PNG, JPEG, WebP | en, pt-BR | A metadata field keyed exactly `parameters`, `workflow`, `sd-metadata`, `invokeai_metadata`, or `invokeai_workflow` ships the image's full generation prompt or workflow graph; fires on the keyword alone even when the value itself is zlib-compressed. Bare `prompt` is not a key: any app can name its own text that way |
-| SLOP047 | provenance | Declared AI source type | A, on | PNG, JPEG, WebP | en, pt-BR | A metadata value names the IPTC digital-source-type vocabulary term `trainedAlgorithmicMedia` (fully AI-generated) or `compositeWithTrainedAlgorithmicMedia` (an AI-assisted edit of a real photograph), whether it surfaces in an XMP packet, an IPTC block, or a C2PA manifest. A C2PA manifest's mere presence is never flagged on its own: camera bodies like the Leica M11-P and Sony Alpha sign every frame they take |
-| SLOP048 | provenance | Image metadata names a generator | B, on | PNG, JPEG, WebP | en, pt-BR | A metadata value names a known image generator (`Midjourney`, `Stable Diffusion`, `ComfyUI`, `Adobe Firefly`, and others), matched with a word-boundary guard so it never trips inside an ordinary word (`medalled`, `we recraft your brand`). Skips any field SLOP046 or SLOP047 already owns, so a ComfyUI file's own `prompt`/`workflow` JSON and a C2PA manifest's own `digitalSourceType` declaration aren't double-reported |
-| SLOP049 | provenance | Image spectrum has an upsampling ridge | C, off | PNG, JPEG | en, pt-BR | Decodes a 256x256 centre crop to grayscale, takes a Hann-windowed FFT and flags a high-frequency radius standing 0.4 log10 above its neighbours in the azimuthally averaged power spectrum, the periodic artifact GAN and diffusion upsampling can leave. Skips WebP, images under 256 px and images over 64 M pixels. The measured splits did not separate (see `bench/candidates.toml`), so it stays opt-in: `--extend-select SLOP049` |
-| SLOP050 | artifact | Comment narrates a stand-in | B, on | TS, TSX, Python, Go, Rust | en | A non-doc comment saying the code beneath it is a placeholder, simulation or demo ("logic would go here", "in a real-world scenario", "for demonstration purposes", "replace with your actual..."). `here` and `logic` are word-bounded so `thereby` and `logician` stay clean |
-| SLOP051 | artifact | Comment announces demo code | B, on | TS, TSX, Python, Go, Rust | en | A non-doc comment that opens with `Example usage`, `Sample usage`, `Example 1:` or a sample-data announcement ("Create sample data", "Mock response"), the demo a chat answer appends to the code it just wrote |
-
-Every rule is exactly one of four states, `--list-rules` prints the TIER,
-DEFAULT (built-in) and ACTIVE (under your config) columns so you can check any given rule at a glance:
-
-- **Tier A, on by default (14 rules)**: mechanical artifacts (SLOP001–009,
-  SLOP011–013, SLOP046–047) with no legitimate reading. A finding here fails
-  the run (exit 1) and blocks CI.
-- **Tier B, on by default (32 rules)**: everything else except SLOP010,
-  SLOP020, SLOP043 and SLOP045.
-  Judgment calls (density and style checks on prose, stdlib/structure
-  heuristics) that warn without ever exiting 1. Expect some noise; silence
-  what you don't want with `ignore`/`--ignore` by code or group.
-- **Tier B, off by default (3 rules)**: SLOP010, gated behind
-  `--check-imports` because of its false-positive risk with private
-  registries and dynamic imports; SLOP020 (smart quotes) and SLOP043 (long
-  comments), which the labelled corpus showed firing on human text as often
-  as on AI text. Enable either with `--extend-select`.
-- **Tier C, always off by default (2 rules)**: SLOP045 and SLOP049. Tier C means the
-  rule's threshold has not been scored against a labelled corpus yet, so it
-  stays opt-in until it has been: enable it with
-  `extend-select = ["SLOP045"]` or `--extend-select SLOP045`. A
-  `[[custom-rule]]` may declare `tier = "C"` to keep itself off the exit-1
-  path unless `fail-on-tier = "C"`. Custom rules are always on by default whatever their tier, because you
-  wrote them.
-
-Tier is a fixed property of each rule, and select/ignore can't change it.
-What you can change is which tier the run fails on: `fail-on-tier = "B"` in
-`stopslop.toml` (or `--fail-on-tier B`) puts every finding on the exit-1
-path. [CHANGELOG.md](CHANGELOG.md) records which rules changed tier between
-releases.
-
-Findings that have one concrete replacement print it on a second line:
-
-```
-src/util.ts:14:11 SLOP037 deep clone via a JSON round trip
-    fix: use `structuredClone(value)`
-```
-
-`--format json` carries the same text in a `fix` field, omitted when a rule
-flags a document-wide pattern with no single substitutable span.
-
-Note on SLOP007: a bare `x as unknown` is not flagged on its own: it's a
-legitimate first step in TypeScript's narrowing idiom. Only the chained form,
-`x as unknown as T`, is flagged, since that's the pattern that fully defeats
-the type checker.
-
-## Measured on labelled corpora
-
-`just corpus` runs every rule against labelled human-vs-AI corpora and
-rebuilds the report. For every rule, per code language and per natural language, it
-prints the hit rate on the human split (a false-positive proxy), the hit rate
-on the AI split (a recall proxy), precision at a 1:1 human/AI prior, and
-findings per KLoC or per thousand words.
-
-```bash
-just corpus          # fetch, score, analyse, render
-just corpus-fetch    # download and materialize the cells (the only step needing the network)
-just corpus-score    # lint them, rebuild bench/corpus_report.md, write results.json
-just corpus-analyze  # measure bench/candidates.toml, split rates by message, rank phrases
-just corpus-html     # render target/corpus/report.html
-```
-
-Each recipe is one command; run `just --list` to see them, or read the
-[justfile](justfile) and run the underlying `python3 bench/...` line by hand.
-The corpus recipes split on the network boundary: `corpus-fetch` downloads and
-materializes every cell and writes `target/corpus/fetched.json`; `corpus-score`
-reads that manifest and never touches the network, so scoring a rule change
-is offline and reproducible. Set `HF_TOKEN` (or `HF_API_TOKEN`) for the
-Hugging Face datasets-server.
-Datasets are never committed, and neither is the rendered HTML, because several
-registered datasets forbid redistributing a derivative. The committed
-[bench/corpus_report.md](bench/corpus_report.md) is the last run's output.
-
-### What counts as a human split
-
-A split is read as human only when its text is dated 2019 or earlier, or was
-written by identified people under controlled conditions. Everything else was
-collected once coding assistants and chat models were in general use, and
-nobody can guarantee its human side was written without one.
-
-Splits that clear the bar are `pinned-2019` (a 2019 release tag, or a corpus
-built from pre-2020 sources) or `verified-authors` (exam essays written under
-supervision, professional annotators writing to a brief). Splits that do not
-are `unverified`: they are still fetched, scored and reported in full, but
-below a divider that says why, and they never enter any pooled number or
-takeaway.
-
-Every AI split carries the years of the models that wrote it, so a 2022 result
-is never read as a statement about a 2025 model.
-
-### Candidate tells
-
-`bench/candidates.toml` holds proposed tells that are not rules: a regex, a
-scope, and what the corpus said when `just corpus-analyze` measured it. A
-candidate that separates the splits earns an issue and then a rule with
-fixtures; one that does not stays in the file as the record of a measurement,
-next to the tells already measured and dropped. Nothing in that file changes
-what `stopslop` reports.
-
-Datasets in the registry, none committed to this repo:
-
-| Name | What it covers | Human split | Generators | License |
-|---|---|---|---|---|
-| Go 1.13 src | Go | pinned-2019 | n/a | BSD-3-Clause |
-| CPython 3.8.0 Lib and Doc | Python and reStructuredText | pinned-2019 | n/a | PSF-2.0 |
-| Rust 1.40.0 std | Rust | pinned-2019 | n/a | MIT or Apache-2.0 |
-| TypeScript 3.7.2 src | TypeScript | pinned-2019 | n/a | Apache-2.0 |
-| Ant Design 3.26.0 | TSX | pinned-2019 | n/a | MIT |
-| naples-code | Python, human and AI functions paired in one corpus, docstring in a separate column | pinned-2019 | gpt-3.5-turbo, DeepSeek-Coder-Instruct-33B, Qwen2.5-Coder-Instruct-32B, 2023-24 | CC-BY-4.0 |
-| The Rust Programming Language book | English Markdown | pinned-2019 | n/a | MIT or Apache-2.0 |
-| React docs | English Markdown | pinned-2019 | n/a | CC-BY-4.0 |
-| Kubernetes docs | English Markdown | pinned-2019 | n/a | CC-BY-4.0 |
-| HC3 | English answers | pinned-2019 (ELI5, FiQA, WikiQA) | ChatGPT, 2022 | CC-BY-SA-4.0 |
-| MAGE | English documents from ten corpora | pinned-2019 (SciGen dropped) | 27 models, 2019-2022 | Apache-2.0 on the card, CC-BY-4.0 in the repo |
-| Ghostbuster data | English news and stories | pinned-2019 (Reuters, WritingPrompts) | gpt-3.5, claude, 2023 | CC-BY-3.0 |
-| SemEval-2024 Task 8 | English text from PeerRead, arXiv, Reddit and WikiHow | pinned-2019 (Wikipedia dropped) | ChatGPT, GPT-3 davinci, Cohere, Dolly, 2023 | Apache-2.0 |
-| GPT-2 output dataset | English web text (WebText) | pinned-2019 | GPT-2 1542M, 2019 | MIT |
-| Beemo | English instruction responses | verified-authors (No Robots) | GPT-4o, Llama 3.1 70B, Mixtral, Gemma, Mistral 7B, Zephyr, 2023-24 | MIT (edits); prompts and human outputs CC-BY-NC-4.0 |
-| Diplomatrix-BR | Brazilian Portuguese exam essays | verified-authors | GPT-4o, Claude 3, Gemini, Llama 3, Sabiá and others, 2024 | MIT |
-| LeNER-Br | Brazilian Portuguese statutes and court rulings | pinned-2019 | n/a | MIT (packaging); the raw texts are public-domain Brazilian federal statutes and court rulings (Lei 9.610/98 Art. 8) |
-| DroidCollection | code: Python, Go, JavaScript as .ts, Rust adversarial | unverified | open and API code models, 2024-25 | not stated on the card |
-| SemEval-2026 Task 13 | code: Python, Go, JavaScript as .ts, hybrid and adversarial | unverified | Qwen2.5-Coder, DeepSeek-Coder, Llama 3.x, GPT-4o and others, 2024-25 | Apache-2.0 |
-| CodeMirage | code: Python, Go, JavaScript as .ts, plus paraphrased | unverified | ten LLMs, 2025 | CC-BY-NC-ND-4.0 |
-| AIGCodeSet | Python | unverified | CodeLlama, Codestral, Gemini 1.5, 2024 | CDLA-Permissive-2.0 |
-| CoDET-M4 | Python, comments stripped by the publisher | unverified | GPT-4o, Llama 3, Qwen, 2024 | MIT |
-| Rosetta Code | Python, Go, Rust, TypeScript | unverified | n/a | GFDL |
-| H-AIRosettaMP | Python, Go, Rust, TypeScript, AI side translates a human Rosetta Code solution from another language | unverified | StarCoder2, 2024 (ai-translated) | MIT |
-| FAIDSet | English text, plus a human-LLM collaborative split | unverified | GPT-4o, Gemini 2, Llama 3, DeepSeek, 2024-25 | MIT |
-| PAN25 Voight-Kampff | English fiction, essay and news text, plus machine-paraphrased | unverified | 23 models incl. gpt-4o, o3-mini, gemini-2.0-flash, deepseek-r1, llama-3.3-70b, 2023-25 | research use only, no redistribution (Zenodo record terms) |
-| AIDev | English pull-request descriptions, AI only | none | Claude Code, Codex, Cursor, Devin, Copilot, Jules, 2025 | CC-BY-4.0 |
-| APT-Eval | English text polished to a stated degree | unverified | GPT-4o, Llama 3.1 70B, Llama 3 8B, DeepSeek-V3, 2024-25 | CC-BY-4.0 |
-| WETBench | Portuguese Wikipedia paragraphs | unverified | GPT-4o mini, Gemini 2.0, Qwen2.5, Mistral, 2024 | CC-BY-NC-SA-4.0 |
-| Essay-BR | Brazilian Portuguese student essays | unverified | n/a | MIT |
-
-No dataset anywhere pairs human and AI-written TSX or real TypeScript: the
-`typescript` cells drawn from DroidCollection, SemEval-2026 Task 13, and
-CodeMirage are JavaScript the source dataset stored with a `.ts` extension,
-and no registered dataset carries TSX at all, so TSX AI stays synthesized.
-Across Google, DeepMind, Meta, OpenAI, Microsoft, GitHub, AI2, BigCode,
-Salesforce, Amazon, IBM, NVIDIA, DeepSeek, Alibaba, and Mistral, the only
-labelled human-vs-AI corpus any of them publishes is OpenAI's 2019 GPT-2
-output dataset.
-
-`just corpus-generate` (`uv run`, needs an Anthropic API key, costs money)
-calls Claude to synthesize the AI split for a cell that has no public one. Its
-output is raw model text, every synthesized file is marked as such on disk
-under `synth-*`, and those five cells are the only source of plain AI Rust and
-the only source of a TSX AI split.
-
-A hit rate here is evidence that a tell appears in a corpus, on a human split
-or an AI split, and it is never a claim that any single file was AI-written.
-
-## Prose linting
-
-stopslop also lints `.md`, `.mdx`, `.txt`, `.rst`, and `.html`/`.htm` files:
-same binary, same deterministic regex/structural matching, no LLM involved
-in the scan.
-
-HTML is parsed with tree-sitter-html, and the rules see what a reader sees:
-visible text, HTML comments, and `href`/`src` attribute values. Everything
-else is blanked, including `<script>`, `<style>`, `<pre>`, `<code>`,
-`<textarea>`, `<template>`, `<svg>`, `<math>`, and `<noscript>` bodies.
-Django/Jinja `{{ … }}`, `{% … %}`, and `{# … #}` are blanked before parsing
-too. Each leaf block element (`<p>`, `<div>`, `<blockquote>`, `<td>`) is one
-paragraph for the rhythm, recap, synonym, and uniformity rules; list items,
-headings, table cells, and form controls never are, and a `<footer>` is
-never the ending. `<strong>`/`<b>` count as
-bold, inline `<code>` counts as words, and `&mdash;`, `&#8212;`, and the
-curly-quote entities are read as the characters they encode. `&ndash;` and
-every other entity stay blank.
-
-SLOP011–013 catch mechanical, high-confidence artifacts (leftover chat-turn
-phrasing including reasoning-chain scaffolding and acknowledgment loops,
-citation-tool tokens, unfilled placeholders) and are Tier A: a finding there
-fails the run. SLOP001 (elision comments) also runs on HTML, reading
-`<!-- ... -->` the way it reads a code comment on every other lang, and
-defers to SLOP013 on a comment the two would otherwise both flag. SLOP014,
-SLOP018, and the formulaic-shape rules SLOP022–025 and SLOP029 are on by
-default too but Tier B, warn-only: judgment calls the tool still surfaces
-every run, just without the power to fail CI. SLOP018
-flags every mid-prose dash outright (the one exemption is a block-opening
-attribution dash like `— Oscar Wilde`).
-
-The rest are document-wide density and style checks, also on by default: hedging,
-overused vocabulary, rhetorical parallelism, boldface overuse,
-heading formatting, promotional register, hyphen stacking, sentence length,
-synonym rotation, outline filler, change-narrating docs, colon reveals,
-filler and adverb density, weak-verb phrasing, dramatic fragmentation, and
-mechanical uniformity. SLOP041 is the one rule in this list that measures statistics
-(burstiness, vocabulary diversity, trigram repetition) instead of matching a
-phrase. It catches templated prose that rotates its vocabulary just enough to
-slide past every phrase-based rule. These are judgment calls rather than
-mechanical certainties, so they're warn-only. Silence the ones you don't want
-by code (`--ignore SLOP015`) or by group (`--ignore verbosity`). Expect some
-noise from them: a finding here is a lead to investigate rather than a
-verdict. As with the rest of stopslop, this is a writing-quality
-gate, not a claim about who or what wrote the text: every rule flags a
-concrete pattern (a stale phrase, an unfilled slot, a density threshold,
-a document-level statistic), never "this is AI-generated."
-
-Every rule runs every natural-language panel it declares, on every document,
-by default: nothing to configure, nothing to detect. `Lang` is the file
-syntax (Markdown, MDX, ...); `NatLang` is a separate axis for which
-lexicons a rule's phrase panels actually cover, listed per rule in the `NL`
-column above. Structural and statistical rules (AST shape, punctuation,
-density) need no lexicon and already run on pt-BR text. Phrase-panel rules
-gain a pt-BR panel one rule at a time, each proven by a fixture under
-`tests/fixtures/markdown/pt-br/` before the rule may list `pt-BR`; SLOP014
-(cliché phrases), SLOP016 (vocabulary), and SLOP032 (hyphenated-compound
-overuse) still stay English-only, and
-[issue #30](https://github.com/mgiovani/stopslop/issues/30) tracks the rest.
-`pt` and `pt-PT` both resolve to the same Brazilian lexicon as `pt-BR`, a
-best-effort alias rather than a separate European-Portuguese panel. An HTML
-page that declares `<html lang="...">` narrows its own run to that language
-when the config allows it (`.rst` docinfo and Markdown front matter carry no
-such hint yet). SLOP033's overlong-sentence cap rises to 57 words once a run
-is Portuguese-only (`language = "pt-BR"`, measured against English's 50 on
-matched corpora). SLOP041's thresholds hold as measured (Portuguese trips
-them less often than English, not more); SLOP043 and SLOP029's caps are
-still unmeasured for Portuguese, and `language = "pt-BR"` in
-`stopslop.toml` restricts a run to the Portuguese panels only.
-
-## Suppression
-
-Two escape valves, both plain comments so they work in any language's
-comment syntax:
-
-- `// ai-slop-ignore`: suppresses findings on that line and the line below
-  it (so it works whether the comment is trailing or sits above the flagged
-  line).
-- `// ai-slop-ignore-file`: anywhere in the file, drops every finding in
-  that file.
-
-In Markdown/MDX/Text/reST/HTML files, use the HTML comment form instead:
-`<!-- ai-slop-ignore -->` / `<!-- ai-slop-ignore-file -->`, with the same
-two-line and whole-file suppression semantics.
-
-Bare, either directive suppresses every rule. Add `: CODE,CODE` (commas or
-spaces both work) to scope it to specific rules, or to a group name:
-
-```ts
-// ai-slop-ignore: SLOP002,SLOP004
-// Certainly! Generated by ChatGPT — kept verbatim as a fixture for this rule's own test
-```
-
-```markdown
-<!-- ai-slop-ignore-file: SLOP018 -->
-```
-
-Group names expand the same way they do in `--select`/`--ignore`, so `//
-ai-slop-ignore: verbosity` silences every rule in that group on the line.
-
-The directive has to **open** the comment body, right after the delimiter. A
-comment that merely mentions the token while documenting the feature, like
-`// dogfooding would self-flag these; "ai-slop-ignore" is the escape hatch`,
-is not a directive and suppresses nothing: the token has to be the first
-thing after `//`/`#`/`<!--`/etc. This is the thing most likely to look like a
-bug the first time you hit it: writing docs *about* the suppression syntax
-in a comment that isn't itself a suppression is fine, and does nothing.
-
-A suppression that absorbs no finding (wrong code, or nothing to suppress on
-that line) is a dead suppression. stopslop prints a warning for it to
-stderr, naming the file and line, so a stale or mistyped ignore doesn't
-silently rot:
-
-```
-stopslop: warning: src/util.ts:14: ai-slop-ignore (SLOP018) suppressed nothing
-```
-
-![suppressing a finding with ai-slop-ignore](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/suppress.gif)
-
-An image carries no comment syntax, so `ai-slop-ignore` doesn't apply to
-SLOP046–048: silence a specific file with `[per-file-ignores]` or an
-`exclude` glob in `stopslop.toml`, `--ignore` for the whole run, or the
-baseline file to grandfather what's already shipped.
-
-## Path exemptions
-
-Rules that are path-gated (SLOP005, 006, 008, 009, 010, 037, 038, 039, 040,
-042, 043) don't run inside directories or files that look like tests or
-generated/vendored code, since empty catches, broad excepts, unresolved
-imports, the stdlib/wrapper/single-implementation heuristics, and
-`// Check nfkd`-style test-section labels are all legitimately common there:
-
-- Any path segment named `tests`, `test`, `__tests__`, `testdata`,
-  `fixtures`, `fixture`, `mocks`, `mock`, `examples`, `example`, `vendor`,
-  `node_modules`, or `generated`.
-- Filenames matching `test_*`, `conftest.py`, `*_test.go`, `*_test.py`,
-  `*.test.ts(x)`, `*.spec.ts(x)`, `*.pyi`, `*.pb.go`, `*_pb2.py`, `*.min.js`.
-
-SLOP001–004 (the junk-text rules) are **not** path-gated: a leaked chat
-preamble or elision comment is junk in a test file too.
-
-## Config file
-
-`stopslop --help-config` prints an annotated `stopslop.toml` covering every key.
-
-The nearest `stopslop.toml` walking up from the current directory to the
-filesystem root, so a run from a nested cwd (an editor task runner, a
-pre-commit hook) still finds the repo-root file. When no project file exists,
-stopslop reads `$XDG_CONFIG_HOME/stopslop/stopslop.toml`, which is
-`~/.config/stopslop/stopslop.toml` when the variable is unset or empty, on
-every platform including macOS. The user-level file is a fallback, never a
-merge layer: a project that ships its own `stopslop.toml` is unaffected by
-whatever sits in `~/.config`, so CI and local runs stay reproducible. Pass
-`--config path` to use a specific file instead:
+## Configuration
 
 ```toml
-select = []                 # rule codes/prefixes/groups to run (empty = every rule except SLOP010)
-ignore = ["SLOP009", "verbosity"]  # rule codes/prefixes/groups to subtract
-extend-select = ["SLOP033"] # adds on top of `select`, instead of replacing it
-extend-ignore = ["SLOP016"] # adds on top of `ignore`, same relationship
-exclude = ["**/generated/**"]      # extra walker excludes, on top of .gitignore
-check-imports = false
-baseline = ".stopslop-baseline.json"  # subtract findings recorded here (omit to disable)
-fail-on-tier = "A"          # lowest tier that exits 1; "B" adds Tier B, "C" adds every finding
-language = ["en", "pt-BR"]  # restrict which natural-language panels run (omit = every language)
+# stopslop.toml
+ignore = ["SLOP009", "verbosity"]   # rule codes or groups to subtract
+extend-select = ["SLOP033"]         # add a rule on top of the defaults
+fail-on-tier = "A"                  # lowest tier that exits 1
 
 [per-file-ignores]
-"docs/**" = ["SLOP036"]     # codes and/or group names; applied after linting, before baseline
+"docs/**" = ["SLOP036"]
 ```
 
-`select` and `ignore` follow Ruff's composition rules: a CLI `--select`
-replaces the config's `select` outright (rather than adding to it), and the
-same for `--ignore`. `extend-select` and `extend-ignore` never replace
-anything: the config's `extend-select` and any CLI `--extend-select` are
-unioned together on top of whatever `select` resolved to, and `extend-ignore`
-does the same for `ignore`, subtracted last so an extend-ignore always wins
-over an extend-select.
+`stopslop --help-config` prints an annotated file with every key. Details, user-defined rules, and `--check-imports` are in [docs/configuration.md](docs/configuration.md). To silence one finding, put `// ai-slop-ignore` above it; see [suppression](docs/suppression.md).
 
-`[per-file-ignores]` keys are globs, matched against the file's display path
-with a leading `./` stripped from both the glob and the path, so
-`"docs/**"` matches whether you run `stopslop .` (paths print as
-`./docs/...`) or `stopslop docs` (paths print as `docs/...`). Values are
-lists of codes and/or group names, expanded the same way `select`/`ignore`
-are. It's a post-lint filter, applied after the walk and before baseline
-filtering, so it composes with a baseline instead of fighting it. An invalid
-glob is a config error (exit 2).
+## CI
 
-Use `--no-config` to ignore any project or user-level `stopslop.toml`. CLI flags for
-`select`/`ignore`/`check-imports`/`baseline` override the config file; see
-[User-defined rules](#user-defined-rules) below for `[[custom-rule]]`.
-
-`language` restricts which natural-language lexicons run, as a string or an
-array (`language = "pt-BR"` or `language = ["en", "pt-BR"]`); absent or empty
-means every supported language, the default. `pt` and `pt-PT` both resolve
-to the same Brazilian lexicon as `pt-BR`. An unrecognized tag is a config
-error (exit 2) naming the supported tags. See [Prose
-linting](#prose-linting) for what this axis actually gates.
-
-## User-defined rules
-
-House-specific banned phrases don't need a Rust module. A `[[custom-rule]]`
-array of tables in `stopslop.toml` compiles straight to a regex rule:
-
-```toml
-[[custom-rule]]
-pattern = '(?i)\bsynergy\b'          # required: a regex, matched against comments/strings
-                                       # (code files) or masked prose (Markdown/MDX/Text/reST/HTML)
-message = "banned house phrase: synergy"  # required: the finding text
-tier = "B"                            # optional, "A" or "B", defaults to "B"
-fix = "say what the teams actually do"    # optional: printed as a second "fix:" line
-files = ["docs/**"]                   # optional glob list; omit for every supported file
+```bash
+stopslop --staged            # pre-commit hook
+stopslop --since origin/main # pull request check
+stopslop --format sarif .    # GitHub code scanning
 ```
-
-Codes are auto-assigned `SLOP900`, `SLOP901`, ... in declaration order. Each
-`[[custom-rule]]` entry gets one code. They are grouped as `custom` in
-`--list-rules`. Every
-custom rule is on by default, but still subject to `select`/`ignore` and
-suppressible with `ai-slop-ignore: SLOP900` like any built-in rule. An
-invalid regex, an invalid `tier`, or an invalid `files` glob is a config
-error (exit 2) naming the offending entry's index.
-
-`files` globs match the file's display path, with a leading `./` stripped
-from both the glob and the path exactly as `[per-file-ignores]` does, so
-`"docs/**"` behaves the same whether you run `stopslop .` or `stopslop docs`.
-
-### File rules
-
-`kind = "file"` judges a whole file instead of a phrase. It requires `files`
-and exactly one predicate; `pattern` is rejected, and the predicate keys are
-rejected on the default `kind = "phrase"`.
-
-| Key | Fires when | Anchor |
-|---|---|---|
-| `max-lines = N` | the file has more than N lines | line N+1, col 1 |
-| `forbid = "regex"` | the regex matches the raw source | first match |
-| `require = "regex"` | the regex matches nowhere | line 1, col 1 |
-
-```toml
-[[custom-rule]]
-kind = "file"
-files = ["**/*.py", "**/*.ts", "**/*.tsx"]
-max-lines = 300
-message = "file is over 300 lines; split by bounded context"
-
-[[custom-rule]]
-kind = "file"
-files = ["**/__init__.py"]
-forbid = '\S'
-message = "__init__.py must be empty; import from the defining module"
-```
-
-A file rule yields at most one finding per file. Regexes have no lookaround.
-Write `(?-u:\b)` instead of `\b`: a Unicode word boundary slows every
-non-ASCII input. Keep the line count out of `message` so a baselined file that
-grows stays baselined.
-
-## `--check-imports`
-
-SLOP010 cross-references each import against the project's manifest
-(`pyproject.toml`/`requirements.txt`, `package.json`/`tsconfig.json`,
-`go.mod`, `Cargo.toml`) plus an embedded stdlib/builtin list per language.
-
-Honest caveats:
-
-- If no manifest is found for a language, that language's checks are
-  skipped silently rather than risk false positives.
-- It's a static namecheck, not a resolver. It can still false-positive or
-  false-negative on workspace/path dependencies and dynamic imports. Unusual
-  build setups can do the same.
-- It is Tier B, so it fails the build only under `fail-on-tier = "B"` or
-  `"C"`: treat it as a lead to investigate, not a hard gate.
-
-## Exit codes
-
-- `0`: nothing at or above the failing tier.
-- `1`: at least one finding at or above the failing tier.
-- `2`: usage error, a path that couldn't be scanned, or a config error
-  (bad glob, bad regex, unknown key, invalid `[[custom-rule]]` or
-  `fail-on-tier` value).
-
-The failing tier is `A` by default, so Tier B and Tier C findings (including
-any custom rule declared `tier = "B"` or `tier = "C"`) print without blocking.
-Set `fail-on-tier = "B"` in `stopslop.toml`, or pass `--fail-on-tier B`, to add
-Tier B to the exit-1 path, and `"C"` to gate on every finding; the CLI flag
-wins over the config. A baseline is applied
-before the exit code is computed, so baselined findings never fail a run
-whatever the tier.
 
 ## Non-goals
 
-- **Not an AI-origin verdict.** A rule may name a span as a known AI tell so
-  you can rewrite it, but stopslop never scores a whole file as "written by
-  AI", never runs a model, and never phones home. The verdict stays with the
-  reader.
-- **Not a correctness checker.** It doesn't run your code or understand what
-  it's supposed to do: a stub function that's genuinely fine (e.g. an
-  intentionally unimplemented trait default) can still need a suppression
-  comment.
-- **No member-level hallucination detection.** It can't tell you that
-  `requests.get_json()` isn't a real method: that's a type checker's job.
-- **No general code-comment style/verbosity grading.** In code files it
-  flags specific junk patterns (preamble, attribution, elision, a comment
-  that only repeats the statement under it), not comment style, length, or
-  density in general. Prose files additionally get the
-  density/style checks in [Prose linting](#prose-linting) above; those are
-  warn-only judgment calls, and none of them are a house-style grader.
-- **`[[custom-rule]]` is a phrase matcher, not a plugin system.** It compiles
-  a regex against comments/strings or masked prose. There's no hook for
-  custom AST shapes or arbitrary code execution. A custom rule also cannot be
-  as sophisticated as, say, SLOP041's document statistics. For
-  anything past "flag this phrase," it's still a Rust module in `src/rules`.
+- Not an AI-origin verdict. A rule may name a span as a known AI tell so you can rewrite it. stopslop never scores a whole file as written by AI and never runs a model.
+- Not a correctness checker. It does not run your code or detect hallucinated methods.
+- `[[custom-rule]]` is a phrase matcher, not a plugin system.
+
+The full list is in [docs/why.md](docs/why.md).
+
+## Contributing
+
+Read [AGENTS.md](AGENTS.md) for the architecture, the checklist for adding a rule, and the test gates.
 
 ## License
 
 MIT (see [LICENSE](https://github.com/mgiovani/stopslop/blob/main/LICENSE)).
 
-stopslop's own CI fails if its source contains slop: every push runs
-`cargo run --quiet -- .` against the whole repo, prose included, alongside
-`cargo fmt`, `cargo clippy`, and `cargo test`. Tier A findings fail the build;
-Tier B findings print as warnings, the same contract users get.
+stopslop's own CI fails if its source contains slop: every push runs `cargo run --quiet -- .` against the whole repo, prose included, alongside `cargo fmt`, `cargo clippy`, and `cargo test`. Tier A findings fail the build; Tier B findings print as warnings, the same contract users get.

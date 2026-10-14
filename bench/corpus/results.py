@@ -8,16 +8,16 @@ from .common import APPLICABLE, PROVENANCE_NOTE, RESULTS_SCHEMA
 from .metrics import pct, rule_verdict
 from .report import has_human, is_verified
 
-README_RULE_ROW = re.compile(
+RULE_TABLE_ROW = re.compile(
     r"^\| (SLOP\d{3}) \| (\w+) \| (.+?) \| ([ABC]), (on|off)\s*\| (.+?) \| (.+?) \| (.+?) \|$")
 
 
-def parse_rules(readme_text):
-    """The README rule table is the only place that records each rule's langs, natlangs and
+def parse_rules(rules_md_text):
+    """The docs/rules.md rule table is the only place that records each rule's langs, natlangs and
     one-line description; `--list-rules` carries neither langs nor description."""
     rules = {}
-    for line in readme_text.splitlines():
-        m = README_RULE_ROW.match(line)
+    for line in rules_md_text.splitlines():
+        m = RULE_TABLE_ROW.match(line)
         if m:
             code, group, name, tier, default, langs, natlangs, desc = m.groups()
             rules[code] = {"group": group, "name": name, "tier": tier, "default": default,
@@ -32,20 +32,20 @@ def rule_codes(binary):
     return {line.split()[0] for line in proc.stdout.splitlines() if line.startswith("SLOP")}
 
 
-def load_rules(binary, readme_path):
-    """README table vs `--list-rules`: a rule shipped but undocumented (or the reverse) would
+def load_rules(binary, rules_path):
+    """rules.md table vs `--list-rules`: a rule shipped but undocumented (or the reverse) would
     silently drop out of every table downstream, so the mismatch is an error here -- and so
     would an empty parse on either side, which a stale `--bin` or a reformatted table turns
     into a vacuously matching pair of empty sets."""
-    with open(readme_path, encoding="utf-8") as fh:
+    with open(rules_path, encoding="utf-8") as fh:
         rules = parse_rules(fh.read())
     codes = rule_codes(binary)
     if not rules or not codes:
-        raise SystemExit(f"{readme_path}: parsed {len(rules)} README row(s) and {len(codes)} "
+        raise SystemExit(f"{rules_path}: parsed {len(rules)} rule-table row(s) and {len(codes)} "
                          f"--list-rules code(s) from {binary!r}; expected both non-empty")
     missing, extra = sorted(codes - set(rules)), sorted(set(rules) - codes)
     if missing or extra:
-        raise SystemExit(f"{readme_path}: rule table and --list-rules disagree; "
+        raise SystemExit(f"{rules_path}: rule table and --list-rules disagree; "
                          f"undocumented {missing}, unshipped {extra}")
     return rules
 

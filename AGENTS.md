@@ -52,7 +52,7 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 - Add no knob nobody sets. A documented `const` beats a config field with one caller.
 - Delete before you add, and put the proof that a branch is dead in the commit message.
 - Ship the smallest correct diff.
-- Every flag, subcommand and option carries clap help text, and anything reachable only through the README or a config file gets a pointer in the `--help` footer. A new command is not done until `--help` describes it.
+- Every flag, subcommand and option carries clap help text, and anything reachable only through the docs or a config file gets a pointer in the `--help` footer. A new command is not done until `--help` describes it.
 - Speak the domain vocabulary in code, messages, docs, and commits: Rule, RuleDef, Diagnostic, Tier, Group, Panel, LintContext, NodeIndex, ProseDoc, Baseline, suppression directive, custom rule, Lang.
 - Coining a synonym for one of those names is a defect. SLOP034 flags the same habit in prose.
 
@@ -64,7 +64,7 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 - Evidence stays out of the source. Corpus rates, measurements, issue numbers, and rejected alternatives go in the commit message, the PR body, `bench/candidates.toml`, or the bench reports.
 - Delete a comment you come across that restates the code or carries evidence that belongs elsewhere.
 - Mark a deliberate shortcut with a comment naming its ceiling and upgrade path.
-- A rule message may name an AI tell. It never claims a whole file is AI-written, and it never needs a model or a private key to say so. The README non-goals stay true.
+- A rule message may name an AI tell. It never claims a whole file is AI-written, and it never needs a model or a private key to say so. The README and `docs/why.md` non-goals stay true.
 
 ## Testing
 
@@ -105,5 +105,5 @@ These bullets are SOLID, DDD, clean architecture, clean code, and YAGNI applied 
 - Write conventional commit subjects (`feat:`, `fix:`, `perf:`, `refactor:`, `docs:`, `test:`, `ci:`, `chore:`).
 - Self-review the whole patch and run the three CI commands plus the dogfood run before pushing.
 - Open a PR and let CI decide. Merge commits, no squash.
-- Update the README rule table and `CHANGELOG.md` in the same PR that adds or retires a rule.
+- Update the `docs/rules.md` rule table and `CHANGELOG.md` in the same PR that adds or retires a rule.
 - Touch `Cargo.toml` dependencies only with a PR-body line saying what std or an existing crate could not do.
