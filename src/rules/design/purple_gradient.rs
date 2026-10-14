@@ -10,10 +10,10 @@ use std::ops::RangeInclusive;
 pub static RULE: RuleDef = RuleDef {
     code: "SLOP053",
     name: "Purple-blue gradient",
-    tier: Tier::C,
+    tier: Tier::B,
     langs: STYLE_LANGS,
     natlangs: ALL_NATLANGS,
-    default_on: false,
+    default_on: true,
     path_gated: false,
     check,
 };

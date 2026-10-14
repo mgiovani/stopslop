@@ -44,6 +44,8 @@ paper_caveats = [
   "Style as a Confound contains no AI text: professional editing moves detector scores in opposite directions across families, so rules built on sentence length or lexical diversity risk flagging edited non-native prose.",
   "RAID engineered its prompts over several rounds to remove meta-commentary and filtered failed generations, so raw-output tells are absent from it by design.",
   "The dataset-quality survey (arXiv 2410.14677) argues near-perfect F1 on a benchmark usually signals a weak dataset rather than a strong detector.",
+  "No pre-2020 Tailwind React baseline exists: the verified human Tailwind TSX cell is 11 named-maintainer apps pinned to late 2022, weeks after ChatGPT launched, so its human rate is a floor on how rare the tell was before assistants.",
+  "The AI app-builder cells (Lovable, bolt.new, Same.new, Replit Agent) are public repos whose provenance rests on a builder marker (bot commit author or trailer, or a generated config file), not on a dataset's own labels; an owner may have edited files after the builder wrote them, and components/ui/ vendored shadcn primitives are excluded.",
   "Rosetta Code's Python split is about nine tenths Python 2, so any parse-validity signal has nothing to separate there.",
 ]
 
@@ -458,7 +460,7 @@ scope = "line"
 regex = '''(?:-webkit-)?background-clip\s*:\s*text|\bbg-clip-text\b'''
 relation = "SLOP052"
 tier = "B"
-notes = "Does not separate the classes: the verified human pool (Ant Design TSX, three pinned CSS repos) hits 0.00% (0/486) and the plain AI pool 0.00% (0/600 WebSight pages). Design2Code, whose human provenance is unverified, hits 0.67% (2/300). Neither AI cell is a separation test for this tell: WebSight v0.1 and v0.2 are 2024 pages built from short ideas, almost all neutral gray palettes, and the corpus holds no AI CSS or TSX cell (synth-tsx needs generation). The rule stays Tier C until a corpus of recent assistant-built landing pages exists."
+notes = "Scored 2026-10-14 on 1,455 files from 64 pinned AI app-builder repos (Lovable, bolt.new, Same.new, Replit Agent; tsx, css, html) against 1,186 verified human files (Ant Design TSX, 11 pinned 2022 Tailwind React apps, three pinned CSS repos). Per builder: bolt.new 13/526 (2.47%), Lovable 9/558 (1.61%), Replit Agent 3/188 (1.60%), Same.new 4/183 (2.19%). Pooled AI 29/1455 (1.99%) against verified human 1/1186 (0.08%); the Tailwind 2022 TSX baseline alone is 1/500 (0.20%). Separates the classes by 25x but the AI rate sits a hair under the 2% bar, so the rule stays Tier C."
 
 [[candidate]]
 name = "Tailwind gradient from a purple, violet or indigo shade"
@@ -468,7 +470,7 @@ scope = "line"
 regex = '''\bfrom-(?:purple|violet|indigo)-\d'''
 relation = "SLOP053"
 tier = "B"
-notes = "Does not separate the classes: 0.00% (0/486) verified human and 0.00% (0/600) AI, so the Tailwind half of SLOP053 has no measured rate. The gradient-stop half hit 1 of 300 Design2Code pages and 1 of 91 highlight.js themes, and 0 of 600 WebSight pages. Neither AI cell is a separation test for this tell: WebSight v0.1 and v0.2 are 2024 pages built from short ideas, almost all neutral gray palettes, and the corpus holds no AI CSS or TSX cell (synth-tsx needs generation). The rule stays Tier C until a corpus of recent assistant-built landing pages exists."
+notes = "Scored 2026-10-14 on 1,455 files from 64 pinned AI app-builder repos (Lovable, bolt.new, Same.new, Replit Agent; tsx, css, html) against 1,186 verified human files (Ant Design TSX, 11 pinned 2022 Tailwind React apps, three pinned CSS repos). Per builder: bolt.new 33/526 (6.27%), Lovable 5/558 (0.90%), Replit Agent 14/188 (7.45%), Same.new 19/183 (10.38%). Pooled AI 71/1455 (4.88%) against verified human 1/1186 (0.08%); the Tailwind 2022 TSX baseline alone is 0/500 (0.00%). Clears the bar (3x, AI at least 2%, human at most 1%), so it ships at Tier B, on by default. Lovable alone is under 2%: its generated pages lean on semantic tokens rather than named palette colors."
 
 [[candidate]]
 name = "Hand-copied Tailwind violet hex"
@@ -479,7 +481,7 @@ ignorecase = true
 regex = '''#(?:7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9|6366f1|764ba2|667eea)\b'''
 relation = "SLOP054"
 tier = "B"
-notes = "Does not separate the classes: 0.00% (0/486) verified human and 0.00% (0/600) AI. Design2Code hits 0.67% (2/300); one page repeats the hex 23 times in a custom-property table. Neither AI cell is a separation test for this tell: WebSight v0.1 and v0.2 are 2024 pages built from short ideas, almost all neutral gray palettes, and the corpus holds no AI CSS or TSX cell (synth-tsx needs generation). The rule stays Tier C until a corpus of recent assistant-built landing pages exists."
+notes = "Scored 2026-10-14 on 1,455 files from 64 pinned AI app-builder repos (Lovable, bolt.new, Same.new, Replit Agent; tsx, css, html) against 1,186 verified human files (Ant Design TSX, 11 pinned 2022 Tailwind React apps, three pinned CSS repos). Per builder: bolt.new 1/526 (0.19%), Lovable 2/558 (0.36%), Replit Agent 0/188, Same.new 0/183. Pooled AI 3/1455 (0.21%) against verified human 0/1186 (0.00%); the Tailwind 2022 TSX baseline alone is 0/500 (0.00%). Human rate is zero but the AI rate is far under 2%: current builders rarely hand-write a hex, so the rule stays Tier C."
 
 [[miss]]
 rule = "SLOP011"
