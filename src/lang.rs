@@ -29,6 +29,14 @@ pub const PROSE_LANGS: &[Lang] = &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst, La
 pub const STYLE_LANGS: &[Lang] = &[Lang::Css, Lang::Html, Lang::Tsx];
 pub const IMAGE_LANGS: &[Lang] = &[Lang::Image];
 
+/// A `.min.css` bundle is one giant line of generated rules; reading it costs a full parse for
+/// findings nobody can act on.
+fn is_minified_css(p: &Path) -> bool {
+    p.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.ends_with(".min.css"))
+}
+
 impl Lang {
     pub fn from_path(p: &Path) -> Option<Lang> {
         match p.extension()?.to_str()? {
@@ -44,7 +52,7 @@ impl Lang {
             "html" | "htm" => Some(Lang::Html),
             // tree-sitter-css has no SCSS grammar: plain declarations parse, but `$var:` and
             // `@include` can hide a neighbouring declaration.
-            "css" | "scss" => Some(Lang::Css),
+            "css" | "scss" if !is_minified_css(p) => Some(Lang::Css),
             "png" | "jpg" | "jpeg" | "webp" => Some(Lang::Image),
             _ => None,
         }
@@ -119,6 +127,29 @@ impl NatLang {
             NatLang::En => "en",
             NatLang::PtBr => "pt-BR",
         }
+    }
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn css_and_scss_resolve_to_css_and_minified_bundles_do_not() {
+        for name in ["a.css", "dir/a.scss", "a.module.css"] {
+            assert_eq!(Lang::from_path(Path::new(name)), Some(Lang::Css), "{name}");
+        }
+        for name in ["a.min.css", "dist/app.min.css"] {
+            assert_eq!(Lang::from_path(Path::new(name)), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn the_css_grammar_loads_and_parses_a_rule() {
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&ts_language(Lang::Css)).unwrap();
+        let tree = parser.parse("a { color: red }", None).unwrap();
+        assert!(!tree.root_node().has_error());
     }
 }
 
