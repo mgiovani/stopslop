@@ -52,7 +52,7 @@ MESSAGE_FLOOR = 2.0
 SCOPES = ("line", "comment", "file-first-line", "last-block", "file")
 FIRST_LINES = 3
 
-CODE_LANGS = tuple(lang for lang in EXT if lang != "prose")
+CODE_LANGS = tuple(lang for lang in EXT if lang not in ("prose", "html", "css"))
 LINE_COMMENT = {"python": "#", "go": "//", "rust": "//", "typescript": "//", "tsx": "//"}
 
 WORD = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)*", re.UNICODE)

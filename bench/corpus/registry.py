@@ -38,7 +38,7 @@ from .common import JS_PROXY
 from .fetchers import (
     fetch_aidev, fetch_aigcodeset, fetch_apt_eval, fetch_beemo, fetch_diplomatrix,
     fetch_essay_br, fetch_faidset, fetch_ghostbuster, fetch_gpt2_output, fetch_hc3,
-    fetch_hf_filter_cell, fetch_mage, fetch_naples_code, fetch_pan25, fetch_wetbench_pt,
+    fetch_hf_filter_cell, fetch_hf_text_rows, fetch_mage, fetch_naples_code, fetch_pan25, fetch_wetbench_pt,
 )
 from .git import fetch_git_before_cell, fetch_git_cell
 
@@ -357,6 +357,89 @@ DATASETS = {
         "cells": [{"label": "human", "lang": "tsx", "generator": "human",
                    "subdir": "components", "glob": "*.tsx"}],
         "exclude": ("/__tests__/", "/demo/", ".test.tsx"),
+    },
+    "bootstrap-css": {
+        "kind": "git_tag", "natlang": None,
+        "repo": "https://github.com/twbs/bootstrap", "tag": "v4.4.1",
+        "url": "https://github.com/twbs/bootstrap", "paper": None, "license": "MIT",
+        "generator_years": None,
+        "human_provenance": "pinned-2019",
+        "human_note": "Bootstrap 4.4.1 stylesheets and example pages, tagged November 2019",
+        "caveats": ["A framework's own CSS plus its demo pages, not a landing-page corpus; a "
+                    "stylesheet can mention a violet hex as a documented example."],
+        "fetch": fetch_git_cell,
+        "cells": [{"label": "human", "lang": "css", "generator": "human",
+                   "subdir": ("dist/css", "site/docs/4.4/examples", "site/docs/4.4/assets/css"),
+                   "glob": "*.css"}],
+        "exclude": (".min.",),
+    },
+    "codemirror-css": {
+        "kind": "git_tag", "natlang": None,
+        "repo": "https://github.com/codemirror/CodeMirror", "tag": "5.50.0",
+        "url": "https://github.com/codemirror/CodeMirror", "paper": None, "license": "MIT",
+        "generator_years": None,
+        "human_provenance": "pinned-2019",
+        "human_note": "CodeMirror 5.50.0 editor, theme and addon stylesheets, tagged November 2019",
+        "caveats": ["Editor themes: color-heavy and gradient-light, so a color rule's false "
+                    "positive rate here is a worst case for hex tells."],
+        "fetch": fetch_git_cell,
+        "cells": [{"label": "human", "lang": "css", "generator": "human",
+                   "subdir": ("lib", "theme", "addon"), "glob": "*.css"}],
+        "exclude": (),
+    },
+    "highlightjs-css": {
+        "kind": "git_tag", "natlang": None,
+        "repo": "https://github.com/highlightjs/highlight.js", "tag": "9.17.1",
+        "url": "https://github.com/highlightjs/highlight.js", "paper": None, "license": "BSD-3-Clause",
+        "generator_years": None,
+        "human_provenance": "pinned-2019",
+        "human_note": "highlight.js 9.17.1 syntax themes, tagged January 2020",
+        "caveats": ["Syntax-highlighting themes: a palette per file, no layout CSS."],
+        "fetch": fetch_git_cell,
+        "cells": [{"label": "human", "lang": "css", "generator": "human",
+                   "subdir": "src/styles", "glob": "*.css"}],
+        "exclude": (),
+    },
+    "design2code": {
+        "kind": "hf_text_rows", "natlang": None, "dataset": "SALT-NLP/Design2Code-hf",
+        "text_col": "text",
+        "url": "https://huggingface.co/datasets/SALT-NLP/Design2Code-hf",
+        "paper": "arXiv 2403.03163", "license": "CC-BY-4.0",
+        "generator_years": None,
+        "human_provenance": "unverified",
+        "human_note": "484 real web pages sampled from the C4 validation split (Common Crawl, "
+                      "April 2019) and cleaned by the authors; some pages carry Bootstrap 5 "
+                      "custom properties (2021), so a later re-crawl cannot be ruled out",
+        "caveats": ["The authors replaced images with placeholders and trimmed scripts, so "
+                    "page furniture reads cleaner than the live web.",
+                    "Fetched at run time and never committed to this repo."],
+        "fetch": fetch_hf_text_rows,
+        "cells": [{"label": "human", "lang": "html", "generator": "human"}],
+    },
+    "websight-v01": {
+        "kind": "hf_text_rows", "natlang": None, "dataset": "HuggingFaceM4/WebSight",
+        "text_col": "text", "split": "train",
+        "url": "https://huggingface.co/datasets/HuggingFaceM4/WebSight",
+        "paper": "arXiv 2403.09029", "license": "CC-BY-4.0",
+        "generator_years": "code LLM, 2024 (v0.1: HTML with inline CSS)",
+        "human_provenance": None,
+        "caveats": ["Every page is synthetic: an LLM expanded a short idea into a page.",
+                    "Fetched at run time and never committed to this repo."],
+        "fetch": fetch_hf_text_rows,
+        "cells": [{"label": "ai", "lang": "html", "config": "v0.1", "generator": "websight-v0.1"}],
+    },
+    "websight-v02": {
+        "kind": "hf_text_rows", "natlang": None, "dataset": "HuggingFaceM4/WebSight",
+        "text_col": "text", "split": "train",
+        "url": "https://huggingface.co/datasets/HuggingFaceM4/WebSight",
+        "paper": "arXiv 2403.09029", "license": "CC-BY-4.0",
+        "generator_years": "code LLM, 2024 (v0.2: HTML with Tailwind classes)",
+        "human_provenance": None,
+        "caveats": ["Every page is synthetic and styled with Tailwind utility classes, so "
+                    "class-list rules have far more to read here than on the v0.1 pages.",
+                    "Fetched at run time and never committed to this repo."],
+        "fetch": fetch_hf_text_rows,
+        "cells": [{"label": "ai", "lang": "html", "config": "v0.2", "generator": "websight-v0.2"}],
     },
     "hc3": {
         "kind": "hf_rows", "natlang": "en",
@@ -734,5 +817,5 @@ def discover_synth_datasets(root):
 # The two `kind` families `orchestrate.fetch_dataset` dispatches on: CELL_KINDS fetches one
 # cell at a time, DATASET_KINDS fetches every cell of a dataset at once. `"local"` is the
 # third, closed member `self_check` asserts against.
-CELL_KINDS = ("hf_filter", "url_csv", "git_tag", "git_before")
+CELL_KINDS = ("hf_filter", "hf_text_rows", "url_csv", "git_tag", "git_before")
 DATASET_KINDS = ("hf_rows", "url_jsonl", "url_json", "url_table", "git_multi")

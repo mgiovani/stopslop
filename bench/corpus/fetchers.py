@@ -36,6 +36,17 @@ def fetch_hf_filter_cell(ds, cell, limit, cache_dir, skip_failures):
     return items
 
 
+def fetch_hf_text_rows(ds, cell, limit, cache_dir, skip_failures):
+    """One text column of a whole config, spread-sampled with `/rows`: for a dataset whose
+    every row belongs to the cell (Design2Code's pages, one WebSight version's pages)."""
+    what = f"{ds['name']}/{cell['label']}/{cell['lang']}"
+    rows = hf_rows_sample(ds["dataset"], cell.get("config", "default"), ds.get("split", "train"),
+                          limit, cache_dir, what, skip_failures)
+    if rows is None:
+        return None
+    return [(row.get(ds["text_col"]) or "", {"generator": cell["generator"]}) for row in rows]
+
+
 def fetch_aigcodeset(ds, cell, limit, cache_dir, skip_failures):
     what = f"{ds['name']}/{cell['label']}/{cell['lang']}"
     path = fetch(cell["url"], os.path.join(cache_dir, os.path.basename(cell["url"])),

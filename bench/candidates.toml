@@ -450,6 +450,37 @@ relation = "new"
 tier = "B"
 notes = "Does not separate the classes: the verified human pool hits 6.43% (174/2708) and the plain AI pool 0.00% (0/6000), the inverse of the hypothesis. The confound is provenance, not style: the hits come from the pinned stdlib repos (at 300+: typescript-src 40.67%, cpython-lib 31.06%, go-std and rust-std 28.00%), while every AI cell is a single-shot snippet (AIGCodeSet median 14 lines) and CodeMirage is length-matched by construction. The corpus holds no agent-authored repo files, which is where the long-file habit shows up, so the tell is not measurable here. A rule at this threshold would flag human stdlib files. Do not implement without an agent-session corpus."
 
+[[candidate]]
+name = "Gradient text: background-clip text or bg-clip-text"
+kind = "code"
+langs = "html,css,tsx"
+scope = "line"
+regex = '''(?:-webkit-)?background-clip\s*:\s*text|\bbg-clip-text\b'''
+relation = "SLOP052"
+tier = "B"
+notes = "Does not separate the classes: the verified human pool (Ant Design TSX, three pinned CSS repos) hits 0.00% (0/486) and the plain AI pool 0.00% (0/600 WebSight pages). Design2Code, whose human provenance is unverified, hits 0.67% (2/300). Neither AI cell is a separation test for this tell: WebSight v0.1 and v0.2 are 2024 pages built from short ideas, almost all neutral gray palettes, and the corpus holds no AI CSS or TSX cell (synth-tsx needs generation). The rule stays Tier C until a corpus of recent assistant-built landing pages exists."
+
+[[candidate]]
+name = "Tailwind gradient from a purple, violet or indigo shade"
+kind = "code"
+langs = "html,css,tsx"
+scope = "line"
+regex = '''\bfrom-(?:purple|violet|indigo)-\d'''
+relation = "SLOP053"
+tier = "B"
+notes = "Does not separate the classes: 0.00% (0/486) verified human and 0.00% (0/600) AI, so the Tailwind half of SLOP053 has no measured rate. The gradient-stop half hit 1 of 300 Design2Code pages and 1 of 91 highlight.js themes, and 0 of 600 WebSight pages. Neither AI cell is a separation test for this tell: WebSight v0.1 and v0.2 are 2024 pages built from short ideas, almost all neutral gray palettes, and the corpus holds no AI CSS or TSX cell (synth-tsx needs generation). The rule stays Tier C until a corpus of recent assistant-built landing pages exists."
+
+[[candidate]]
+name = "Hand-copied Tailwind violet hex"
+kind = "code"
+langs = "html,css,tsx"
+scope = "line"
+ignorecase = true
+regex = '''#(?:7c3aed|8b5cf6|a855f7|9333ea|7e22ce|6d28d9|6366f1|764ba2|667eea)\b'''
+relation = "SLOP054"
+tier = "B"
+notes = "Does not separate the classes: 0.00% (0/486) verified human and 0.00% (0/600) AI. Design2Code hits 0.67% (2/300); one page repeats the hex 23 times in a custom-property table. Neither AI cell is a separation test for this tell: WebSight v0.1 and v0.2 are 2024 pages built from short ideas, almost all neutral gray palettes, and the corpus holds no AI CSS or TSX cell (synth-tsx needs generation). The rule stays Tier C until a corpus of recent assistant-built landing pages exists."
+
 [[miss]]
 rule = "SLOP011"
 what_it_missed = "Refusal, self-identification and closer phrasings one word outside the panel"
