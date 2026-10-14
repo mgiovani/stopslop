@@ -1,7 +1,8 @@
 use crate::context::{walk_tree, NodeIndex, TextNode};
 use crate::lang::{ts_language, Lang};
-use crate::prose::{compute_line_col, compute_line_starts, ProseDoc};
+use crate::prose::{compute_line_starts, ProseDoc};
 use std::borrow::Cow;
+use std::cell::Cell;
 use tree_sitter::{Node, Parser, Point, Range};
 
 /// One `property: value` pair, wherever it was written: a CSS declaration, a `style="..."`
@@ -24,19 +25,17 @@ pub struct ClassToken<'a> {
     pub start: usize,
 }
 
-/// The tokens of one `class=` / `className=` attribute, across every string it holds.
-#[derive(Debug, Clone)]
-pub struct ClassList<'a> {
-    pub tokens: Vec<ClassToken<'a>>,
-}
-
 /// Declarations and utility-class lists of a Css, Html or Tsx file, collected once per file so
 /// the `design` rules never re-parse a `<style>` body or re-split a `style=` attribute.
 pub struct StyleDoc<'a> {
     pub decls: Vec<Decl<'a>>,
-    pub class_lists: Vec<ClassList<'a>>,
+    /// One token list per `class=` / `className=` attribute, across every string it holds.
+    pub class_lists: Vec<Vec<ClassToken<'a>>>,
     source: &'a str,
     line_starts: Vec<usize>,
+    /// (byte, column) of the last `line_col` answer, so ascending queries on one line count
+    /// characters from there instead of from the line start (a minified stylesheet is one line).
+    col_memo: Cell<(usize, usize)>,
 }
 
 impl<'a> StyleDoc<'a> {
@@ -45,7 +44,7 @@ impl<'a> StyleDoc<'a> {
     pub fn from_css(index: &NodeIndex<'_>, source: &'a str) -> Self {
         let mut decls = Vec::new();
         collect_css_decls(index, source, &mut decls);
-        Self::finish(source, decls, Vec::new())
+        Self::finish(source, decls, Vec::new(), compute_line_starts(source))
     }
 
     /// `<style>` bodies are re-parsed with the CSS grammar over their included ranges, so every
@@ -66,12 +65,13 @@ impl<'a> StyleDoc<'a> {
                 })
                 .collect();
             let mut parser = Parser::new();
-            let parsed = parser
+            parser
                 .set_language(&ts_language(Lang::Css))
-                .ok()
-                .and_then(|()| parser.set_included_ranges(&ranges).ok())
-                .and_then(|()| parser.parse(source, None));
-            if let Some(tree) = parsed {
+                .expect("bundled css grammar");
+            // Ranges come from a pre-order walk, so they are sorted and disjoint.
+            let ranges_ok = parser.set_included_ranges(&ranges).is_ok();
+            debug_assert!(ranges_ok, "style ranges rejected");
+            if let Some(tree) = ranges_ok.then(|| parser.parse(source, None)).flatten() {
                 walk_tree(&mut tree.walk(), &mut |node| {
                     if node.kind() == "declaration" {
                         push_css_decl(&node, source, &mut decls);
@@ -84,7 +84,7 @@ impl<'a> StyleDoc<'a> {
         for attr in &doc.attr_values {
             html_attribute(attr, &mut decls, &mut class_lists);
         }
-        Self::finish(source, decls, class_lists)
+        Self::finish(source, decls, class_lists, line_starts)
     }
 
     pub fn from_jsx(index: &NodeIndex<'_>, source: &'a str, strings: &[TextNode<'a>]) -> Self {
@@ -100,22 +100,28 @@ impl<'a> StyleDoc<'a> {
                         .filter(|s| !has_template_syntax(s.text))
                         .flat_map(|s| class_tokens(inner(s), s.start_byte + 1))
                         .collect();
-                    class_lists.push(ClassList { tokens });
+                    class_lists.push(tokens);
                 }
                 "style" => jsx_style_object(&attr, source, &mut decls),
                 _ => {}
             }
         }
-        Self::finish(source, decls, class_lists)
+        Self::finish(source, decls, class_lists, compute_line_starts(source))
     }
 
-    fn finish(source: &'a str, mut decls: Vec<Decl<'a>>, class_lists: Vec<ClassList<'a>>) -> Self {
+    fn finish(
+        source: &'a str,
+        mut decls: Vec<Decl<'a>>,
+        class_lists: Vec<Vec<ClassToken<'a>>>,
+        line_starts: Vec<usize>,
+    ) -> Self {
         decls.sort_by_key(|d| d.block);
         StyleDoc {
             decls,
             class_lists,
             source,
-            line_starts: compute_line_starts(source),
+            line_starts,
+            col_memo: Cell::new((0, 1)),
         }
     }
 
@@ -125,7 +131,18 @@ impl<'a> StyleDoc<'a> {
     }
 
     pub fn line_col(&self, byte: usize) -> (usize, usize) {
-        compute_line_col(&self.line_starts, self.source, byte)
+        let byte = byte.min(self.source.len());
+        let idx = self.line_starts.partition_point(|&s| s <= byte) - 1;
+        let line_start = self.line_starts[idx];
+        let (memo_byte, memo_col) = self.col_memo.get();
+        let (from, col) = if (line_start..=byte).contains(&memo_byte) {
+            (memo_byte, memo_col)
+        } else {
+            (line_start, 1)
+        };
+        let col = col + self.source[from..byte].chars().count();
+        self.col_memo.set((byte, col));
+        (idx + 1, col)
     }
 }
 
@@ -149,7 +166,7 @@ pub fn utility(token: &str) -> &str {
 /// Splits `a: b; c: d` into (property, value, value_start, start) with offsets shifted by
 /// `base`. A `;` inside parentheses or quotes (a `url(data:...;base64,...)`) does not end a
 /// declaration.
-pub fn split_declarations(text: &str, base: usize) -> Vec<(&str, &str, usize, usize)> {
+fn split_declarations(text: &str, base: usize) -> Vec<(&str, &str, usize, usize)> {
     let mut out = Vec::new();
     let mut depth = 0usize;
     let mut quote = None;
@@ -221,7 +238,7 @@ fn push_css_decl<'a>(node: &Node, source: &'a str, out: &mut Vec<Decl<'a>>) {
 fn html_attribute<'a>(
     attr: &TextNode<'a>,
     decls: &mut Vec<Decl<'a>>,
-    class_lists: &mut Vec<ClassList<'a>>,
+    class_lists: &mut Vec<Vec<ClassToken<'a>>>,
 ) {
     let Some((name, raw)) = attr.text.split_once('=') else {
         return;
@@ -231,6 +248,7 @@ fn html_attribute<'a>(
     if !is_class && !name.eq_ignore_ascii_case("style") {
         return;
     }
+    let raw = raw.trim_start();
     let quoted = raw.starts_with(['"', '\'']);
     let value = if quoted {
         raw.get(1..raw.len().saturating_sub(1)).unwrap_or_default()
@@ -239,9 +257,7 @@ fn html_attribute<'a>(
     };
     let value_start = attr.start_byte + (attr.text.len() - raw.len()) + usize::from(quoted);
     if is_class {
-        class_lists.push(ClassList {
-            tokens: class_tokens(value, value_start).collect(),
-        });
+        class_lists.push(class_tokens(value, value_start).collect());
     } else if !has_template_syntax(value) {
         for (property, value, value_start, start) in split_declarations(value, value_start) {
             decls.push(Decl {
@@ -277,15 +293,18 @@ fn jsx_style_object<'a>(attr: &Node, source: &'a str, out: &mut Vec<Decl<'a>>) {
             continue;
         };
         let key_text = source[key.byte_range()].trim_matches(['"', '\'']);
-        let (text, start) = match value.kind() {
-            "string" => (
-                &source[value.start_byte() + 1..value.end_byte().saturating_sub(1)],
-                value.start_byte() + 1,
-            ),
-            "template_string" | "number" => (&source[value.byte_range()], value.start_byte()),
+        let start = match value.kind() {
+            "string" | "template_string" => value.start_byte() + 1,
+            "number" => value.start_byte(),
             _ => continue,
         };
-        let text = text.trim_matches('`');
+        let end = match value.kind() {
+            "number" => value.end_byte(),
+            _ => value.end_byte().saturating_sub(1),
+        };
+        let Some(text) = source.get(start..end) else {
+            continue;
+        };
         if has_template_syntax(text) {
             continue;
         }
@@ -301,6 +320,10 @@ fn jsx_style_object<'a>(attr: &Node, source: &'a str, out: &mut Vec<Decl<'a>>) {
 
 fn kebab_case(camel: &str) -> String {
     let mut out = String::with_capacity(camel.len() + 4);
+    // React spells -ms-transform as `msTransform`, the only prefix with a lowercase first letter.
+    if camel.starts_with("ms") && camel[2..].starts_with(|c: char| c.is_ascii_uppercase()) {
+        out.push('-');
+    }
     for c in camel.chars() {
         if c.is_ascii_uppercase() {
             out.push('-');
@@ -432,9 +455,9 @@ mod tests {
             "<p style=\"color: red; background: url(a;b)\" class=\"md:hover:p-4 !m-2\">x</p>\n";
         let doc = html(src);
         assert_eq!(pairs(&doc), [("color", "red"), ("background", "url(a;b)")]);
-        let tokens: Vec<_> = doc.class_lists[0].tokens.iter().map(|t| t.text).collect();
+        let tokens: Vec<_> = doc.class_lists[0].iter().map(|t| t.text).collect();
         assert_eq!(tokens, ["md:hover:p-4", "!m-2"]);
-        let t = doc.class_lists[0].tokens[1];
+        let t = doc.class_lists[0][1];
         assert_eq!(&src[t.start..t.start + 4], "!m-2");
     }
 
@@ -442,7 +465,7 @@ mod tests {
     fn html_template_syntax_in_style_is_skipped() {
         let doc = html("<p style=\"color: {{ c }}\" class=\"a {{ b }} c\">x</p>\n");
         assert!(doc.decls.is_empty());
-        let tokens: Vec<_> = doc.class_lists[0].tokens.iter().map(|t| t.text).collect();
+        let tokens: Vec<_> = doc.class_lists[0].iter().map(|t| t.text).collect();
         assert_eq!(tokens, ["a", "b", "c"]);
     }
 
@@ -465,10 +488,10 @@ mod tests {
     fn jsx_class_lists_read_every_string_and_skip_interpolation() {
         let src = "const a = <p className={cn(\"bg-clip-text\", x && 'text-transparent', `a ${b}`)} />;\nconst b = <i className=\"p-4\" />;\n";
         let doc = tsx(src);
-        let first: Vec<_> = doc.class_lists[0].tokens.iter().map(|t| t.text).collect();
+        let first: Vec<_> = doc.class_lists[0].iter().map(|t| t.text).collect();
         assert_eq!(first, ["bg-clip-text", "text-transparent"]);
-        assert_eq!(doc.class_lists[1].tokens[0].text, "p-4");
-        let t = doc.class_lists[0].tokens[0];
+        assert_eq!(doc.class_lists[1][0].text, "p-4");
+        let t = doc.class_lists[0][0];
         assert_eq!(&src[t.start..t.start + 12], "bg-clip-text");
     }
 
@@ -487,5 +510,66 @@ mod tests {
         assert_eq!(got.len(), 2);
         assert_eq!(got[0], ("color", "red", 109, 101));
         assert_eq!(got[1], ("margin", "0", 121, 114));
+    }
+
+    #[test]
+    fn spaces_around_the_equals_sign_do_not_drop_the_attribute() {
+        let doc = html("<p class = \"a b\" style = 'color: red'>x</p>\n");
+        let tokens: Vec<_> = doc.class_lists[0].iter().map(|t| t.text).collect();
+        assert_eq!(tokens, ["a", "b"]);
+        assert_eq!(pairs(&doc), [("color", "red")]);
+    }
+
+    #[test]
+    fn jsx_template_string_values_point_at_the_value() {
+        let src = "const a = <p style={{ color: `#7c3aed` }} />;\n";
+        let doc = tsx(src);
+        let d = &doc.decls[0];
+        assert_eq!(&src[d.value_start..d.value_start + 7], "#7c3aed");
+    }
+
+    #[test]
+    fn empty_and_malformed_input_yields_no_declarations() {
+        assert!(css("").decls.is_empty());
+        assert!(css("a { color: ; }").decls.is_empty());
+        assert!(html("").decls.is_empty());
+        assert!(
+            html("<style>a { color: red</style><p style=\"::;\" class=\"\">")
+                .decls
+                .len()
+                <= 1
+        );
+        assert!(tsx("const a = <p style={{ color: x }} className=")
+            .decls
+            .is_empty());
+    }
+
+    #[test]
+    fn line_col_counts_characters_after_non_ascii_text_and_across_crlf() {
+        let src = "a { /* \u{e9}\u{e9} */ color: red;\r\n  margin: 0 }\r\n";
+        let doc = css(src);
+        let color = doc.decls.iter().find(|d| d.property == "color").unwrap();
+        let margin = doc.decls.iter().find(|d| d.property == "margin").unwrap();
+        assert_eq!(doc.line_col(color.start), (1, 14));
+        assert_eq!(doc.line_col(margin.start), (2, 3));
+        assert_eq!(doc.line_col(color.start), (1, 14));
+    }
+
+    #[test]
+    fn ms_prefixed_jsx_keys_keep_their_dash() {
+        assert_eq!(kebab_case("msTransform"), "-ms-transform");
+        assert_eq!(kebab_case("margin"), "margin");
+    }
+
+    #[test]
+    fn scss_line_comments_are_extracted_for_suppression() {
+        let src = "// ai-slop-ignore SLOP053\n  // second\na { color: red }\n";
+        let mut p = Parser::new();
+        p.set_language(&ts_language(Lang::Css)).unwrap();
+        let tree = p.parse(src, None).unwrap();
+        let (comments, _, _) = extract(&tree, src, Lang::Css);
+        let found: Vec<_> = comments.iter().map(|c| (c.line, c.col, c.text)).collect();
+        assert!(found.contains(&(1, 1, "// ai-slop-ignore SLOP053")));
+        assert!(found.contains(&(2, 3, "// second")));
     }
 }

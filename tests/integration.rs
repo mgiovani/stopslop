@@ -1,4 +1,4 @@
-//! Generic marker harness. Walks tests/fixtures/{typescript,python,go,rust}/** and, per file,
+//! Generic marker harness. Walks tests/fixtures/{typescript,python,go,rust,markdown,html,css}/** and, per file,
 //! diffs the rule engine's findings against inline `expect:`/`expect-line:` markers (§8 of PLAN).
 
 use regex::Regex;

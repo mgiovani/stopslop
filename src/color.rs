@@ -30,9 +30,10 @@ const NAMED: &[(&str, [u8; 3])] = &[
 ];
 
 static COLOR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?i)#[0-9a-f]{8}(?-u:\b)|#[0-9a-f]{6}(?-u:\b)|#[0-9a-f]{3,4}(?-u:\b)|(?-u:\b)(?:rgb|hsl)a?\([^()]*\)|(?-u:\b)(?:black|white|red|green|blue|purple|violet|indigo|magenta|fuchsia|cyan|aqua|pink|orange|yellow|gray|grey|transparent)(?-u:\b)",
-    )
+    let names = NAMED.iter().map(|(n, _)| *n).collect::<Vec<_>>().join("|");
+    Regex::new(&format!(
+        r"(?i-u)#[0-9a-f]{{8}}(?-u:\b)|#[0-9a-f]{{6}}(?-u:\b)|#[0-9a-f]{{3,4}}(?-u:\b)|(?-u:\b)(?:rgb|hsl)a?\((?u:[^()]*)\)|(?-u:\b)(?:{names}|transparent)(?-u:\b)"
+    ))
     .unwrap()
 });
 
@@ -64,12 +65,52 @@ pub fn parse(token: &str) -> Option<Rgba> {
         .map(|&(_, [r, g, b])| Rgba { r, g, b, a: 1.0 })
 }
 
-/// Every color token in `value` with its byte span, in source order.
+/// Every color token in `value` with its byte span, in source order. Tokens inside `var()` and
+/// `url()` are skipped, and a named color glued to identifier characters (`--indigo`,
+/// `purple.png`) is not a color.
 pub fn colors_in(value: &str) -> Vec<(usize, usize, Rgba)> {
+    let opaque = opaque_spans(value);
     COLOR_RE
         .find_iter(value)
+        .filter(|m| !opaque.iter().any(|&(s, e)| m.start() >= s && m.start() < e))
+        .filter(|m| m.as_str().starts_with('#') || is_standalone(value, m.start(), m.end()))
         .filter_map(|m| parse(m.as_str()).map(|c| (m.start(), m.end(), c)))
         .collect()
+}
+
+fn is_standalone(value: &str, start: usize, end: usize) -> bool {
+    let glue = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/');
+    !value[..start].chars().next_back().is_some_and(glue)
+        && !value[end..].chars().next().is_some_and(glue)
+}
+
+/// Spans of every `var(...)` and `url(...)` call, parentheses balanced.
+fn opaque_spans(value: &str) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
+    for opener in ["var(", "url("] {
+        let mut from = 0;
+        while let Some(at) = value[from..].find(opener) {
+            let start = from + at;
+            let mut depth = 0usize;
+            let mut end = value.len();
+            for (i, c) in value[start..].char_indices() {
+                match c {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = start + i + 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            spans.push((start, end));
+            from = end;
+        }
+    }
+    spans
 }
 
 /// (hue in degrees 0..360, saturation 0..1, lightness 0..1).
@@ -95,24 +136,6 @@ pub fn hsl(c: Rgba) -> (f32, f32, f32) {
         (r - g) / d + 4.0
     };
     (h * 60.0, s, l)
-}
-
-pub fn relative_luminance(c: Rgba) -> f32 {
-    let lin = |v: u8| {
-        let v = f32::from(v) / 255.0;
-        if v <= 0.04045 {
-            v / 12.92
-        } else {
-            ((v + 0.055) / 1.055).powf(2.4)
-        }
-    };
-    0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
-}
-
-/// WCAG contrast ratio, 1.0..=21.0, order-independent.
-pub fn contrast_ratio(a: Rgba, b: Rgba) -> f32 {
-    let (la, lb) = (relative_luminance(a), relative_luminance(b));
-    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
 }
 
 fn parse_hex(hex: &str) -> Option<Rgba> {
@@ -146,7 +169,10 @@ fn function_args<'t>(t: &'t str, names: &[&str]) -> Option<&'t str> {
 
 fn split_args(args: &str) -> Vec<&str> {
     let (color, alpha) = args.split_once('/').unwrap_or((args, ""));
-    let mut parts: Vec<&str> = color.split([',', ' ']).filter(|p| !p.is_empty()).collect();
+    let mut parts: Vec<&str> = color
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|p| !p.is_empty())
+        .collect();
     parts.extend(alpha.split_whitespace());
     parts
 }
@@ -262,9 +288,17 @@ mod tests {
     }
 
     #[test]
-    fn contrast_matches_the_wcag_extremes() {
-        let ratio = contrast_ratio(rgb(0, 0, 0), rgb(255, 255, 255));
-        assert!((ratio - 21.0).abs() < 0.01, "{ratio}");
-        assert!((contrast_ratio(rgb(9, 9, 9), rgb(9, 9, 9)) - 1.0).abs() < 1e-6);
+    fn identifiers_and_calls_that_hold_color_words_are_not_colors() {
+        assert!(colors_in("var(--indigo)").is_empty());
+        assert!(colors_in("url(purple.png) no-repeat").is_empty());
+        assert!(colors_in("url(#abcabc)").is_empty());
+        assert!(colors_in("var(--a, #7c3aed)").is_empty());
+        assert!(colors_in("my-purple-box").is_empty());
+        assert_eq!(colors_in("red url(blue.png) white").len(), 2);
+    }
+
+    #[test]
+    fn multiline_and_tab_separated_arguments_parse() {
+        assert_eq!(parse("rgb(1,\n\t2,\t3)"), Some(rgb(1, 2, 3)));
     }
 }

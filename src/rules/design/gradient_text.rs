@@ -37,14 +37,8 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
         }
     }
     for list in &style.class_lists {
-        let clip = list
-            .tokens
-            .iter()
-            .find(|t| utility(t.text) == "bg-clip-text");
-        let gradient = list
-            .tokens
-            .iter()
-            .any(|t| is_gradient_utility(utility(t.text)));
+        let clip = list.iter().find(|t| utility(t.text) == "bg-clip-text");
+        let gradient = list.iter().any(|t| is_gradient_utility(utility(t.text)));
         if let Some(clip) = clip.filter(|_| gradient) {
             let (line, col) = style.line_col(clip.start);
             out.push(Diagnostic::at_fix(
@@ -69,87 +63,65 @@ fn is_gradient_utility(u: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::diagnostics_for as run;
     use super::*;
-    use crate::context::extract;
-    use crate::lang::{ts_language, Lang};
-    use crate::prose::ProseDoc;
-    use crate::style::StyleDoc;
-    use tree_sitter::Parser;
+    use crate::lang::Lang;
 
-    fn run(lang: Lang, src: &str) -> Vec<Diagnostic> {
-        let mut out = Vec::new();
-        let mut p = Parser::new();
-        match lang {
-            Lang::Html => {
-                let style = StyleDoc::from_html(&ProseDoc::parse_html(src), src);
-                check(&RULE, &ctx(lang, src, &style), &mut out);
-            }
-            _ => {
-                p.set_language(&ts_language(lang)).unwrap();
-                let tree = p.parse(src, None).unwrap();
-                let (_, strings, index) = extract(&tree, src, lang);
-                let style = if lang == Lang::Css {
-                    StyleDoc::from_css(&index, src)
-                } else {
-                    StyleDoc::from_jsx(&index, src, &strings)
-                };
-                check(&RULE, &ctx(lang, src, &style), &mut out);
-            }
-        }
-        out
-    }
-
-    fn ctx<'a>(lang: Lang, src: &'a str, style: &'a StyleDoc<'a>) -> LintContext<'a> {
-        LintContext {
-            display_path: "t".into(),
-            source: src,
-            index: None,
-            lang,
-            comments: &[],
-            strings: &[],
-            is_test_path: false,
-            is_stub_file: false,
-            deps: None,
-            prose: None,
-            image: None,
-            style: Some(style),
-            natlangs: ALL_NATLANGS,
-        }
+    fn diagnostics_for(lang: Lang, src: &str) -> Vec<Diagnostic> {
+        run(&RULE, lang, src)
     }
 
     #[test]
     fn flags_clip_text_over_a_gradient_in_one_block() {
         let src = ".t {\n  background: linear-gradient(90deg, red, blue);\n  -webkit-background-clip: text;\n}\n";
-        let d = run(Lang::Css, src);
+        let d = diagnostics_for(Lang::Css, src);
         assert_eq!(d.len(), 1);
-        assert_eq!(d[0].line, 3);
+        assert_eq!((d[0].line, d[0].col), (3, 3));
     }
 
     #[test]
     fn ignores_clip_text_over_an_image_and_gradients_without_clip() {
-        assert!(run(
-            Lang::Css,
-            ".t { background: url(a.png); background-clip: text }"
-        )
-        .is_empty());
-        assert!(run(Lang::Css, ".t { background: linear-gradient(red, blue) }").is_empty());
-        assert!(run(
-            Lang::Css,
-            ".a { background-clip: text } .b { background: linear-gradient(red, blue) }"
-        )
-        .is_empty());
+        let css = |src| diagnostics_for(Lang::Css, src);
+        assert!(css(".t { background: url(a.png); background-clip: text }").is_empty());
+        assert!(css(".t { background: linear-gradient(red, blue) }").is_empty());
+        assert!(
+            css(".a { background-clip: text } .b { background: linear-gradient(red, blue) }")
+                .is_empty()
+        );
+        assert!(css("").is_empty());
     }
 
     #[test]
     fn flags_tailwind_clip_text_with_a_gradient_utility() {
-        let src = "<h1 class=\"md:bg-clip-text bg-linear-to-r text-transparent\">x</h1>\n";
-        assert_eq!(run(Lang::Html, src).len(), 1);
-        assert!(run(Lang::Html, "<h1 class=\"bg-clip-text bg-red-500\">x</h1>\n").is_empty());
+        let html = |src| diagnostics_for(Lang::Html, src);
+        assert_eq!(
+            html("<h1 class=\"md:bg-clip-text bg-linear-to-r text-transparent\">x</h1>\n").len(),
+            1
+        );
+        assert_eq!(
+            html("<h1 class = \"bg-clip-text bg-gradient-to-r\">x</h1>\n").len(),
+            1
+        );
+        assert!(html("<h1 class=\"bg-clip-text bg-red-500\">x</h1>\n").is_empty());
+    }
+
+    #[test]
+    fn flags_a_style_element_and_a_style_attribute() {
+        let src = "<style>\n.h { background-image: linear-gradient(red, blue); background-clip: text }\n</style>\n<p style=\"background: linear-gradient(red, blue); -webkit-background-clip: text\">x</p>\n";
+        let d = diagnostics_for(Lang::Html, src);
+        assert_eq!(d.iter().map(|d| d.line).collect::<Vec<_>>(), [2, 4]);
     }
 
     #[test]
     fn flags_a_jsx_style_object() {
         let src = "const a = <h1 style={{ backgroundImage: 'linear-gradient(red, blue)', WebkitBackgroundClip: 'text' }} />;\n";
-        assert_eq!(run(Lang::Tsx, src).len(), 1);
+        assert_eq!(diagnostics_for(Lang::Tsx, src).len(), 1);
+    }
+
+    #[test]
+    fn crlf_and_non_ascii_input_keep_line_and_column() {
+        let src = ".t {\r\n  /* é */ background: linear-gradient(red, blue); background-clip: text;\r\n}\r\n";
+        let d = diagnostics_for(Lang::Css, src);
+        assert_eq!((d[0].line, d[0].col), (2, 51));
     }
 }
