@@ -1,5 +1,6 @@
 pub mod baseline;
 pub mod cli;
+pub mod color;
 pub mod config;
 pub mod context;
 pub mod custom;
