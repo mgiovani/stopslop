@@ -1,9 +1,11 @@
 # Configuration
 
+[Docs index](README.md)
+
 ## Path exemptions
 
 Rules that are path-gated (SLOP005, 006, 008, 009, 010, 037, 038, 039, 040,
-042, 043) don't run inside directories or files that look like tests or
+042, 043, 045) don't run inside directories or files that look like tests or
 generated/vendored code, since empty catches, broad excepts, unresolved
 imports, the stdlib/wrapper/single-implementation heuristics, and
 `// Check nfkd`-style test-section labels are all legitimately common there:

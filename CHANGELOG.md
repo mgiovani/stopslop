@@ -29,6 +29,14 @@ migration notes live here.
   300 lines" or "`__init__.py` must be empty" no longer need a Rust module.
   Existing entries are unchanged.
 
+### Changed
+
+- **The README is a short pitch; reference material moved to `docs/`.** Usage,
+  configuration, the rule table, suppression, prose linting, benchmarks and
+  non-goals each have a page, indexed from `docs/README.md`. SARIF `helpUri`
+  now points every rule at `docs/rules.md`, and `bench/score_corpus.py`
+  renames `--readme` to `--rules-doc` (default `docs/rules.md`).
+
 ### Fixed
 
 - **SLOP018 keeps ASCII `--` unflagged, now pinned by a fixture and a test**

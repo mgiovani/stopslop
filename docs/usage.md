@@ -1,5 +1,7 @@
 # Usage
 
+[Docs index](README.md)
+
 ## Install
 
 ```bash
@@ -32,7 +34,7 @@ stopslop --format json .           # machine-readable output
 stopslop --stats .                 # throughput and per-rule finding counts (stderr)
 stopslop -j 1 .                    # single worker thread (perf work; 0 = automatic)
 stopslop --select SLOP001          # run only the elision rule
-stopslop --select rhetoric         # run one rule group (see [Rule groups](rules.md#rule-groups))
+stopslop --select rhetoric         # run one rule group (see Rule groups in docs/rules.md)
 stopslop --select ALL              # every rule (SLOP010 still needs --check-imports)
 stopslop --ignore SLOP008          # run everything except stub detection
 stopslop --select artifact --extend-select SLOP033  # add a rule on top of a narrower select
@@ -40,7 +42,7 @@ stopslop --list-rules              # print every rule with its group, tier, defa
 stopslop --check-imports .         # also run SLOP010 (unresolved import) — opt-in
 stopslop --config path.toml        # use a specific config file instead of the discovered one
 stopslop --no-config               # ignore any project or user-level stopslop.toml, CLI flags only
-stopslop --write-baseline .        # record today's findings (see [Baseline](#baseline))
+stopslop --write-baseline .        # record today's findings (see Baseline below)
 stopslop --baseline .              # report only findings that aren't in the baseline
 stopslop --staged                  # lint what is about to be committed (index content, not disk)
 stopslop --changed                 # staged + unstaged changes against HEAD
@@ -70,34 +72,8 @@ are not counted.
 
 ## Selecting by group
 
-`SLOP0NN` numbers are chronological, not thematic, so a numeric prefix can't
-express "just the rhetoric rules". Named groups can. They work anywhere a rule
-code or prefix does, including `--select`, `--ignore`, and the
-`select`/`ignore` keys in `stopslop.toml`:
+Rule groups and the reserved `ALL` selector are described in [rules](rules.md#rule-groups).
 
-| Group | What it covers |
-|-------|----------------|
-| `artifact` | Mechanical leftovers from a generation session: chat turns, tool tokens, unfilled slots |
-| `structure` | Structural code smells: swallowed errors, escaped types, stubs, speculative abstraction |
-| `stdlib` | Code that rebuilds something the standard library or the platform already provides |
-| `rhetoric` | Formulaic rhetorical shapes: clichés, staged reveals, manufactured significance |
-| `verbosity` | Words that cost the reader something and return nothing: hedging, filler, padding |
-| `sourcing` | Claims with no checkable source behind them |
-| `format` | Typographic and Markdown affectations |
-
-```bash
-stopslop --select artifact,structure   # the mechanical, high-confidence rules only
-stopslop --select SLOP --ignore verbosity  # everything except the density rules
-```
-
-Every rule belongs to exactly one group; a test enforces that the table stays
-exhaustive, so a new rule can't quietly escape group selection. `--list-rules`
-prints the full mapping.
-
-`ALL` is a reserved selector, not a group: `--select ALL` (or `select =
-["ALL"]` in config) runs every registered rule plus any `[[custom-rule]]`
-entries from your config. SLOP010 is the one exception: it stays off until
-`--check-imports` is passed.
 ## Baseline
 
 Turning stopslop on for an existing codebase usually surfaces findings nobody
@@ -149,9 +125,10 @@ Pre-commit hook: `stopslop --staged`.
 
 - `0`: nothing at or above the failing tier.
 - `1`: at least one finding at or above the failing tier.
-- `2`: usage error, a path that couldn't be scanned, or a config error
+- `2`: usage error, a path that couldn't be scanned, a config error
   (bad glob, bad regex, unknown key, invalid `[[custom-rule]]` or
-  `fail-on-tier` value).
+  `fail-on-tier` value), or a rule that panicked on a file, since the
+  report is then incomplete.
 
 The failing tier is `A` by default, so Tier B and Tier C findings (including
 any custom rule declared `tier = "B"` or `tier = "C"`) print without blocking.

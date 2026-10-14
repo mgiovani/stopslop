@@ -1,5 +1,7 @@
 # Why stopslop
 
+[Docs index](README.md)
+
 Your linter can't see `// ... rest of code unchanged`. ESLint, Ruff, and
 Clippy throw away comment and string content before analysis: exactly
 where AI coding artifacts live. stopslop reads what they discard: leaked
@@ -26,7 +28,8 @@ truncated edits land. A few examples:
 | `x as unknown as T` type-escape chain | No stock rule (`as unknown` alone is valid, idiomatic TS) | SLOP007 |
 | `YOUR_API_KEY`, `sk-...`-shaped secret | Not linted (string literal content is ignored by default rules) | SLOP009 |
 
-`stopslop` is a deterministic linter for TypeScript, Python, Go, and Rust.
+`stopslop` is a deterministic linter for code (TypeScript, Python, Go, Rust),
+prose, and image metadata.
 Every rule is a tree-sitter AST match or a regex over extracted
 comments/strings: same input, same output, every time. This is a
 **quality gate that also names AI tells**: it flags patterns that are junk
@@ -48,9 +51,9 @@ never scores a file as "written by AI" and never needs a model to say so.
   `requests.get_json()` isn't a real method: that's a type checker's job.
 - **No general code-comment style/verbosity grading.** In code files it
   flags specific junk patterns (preamble, attribution, elision, a comment
-  that only repeats the statement under it), not comment style, length, or
-  density in general. Prose files additionally get the
-  density/style checks in [Prose linting](prose.md); those are
+  that only repeats the statement under it, and an opt-in cap on comment
+  length), not comment style or density in general. Prose files additionally get the
+  density/style rules in [Prose linting](prose.md); those are
   warn-only judgment calls, and none of them are a house-style grader.
 - **`[[custom-rule]]` is a phrase matcher, not a plugin system.** It compiles
   a regex against comments/strings or masked prose. There's no hook for

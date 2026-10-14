@@ -1,5 +1,7 @@
 # Suppression
 
+[Docs index](README.md)
+
 Two escape valves, both plain comments so they work in any language's
 comment syntax:
 

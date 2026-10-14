@@ -41,7 +41,11 @@ tests/fixtures/markdown/slop_residue.md:3:1 SLOP011 unedited assistant-response 
     fix: delete the sentence
 ```
 
+![stopslop findings across Python and TypeScript files](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/findings.png)
+
 Tier A findings exit 1 and fail CI. Tier B findings warn. See [usage](https://github.com/mgiovani/stopslop/blob/main/docs/usage.md) for formats (text, JSON, SARIF, Markdown), baselines and exit codes.
+
+![stopslop --format json output](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/formats.png)
 
 ## Why stopslop
 
@@ -89,6 +93,8 @@ fail-on-tier = "A"                  # lowest tier that exits 1
 ```
 
 `stopslop --help-config` prints an annotated file with every key. Details, user-defined rules, and `--check-imports` are in [docs/configuration.md](https://github.com/mgiovani/stopslop/blob/main/docs/configuration.md). To silence one finding, put `// ai-slop-ignore` above it; see [suppression](https://github.com/mgiovani/stopslop/blob/main/docs/suppression.md).
+
+![suppressing a finding with ai-slop-ignore](https://raw.githubusercontent.com/mgiovani/stopslop/main/assets/suppress.gif)
 
 ## CI
 

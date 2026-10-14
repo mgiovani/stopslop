@@ -1,5 +1,7 @@
 # Benchmarks
 
+[Docs index](README.md)
+
 ## Measured on labelled corpora
 
 `just corpus` runs every rule against labelled human-vs-AI corpora and

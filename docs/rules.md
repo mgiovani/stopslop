@@ -1,5 +1,7 @@
 # Rules
 
+[Docs index](README.md)
+
 ## Rule groups
 
 `SLOP0NN` numbers are chronological, not thematic, so a numeric prefix can't

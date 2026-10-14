@@ -1,5 +1,7 @@
 # Prose linting
 
+[Docs index](README.md)
+
 stopslop also lints `.md`, `.mdx`, `.txt`, `.rst`, and `.html`/`.htm` files:
 same binary, same deterministic regex/structural matching, no LLM involved
 in the scan.
@@ -29,7 +31,7 @@ every run, just without the power to fail CI. SLOP018
 flags every mid-prose dash outright (the one exemption is a block-opening
 attribution dash like `— Oscar Wilde`).
 
-The rest are document-wide density and style checks, also on by default: hedging,
+The rest are document-wide density and style rules, also on by default: hedging,
 overused vocabulary, rhetorical parallelism, boldface overuse,
 heading formatting, promotional register, hyphen stacking, sentence length,
 synonym rotation, outline filler, change-narrating docs, colon reveals,
