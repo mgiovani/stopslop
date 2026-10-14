@@ -1,4 +1,5 @@
 pub mod artifact;
+pub mod design;
 pub mod format;
 pub mod imports_data;
 pub mod provenance;

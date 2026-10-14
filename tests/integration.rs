@@ -6,7 +6,15 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use stopslop::{lint_file, resolve_enabled, Lang, Settings, ALL_NATLANGS};
 
-const LANG_DIRS: &[&str] = &["typescript", "python", "go", "rust", "markdown", "html"];
+const LANG_DIRS: &[&str] = &[
+    "typescript",
+    "python",
+    "go",
+    "rust",
+    "markdown",
+    "html",
+    "css",
+];
 
 fn fixtures_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")

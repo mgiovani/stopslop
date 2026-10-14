@@ -1,0 +1,18 @@
+.hero-title {
+  color: #1d2b3a;
+  font-weight: 700;
+}
+
+.banner {
+  background: linear-gradient(90deg, #ff7e5f, #feb47b);
+}
+
+.badge {
+  background-clip: text;
+  background-image: url("badge.png");
+}
+
+.cta {
+  background-color: #0f766e;
+  --tw-ring-color: #6366f1;
+}
