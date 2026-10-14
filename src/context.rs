@@ -121,6 +121,7 @@ pub fn extract<'t, 'a>(
             &["line_comment", "block_comment"],
             &["string_literal", "raw_string_literal"],
         ),
+        Lang::Css => (&["comment"], &["string_value"]),
         // Never reached: prose langs bypass this extraction path entirely (engine::lint_prose),
         // and image langs never build a tree at all (engine::lint_image).
         Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html | Lang::Image => (&[], &[]),
@@ -210,6 +211,7 @@ pub(crate) fn is_doc_comment(lang: Lang, text: &str) -> bool {
                 || text.starts_with("/**")
                 || text.starts_with("/*!")
         }
+        Lang::Css => false,
         // Never reached: prose and image langs never call extract().
         Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Html | Lang::Image => false,
     }

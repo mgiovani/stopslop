@@ -13,6 +13,7 @@ pub enum Lang {
     Txt,
     Rst,
     Html,
+    Css,
     /// One `Lang` for four container formats (PNG/JPEG/WebP, gated by `IMAGE_LANGS`) because the
     /// tell a rule reads is the embedded-metadata signal (a generator string, a ComfyUI workflow
     /// graph, a C2PA claim), not the container byte layout. A rule that must distinguish reads
@@ -23,6 +24,9 @@ pub enum Lang {
 
 pub const CODE_LANGS: &[Lang] = &[Lang::Ts, Lang::Tsx, Lang::Python, Lang::Go, Lang::Rust];
 pub const PROSE_LANGS: &[Lang] = &[Lang::Md, Lang::Mdx, Lang::Txt, Lang::Rst, Lang::Html];
+/// Langs a `StyleDoc` can be built for. Css joins neither `CODE_LANGS` nor `PROSE_LANGS`; Html
+/// and Tsx keep their own group membership too.
+pub const STYLE_LANGS: &[Lang] = &[Lang::Css, Lang::Html, Lang::Tsx];
 pub const IMAGE_LANGS: &[Lang] = &[Lang::Image];
 
 impl Lang {
@@ -38,6 +42,7 @@ impl Lang {
             "txt" | "text" => Some(Lang::Txt),
             "rst" => Some(Lang::Rst),
             "html" | "htm" => Some(Lang::Html),
+            "css" | "scss" => Some(Lang::Css),
             "png" | "jpg" | "jpeg" | "webp" => Some(Lang::Image),
             _ => None,
         }
@@ -72,6 +77,7 @@ pub fn ts_language(lang: Lang) -> Language {
         Lang::Go => tree_sitter_go::LANGUAGE.into(),
         Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
         Lang::Html => tree_sitter_html::LANGUAGE.into(),
+        Lang::Css => tree_sitter_css::LANGUAGE.into(),
         Lang::Md | Lang::Mdx | Lang::Txt | Lang::Rst | Lang::Image => {
             unreachable!("markdown-family prose langs and images bypass tree-sitter")
         }
