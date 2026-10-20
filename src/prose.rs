@@ -996,10 +996,18 @@ fn decode_entity(entity: &str) -> Option<char> {
         return u32::from_str_radix(digits, radix)
             .ok()
             .and_then(char::from_u32)
-            .filter(|c| matches!(c, '\u{2014}' | '\u{2018}'..='\u{201D}'));
+            .filter(|c| {
+                matches!(
+                    c,
+                    '\u{B7}' | '\u{2022}' | '\u{2192}' | '\u{2014}' | '\u{2018}'..='\u{201D}'
+                )
+            });
     }
     Some(match body {
         "mdash" => '\u{2014}',
+        "middot" => '\u{B7}',
+        "bull" => '\u{2022}',
+        "rarr" => '\u{2192}',
         "lsquo" => '\u{2018}',
         "rsquo" => '\u{2019}',
         "ldquo" => '\u{201C}',

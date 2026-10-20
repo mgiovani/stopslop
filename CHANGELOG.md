@@ -7,6 +7,14 @@ migration notes live here.
 
 ### Added
 
+- **SLOP057 flags a decorative separator glyph between two tokens in UI text.**
+  Tier B, on by default, format group. A `·`, `•` or `→` with a space on each
+  side (`Home · Docs`), in JSX text, string literals, HTML text and attribute
+  values, entities and `\u` escapes included, fires once the file holds two.
+  It is on because the verified human tsx corpus has 0 hits in 1,000 files
+  while Lovable, Replit, Same.new and bolt.new files carry it. Comments,
+  `<script>` and `<style>` are skipped. HTML text now decodes `&middot;`,
+  `&bull;` and `&rarr;` into the entity side table.
 - **A `design` group reads the styling of generated UI.** SLOP052 flags gradient
   text (`background-clip: text` or `bg-clip-text` over a gradient), SLOP053 a
   purple-blue gradient, SLOP054 a hand-copied Tailwind violet hex, SLOP055 a

@@ -4,7 +4,7 @@
 
 # stopslop
 
-A deterministic linter, written in Rust, for the tells AI leaves in code and prose: 56 rules, one static binary, no model at scan time.
+A deterministic linter, written in Rust, for the tells AI leaves in code and prose: 57 rules, one static binary, no model at scan time.
 
 [![CI](https://github.com/mgiovani/stopslop/actions/workflows/ci.yml/badge.svg)](https://github.com/mgiovani/stopslop/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/mgiovani/stopslop/blob/main/LICENSE)
@@ -59,7 +59,7 @@ Tier A findings exit 1 and fail CI. Tier B findings warn. See [usage](https://gi
 
 ## What it catches
 
-56 rules in 9 groups. `--list-rules` prints every rule with its group, tier, and state.
+57 rules in 9 groups. `--list-rules` prints every rule with its group, tier, and state.
 
 | Group | What it covers |
 |-------|----------------|
@@ -78,7 +78,7 @@ The per-rule table is in [docs/rules.md](https://github.com/mgiovani/stopslop/bl
 | Tier | Default | Effect |
 |------|---------|--------|
 | A | on (14 rules) | A finding exits 1 and blocks CI. Mechanical artifacts with no legitimate reading. |
-| B | on (36 rules) or off (3 rules) | Judgment calls that warn and never exit 1. `fail-on-tier = "B"` makes them fail. |
+| B | on (37 rules) or off (3 rules) | Judgment calls that warn and never exit 1. `fail-on-tier = "B"` makes them fail. |
 | C | off (3 rules) | Thresholds not yet scored against a labelled corpus. Opt in with `--extend-select`. |
 
 ## Configuration
