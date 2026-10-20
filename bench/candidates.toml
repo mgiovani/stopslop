@@ -556,3 +556,23 @@ rule = "SLOP042"
 what_it_missed = "A doc-comment block before a plain statement inside a TypeScript function body"
 evidence = "An initialize-an-empty-string doc comment over a let binding"
 fix_idea = "Apply the doc-comment exemption only when the anchor is a declaration, not an expression or return statement inside a body"
+
+[[candidate]]
+name = "Decorative separator glyph between two tokens in UI markup or strings"
+kind = "code"
+langs = "html,tsx"
+scope = "line"
+regex = '''\S[  ](?:·|•|→|—|&middot;|&bull;|&mdash;|&rarr;|&#183;|&#xb7;|\\u00b7|\\xb7)[  ]\S'''
+relation = "SLOP057"
+tier = "B"
+notes = "Measured 2026-10-20 per file, comments and script/style blocks stripped, entities and \\u escapes normalized, glyph spaced on both sides. Per glyph (verified human antd-tsx plus tailwind-tsx-2022, 0/1000 unless noted): middot Lovable 170/513, Replit 12/165, Same 5/171, bolt 0/509, Design2Code (unverified html) 9/484; em dash Lovable 204/513, Replit 13/165, Same 1/171, bolt 5/509, Design2Code 13/484; bullet and right arrow 0/1000 human and 32 and 46 AI files; U+2219, U+22C5, U+2027, U+25E6, single and double angle quotes 0 hits anywhere. Rejected: en dash (5/1000 verified human), spaced pipe (9/1000 human, 25% of Design2Code title tags), spaced slash (7/1000 human). Union of middot, bullet, arrow and em dash, at >= 1 per file: Lovable 281/513 (54.8%), Replit 24/165, Same 11/171, bolt 8/509, pooled AI 324/1358 (23.9%), verified human 0/1000, Design2Code 23/484; at >= 2: pooled AI 218/1358 (16.1%), Design2Code 8/484 (1.7%), human 0/1000. Without the one Lovable repo that dominated the middot hits (317 files, 191 of them hit): pooled AI 133/1041 (12.8%) at >= 1, 78/1041 (7.5%) at >= 2. Repos hit: Lovable 23/28, Replit 4/6, Same 5/12, bolt 4/12. Middot alone, repos hit: Lovable 16/28, Replit 2/6, Same 1/12, bolt 0/12. Em dash is the weakest leg: verified human UI text is two library and template cells only, so the 0/1000 is thin evidence and the unverified 2.7% Design2Code rate is the better estimate of the human floor. The analyzer scores the raw line regex, comments included, so its pooled AI rate is higher (370/1358, 27.3%; Design2Code 26/484, 5.4%) than the comment-stripped figures above; a rule must skip comments to reproduce them."
+
+[[candidate]]
+name = "Middle-dot separator between two tokens in prose"
+kind = "prose"
+langs = "prose"
+scope = "line"
+regex = '''\S[  ]·[  ]\S'''
+relation = "new; no rule owns a mid-line separator glyph"
+tier = "B"
+notes = "Measured 2026-10-20 over the prose cells: 1/4334 verified human files, 1/5388 AI files (0.8x lift); the single hits are one file each in gpt2-output human and ai. Prose never uses the separator, so no prose rule."
