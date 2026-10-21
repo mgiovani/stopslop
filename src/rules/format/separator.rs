@@ -64,9 +64,12 @@ type Candidate = (usize, usize, Option<char>);
 
 fn tsx_glyphs(ctx: &LintContext) -> Vec<(usize, char)> {
     let mut candidates: Vec<Candidate> = Vec::new();
+    let jsx_attr_strings = jsx_attribute_strings(ctx);
     for s in ctx.strings {
         candidates.extend(literals(s.text, s.start_byte));
-        candidates.extend(decoded(&ESCAPE, s.text, s.start_byte, decode_escape));
+        if !jsx_attr_strings.contains(&s.start_byte) {
+            candidates.extend(decoded(&ESCAPE, s.text, s.start_byte, decode_escape));
+        }
     }
     for n in ctx.nodes(&["jsx_text"]) {
         candidates.extend(literals(ctx.node_text(&n), n.start_byte()));
@@ -79,6 +82,21 @@ fn tsx_glyphs(ctx: &LintContext) -> Vec<(usize, char)> {
         ));
     }
     accepted(ctx.source, candidates)
+}
+
+/// Start bytes of `title="..."`-style attribute strings, which JSX reads verbatim: `\u00b7` there
+/// is six characters, not a middle dot. `title={"..."}` is a JS string and still decodes.
+fn jsx_attribute_strings(ctx: &LintContext) -> BTreeSet<usize> {
+    ctx.nodes(&["jsx_attribute"])
+        .into_iter()
+        .flat_map(|attr| {
+            let mut cursor = attr.walk();
+            attr.named_children(&mut cursor)
+                .filter(|c| c.kind() == "string")
+                .map(|c| c.start_byte())
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 fn html_glyphs(ctx: &LintContext) -> Vec<(usize, char)> {
@@ -148,7 +166,8 @@ fn decode_escape(escape: &str) -> Option<char> {
     u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
 }
 
-/// A space or NBSP on each side, then a non-space char: `a · b`, never `a·b` or a line-leading `→ b`.
+/// A space or NBSP on each side, then a non-space char: `a · b`, never `a·b` or a line-leading
+/// `→ b`.
 fn flanked(source: &str, start: usize, end: usize) -> bool {
     let gap = |c: char| c == ' ' || c == '\u{A0}';
     let before = source[..start].strip_suffix(gap);
@@ -280,6 +299,15 @@ mod tests {
     #[test]
     fn a_plain_string_does_not_decode_entities() {
         assert!(tsx("const b = \"p &middot; q &middot; r &#183; s\";\n").is_empty());
+    }
+
+    #[test]
+    fn a_jsx_attribute_string_does_not_decode_escapes() {
+        assert!(tsx("const a = <p title=\"a \\u00b7 b\" alt=\"c \\u00b7 d\">x</p>;\n").is_empty());
+        assert_eq!(
+            tsx("const a = <p title={\"a \\u00b7 b\"} alt={\"c \\u00b7 d\"}>x</p>;\n").len(),
+            2
+        );
     }
 
     #[test]

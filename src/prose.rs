@@ -90,7 +90,8 @@ pub struct ProseDoc<'a> {
     pub paragraphs: Option<Vec<(usize, usize)>>,
     /// Decoded HTML entities the punctuation rules care about, as (byte of the `&`, char):
     /// `&mdash;` and `&#8212;` are dashes to SLOP018, `&ldquo;` a smart quote to SLOP020 and
-    /// `&middot;`, `&bull;` and `&rarr;` separator glyphs to SLOP057, but decoding them into `masked` would change byte offsets. Empty for Markdown.
+    /// `&middot;`, `&bull;` and `&rarr;` separator glyphs to SLOP057, but decoding them into
+    /// `masked` would change byte offsets. Empty for Markdown.
     pub entities: Vec<(usize, char)>,
     /// Start byte of every `<strong>`/`<b>` element, for SLOP019; Markdown bold is a `**` pair
     /// the rule finds in the masked stream itself, and HTML tags are blank there.
