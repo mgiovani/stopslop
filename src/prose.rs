@@ -89,8 +89,8 @@ pub struct ProseDoc<'a> {
     /// family, whose paragraphs `fragmentation::paragraph_blocks` derives from blank lines.
     pub paragraphs: Option<Vec<(usize, usize)>>,
     /// Decoded HTML entities the punctuation rules care about, as (byte of the `&`, char):
-    /// `&mdash;` and `&#8212;` are dashes to SLOP018 and `&ldquo;` a smart quote to SLOP020,
-    /// but decoding them into `masked` would change byte offsets. Empty for Markdown.
+    /// `&mdash;` and `&#8212;` are dashes to SLOP018, `&ldquo;` a smart quote to SLOP020 and
+    /// `&middot;`, `&bull;` and `&rarr;` separator glyphs to SLOP057, but decoding them into `masked` would change byte offsets. Empty for Markdown.
     pub entities: Vec<(usize, char)>,
     /// Start byte of every `<strong>`/`<b>` element, for SLOP019; Markdown bold is a `**` pair
     /// the rule finds in the masked stream itself, and HTML tags are blank there.
@@ -405,7 +405,7 @@ fn line_index(line_starts: &[usize], byte: usize) -> usize {
     }
 }
 
-fn compute_line_col(line_starts: &[usize], text: &str, byte: usize) -> (usize, usize) {
+pub(crate) fn compute_line_col(line_starts: &[usize], text: &str, byte: usize) -> (usize, usize) {
     let idx = line_index(line_starts, byte);
     let line_start = line_starts[idx];
     let col = 1 + text[line_start..byte.min(text.len())].chars().count();
@@ -986,7 +986,7 @@ fn detect_html_lang(root: Node, src: &str) -> Option<NatLang> {
 /// Everything else stays blank; `&amp;` and `&nbsp;` carry no tell, and `&ndash;` is left out
 /// because SLOP018 exempts an en dash between digits by looking at its neighbors in the masked
 /// stream, which an entity does not have.
-fn decode_entity(entity: &str) -> Option<char> {
+pub(crate) fn decode_entity(entity: &str) -> Option<char> {
     let body = entity.strip_prefix('&')?.trim_end_matches(';');
     if let Some(num) = body.strip_prefix('#') {
         let (digits, radix) = match num.strip_prefix(['x', 'X']) {

@@ -1,6 +1,7 @@
 use crate::context::LintContext;
 use crate::diagnostic::{Diagnostic, Tier};
 use crate::lang::{Lang, ALL_NATLANGS};
+use crate::prose::{compute_line_col, compute_line_starts, decode_entity};
 use crate::registry::RuleDef;
 use regex::Regex;
 use std::collections::BTreeSet;
@@ -22,16 +23,20 @@ const MIN_MATCHES: usize = 2;
 
 const SEPARATORS: [char; 3] = ['\u{B7}', '\u{2022}', '\u{2192}'];
 
-/// JSX text decodes entities and string literals decode escapes, so both spellings are the glyph.
-static TSX_GLYPH: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"[·•→]|&(?:middot|bull|rarr|#183|#xb7|#8226|#x2022|#8594|#x2192);|\\u(?:00b7|2022|2192|\{(?:b7|2022|2192)\})|\\xb7",
-    )
-    .unwrap()
+/// Longest entity this rule decodes (`&#x2192;`), so a stray `&` never scans far for its `;`.
+const MAX_ENTITY_BYTES: usize = 10;
+
+static LITERAL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[·•→]").unwrap());
+
+/// A JavaScript string literal decodes escapes; JSX text and attribute strings decode entities.
+static ESCAPE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\\u([0-9a-fA-F]{4})|\\u\{([0-9a-fA-F]{1,6})\}|\\x([0-9a-fA-F]{2})").unwrap()
 });
 
+static ENTITY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"&#?[0-9A-Za-z]{1,8};").unwrap());
+
 /// Reports each spaced separator glyph once the file holds `MIN_MATCHES` of them, anchored at the
-/// glyph. A glyph that opens its line has no token before it and is SLOP021's marker, not ours.
+/// glyph. A glyph that opens its line separates nothing, so it stays quiet.
 fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     let glyphs = match ctx.lang {
         Lang::Html => html_glyphs(ctx),
@@ -40,8 +45,9 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     if glyphs.len() < MIN_MATCHES {
         return;
     }
+    let line_starts = compute_line_starts(ctx.source);
     for (byte, glyph) in glyphs {
-        let (line, col) = line_col(ctx.source, byte);
+        let (line, col) = compute_line_col(&line_starts, ctx.source, byte);
         out.push(Diagnostic::at(
             rule,
             ctx,
@@ -54,71 +60,92 @@ fn check(rule: &'static RuleDef, ctx: &LintContext, out: &mut Vec<Diagnostic>) {
     }
 }
 
+type Candidate = (usize, usize, Option<char>);
+
 fn tsx_glyphs(ctx: &LintContext) -> Vec<(usize, char)> {
-    let mut found = BTreeSet::new();
-    let strings = ctx.strings.iter().map(|s| (s.start_byte, s.end_byte));
-    let jsx_text = ctx
-        .nodes(&["jsx_text"])
-        .into_iter()
-        .map(|n| (n.start_byte(), n.end_byte()));
-    // `strings` nests (a template substitution holds its own strings), so the set dedupes by byte.
-    for (start, end) in strings.chain(jsx_text) {
-        for m in TSX_GLYPH.find_iter(&ctx.source[start..end]) {
-            let (from, to) = (start + m.start(), start + m.end());
-            if flanked(ctx.source, from, to) {
-                found.insert((from, glyph_of(m.as_str())));
-            }
-        }
+    let mut candidates: Vec<Candidate> = Vec::new();
+    for s in ctx.strings {
+        candidates.extend(literals(s.text, s.start_byte));
+        candidates.extend(decoded(&ESCAPE, s.text, s.start_byte, decode_escape));
     }
-    found.into_iter().collect()
+    for n in ctx.nodes(&["jsx_text"]) {
+        candidates.extend(literals(ctx.node_text(&n), n.start_byte()));
+    }
+    for n in ctx.nodes(&["html_character_reference"]) {
+        candidates.push((
+            n.start_byte(),
+            n.end_byte(),
+            decode_entity(ctx.node_text(&n)),
+        ));
+    }
+    accepted(ctx.source, candidates)
 }
 
 fn html_glyphs(ctx: &LintContext) -> Vec<(usize, char)> {
     let Some(doc) = ctx.prose else {
         return Vec::new();
     };
-    let literal = |text: &str, offset: usize| -> Vec<(usize, char)> {
-        text.char_indices()
-            .filter(|&(_, c)| SEPARATORS.contains(&c))
-            .map(|(i, c)| (offset + i, c))
-            .collect()
-    };
-    let mut candidates = literal(&doc.masked, 0);
+    // `masked` keeps comment text for the rules that read it, so literal glyphs need the filter.
+    let mut candidates: Vec<Candidate> = literals(&doc.masked, 0)
+        .filter(|&(from, ..)| {
+            !doc.comments
+                .iter()
+                .any(|k| (k.start_byte..k.end_byte).contains(&from))
+        })
+        .collect();
     for attr in &doc.attr_values {
-        candidates.extend(literal(attr.text, attr.start_byte));
+        candidates.extend(literals(attr.text, attr.start_byte));
+        candidates.extend(decoded(&ENTITY, attr.text, attr.start_byte, decode_entity));
     }
-    candidates.extend(
-        doc.entities
+    for &(byte, glyph) in &doc.entities {
+        let len = ctx.source.as_bytes()[byte..]
             .iter()
-            .copied()
-            .filter(|&(_, c)| SEPARATORS.contains(&c)),
-    );
-    candidates.retain(|&(byte, _)| {
-        !doc.comments
-            .iter()
-            .any(|k| (k.start_byte..k.end_byte).contains(&byte))
-    });
-    candidates.retain(|&(byte, c)| flanked(ctx.source, byte, glyph_end(ctx.source, byte, c)));
-    candidates.sort_unstable();
-    candidates.dedup();
-    candidates
+            .take(MAX_ENTITY_BYTES)
+            .position(|&b| b == b';')
+            .map_or(1, |i| i + 1);
+        candidates.push((byte, byte + len, Some(glyph)));
+    }
+    accepted(ctx.source, candidates)
 }
 
-/// End byte of the glyph at `byte`: the entity runs to its `;`, a literal glyph is one char.
-fn glyph_end(source: &str, byte: usize, glyph: char) -> usize {
-    if source[byte..].starts_with('&') {
-        source[byte..].find(';').map_or(byte + 1, |i| byte + i + 1)
-    } else {
-        byte + glyph.len_utf8()
-    }
+/// Separator glyphs among the candidates that sit between two tokens, deduped by byte because
+/// string literals nest and an attribute value overlaps the masked stream.
+fn accepted(source: &str, candidates: Vec<Candidate>) -> Vec<(usize, char)> {
+    let found: BTreeSet<(usize, char)> = candidates
+        .into_iter()
+        .filter_map(|(from, to, glyph)| {
+            let glyph = glyph.filter(|g| SEPARATORS.contains(g))?;
+            flanked(source, from, to).then_some((from, glyph))
+        })
+        .collect();
+    found.into_iter().collect()
 }
 
-fn glyph_of(matched: &str) -> char {
-    match matched {
-        "\u{B7}" | "&middot;" | "&#183;" | "&#xb7;" | "\\u00b7" | "\\u{b7}" | "\\xb7" => '\u{B7}',
-        "\u{2022}" | "&bull;" | "&#8226;" | "&#x2022;" | "\\u2022" | "\\u{2022}" => '\u{2022}',
-        _ => '\u{2192}',
-    }
+fn literals(text: &str, offset: usize) -> impl Iterator<Item = Candidate> + '_ {
+    LITERAL.find_iter(text).map(move |m| {
+        (
+            offset + m.start(),
+            offset + m.end(),
+            m.as_str().chars().next(),
+        )
+    })
+}
+
+fn decoded<'a>(
+    re: &'a Regex,
+    text: &'a str,
+    offset: usize,
+    decode: fn(&str) -> Option<char>,
+) -> impl Iterator<Item = Candidate> + 'a {
+    re.find_iter(text)
+        .map(move |m| (offset + m.start(), offset + m.end(), decode(m.as_str())))
+}
+
+fn decode_escape(escape: &str) -> Option<char> {
+    let hex = escape
+        .trim_start_matches(['\\', 'u', 'x'])
+        .trim_matches(['{', '}']);
+    u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
 }
 
 /// A space or NBSP on each side, then a non-space char: `a · b`, never `a·b` or a line-leading `→ b`.
@@ -129,18 +156,6 @@ fn flanked(source: &str, start: usize, end: usize) -> bool {
     matches!((before, after), (Some(b), Some(a))
         if b.chars().next_back().is_some_and(|c| !c.is_whitespace())
             && a.chars().next().is_some_and(|c| !c.is_whitespace()))
-}
-
-fn line_col(source: &str, byte: usize) -> (usize, usize) {
-    let head = &source[..byte];
-    let line = head.matches('\n').count() + 1;
-    let col = head
-        .rfind('\n')
-        .map_or(head, |i| &head[i + 1..])
-        .chars()
-        .count()
-        + 1;
-    (line, col)
 }
 
 #[cfg(test)]
@@ -253,5 +268,57 @@ mod tests {
     fn a_line_leading_marker_is_not_ours() {
         assert!(html("<p>\n\u{2192} first\n\u{2192} second\n\u{2192} third\n</p>\n").is_empty());
         assert!(html("<p>x</p>\n  \u{2022} first\n  \u{2022} second\n").is_empty());
+    }
+
+    #[test]
+    fn jsx_entities_are_decoded_in_text_and_attributes() {
+        let src =
+            "const a = <p title=\"x &middot; y\">x &middot; y &#XB7; z &#xB7; w &bull; v</p>;\n";
+        assert_eq!(tsx(src).len(), 5);
+    }
+
+    #[test]
+    fn a_plain_string_does_not_decode_entities() {
+        assert!(tsx("const b = \"p &middot; q &middot; r &#183; s\";\n").is_empty());
+    }
+
+    #[test]
+    fn jsx_text_does_not_decode_escapes() {
+        assert!(tsx("const a = <p>a \\u00b7 b \\u00b7 c</p>;\n").is_empty());
+    }
+
+    #[test]
+    fn escapes_match_in_any_hex_case() {
+        let src = "const a = [\"a \\u00B7 b\", \"c \\xB7 d\", \"e \\u{B7} f\", `g \\u{2022} h`, \"i \\u2192 j\"];\n";
+        assert_eq!(tsx(src).len(), 5);
+        assert!(tsx("const a = [\"a \\u00b8 b\", \"c \\u0041 d\"];\n").is_empty());
+    }
+
+    #[test]
+    fn a_jsx_comment_is_quiet() {
+        assert!(tsx("const a = <p>{/* a \u{B7} b \u{B7} c */}</p>;\n").is_empty());
+    }
+
+    #[test]
+    fn html_attribute_entities_are_flagged() {
+        let src = "<a title=\"x &middot; y &#xB7; z\">k</a>\n";
+        assert_eq!(html(src).len(), 2);
+    }
+
+    #[test]
+    fn html_comment_entities_are_quiet() {
+        assert!(html("<!-- a &middot; b &bull; c -->\n<p x=\"1\">y</p>\n").is_empty());
+    }
+
+    #[test]
+    fn html_preformatted_code_is_quiet() {
+        let src = "<pre>a \u{B7} b</pre><code>c \u{B7} d</code><textarea>e \u{B7} f</textarea>\n";
+        assert!(html(src).is_empty());
+    }
+
+    #[test]
+    fn a_trailing_glyph_with_nothing_after_it_is_quiet() {
+        assert!(tsx("const a = <p>a \u{B7} b \u{B7}</p>; // \u{B7}").is_empty());
+        assert_eq!(html("<p>a \u{B7} b \u{B7} c</p> &middot;").len(), 2);
     }
 }
