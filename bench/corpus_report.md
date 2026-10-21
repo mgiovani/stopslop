@@ -7,10 +7,12 @@
 - antd-tsx revision: 3.26.0
 - apt-eval revision: 1a183126ec24
 - beemo revision: 9c014107fe9b
+- bolt-ui revision: pinned-set:9c42b52be956bbe8
 - codemirage revision: 174c25ffa9e9
 - codet_m4 revision: 4d4e665037cb
 - cpython-doc revision: v3.8.0
 - cpython-lib revision: v3.8.0
+- design2code revision: 9d23e96b0b8d
 - diplomatrix revision: n/a
 - droid revision: 9a42843be994
 - essay-br revision: n/a
@@ -22,15 +24,19 @@
 - hc3 revision: 4d0ff18143b5
 - k8s-docs revision: snapshot-initial-v1.17
 - lener-br revision: 4999cb7f6319
+- lovable-ui revision: pinned-set:6292e0475347c90b
 - mage revision: 342663f0a2b7
 - naples-code revision: n/a
 - pan25 revision: n/a
 - react-docs revision: f90d199a61c1
+- replit-ui revision: pinned-set:9fb8ed55c2fa4e52
 - rosetta revision: 11d8b38cbd90
 - rust-book revision: be91ce0d3e63
 - rust-std revision: 1.40.0
+- same-ui revision: pinned-set:e9cdb553daeb441b
 - semeval13 revision: df2aec18238a
 - semeval24-m4 revision: 509a1a6a33f9
+- tailwind-tsx-2022 revision: pinned-set:1924a21b0c347bab
 - typescript-src revision: v3.7.2
 - wetbench-pt revision: n/a
 - **Not fetched** (retries exhausted under `--skip-failures`; absent from every table below, rerun to fill them from cache): codemirage/ai/go, codemirage/ai/typescript, codemirage/human/go, codemirage/human/python, codemirage/human/typescript, codet_m4/human/python, droid/ai-adversarial/python, droid/ai-adversarial/rust, droid/ai-refined/python, droid/ai/go, droid/human/python, droid/human/rust, hairosetta/ai-translated/go, hairosetta/ai-translated/rust, hairosetta/human/go, hairosetta/human/python, rosetta/human/go
@@ -44,7 +50,7 @@
 - A `*` marks a precision built from fewer than 20 hits in total. Read those off the counts, not the ratio.
 - The `any rule` row is the OR of every applicable rule for that lang, so its precision tracks the noisiest member rather than the best one; `any Tier A rule` is the same OR restricted to rules CI actually fails on.
 - A hit rate is evidence that the tells appear in that corpus. It is not a claim that any file is AI-written, and this crate ships no such claim.
-- SLOP010 names every code `Lang` too, but its check needs a dependency manifest a per-file corpus cell has no reason to carry, so it can never fire here and the tables leave it out rather than show a rule that structurally cannot score. SLOP044 (HTML) and SLOP046-SLOP048 (images) are left out for the plainer reason that no registered dataset carries an HTML or image cell. SLOP045 reads only files of 60+ non-blank lines, which excludes nearly every file in the snippet and contest corpora (2.6% of AIGCodeSet's human `.py` files clear it): its 0% there means it barely ran, not that it found nothing. The pinned standard libraries clear it (67% of rust-std).
+- SLOP010 names every code `Lang` too, but its check needs a dependency manifest a per-file corpus cell has no reason to carry, so it can never fire here and the tables leave it out rather than show a rule that structurally cannot score. SLOP046-SLOP048 (images) are left out for the plainer reason that no registered dataset carries an image cell. SLOP045 reads only files of 60+ non-blank lines, which excludes nearly every file in the snippet and contest corpora (2.6% of AIGCodeSet's human `.py` files clear it): its 0% there means it barely ran, not that it found nothing. The pinned standard libraries clear it (67% of rust-std).
 - Hugging Face cells are sampled through `/filter` when the datasets-server index answers and through a spread `/rows` scan when it does not. Both are deterministic, and a `scan_*` marker in the page cache pins a scanned cell to the scan on later runs, so reruns reproduce this file byte for byte; a cold cache under the other path draws a different sample of the same population.
 
 ### Which human splits count as human
@@ -58,10 +64,12 @@ A split is read as human only when its text is dated 2019 or earlier (`pinned-20
 | antd-tsx | pinned-2019 | Ant Design 3.26.0 components, tagged December 2019 | n/a |
 | apt-eval | unverified | human blog, email, news, review and speech texts drawn from MixSet and similar 2024 collections | GPT-4o, Llama 3.1 70B, Llama 3 8B and DeepSeek-V3 as polishers (2024-25) |
 | beemo | verified-authors | No Robots (2023): responses written by expert annotators to the same prompts the models answered | GPT-4o, Llama 3.1 70B, Mixtral, Gemma, Mistral 7B, Zephyr (2023-24) |
+| bolt-ui | ai only | n/a | bolt.new, commits dated 2024-10-08 to 2026-03-26 |
 | codemirage | unverified | CodeParrot github-code-clean, a GitHub snapshot from May 2022 | ten LLMs, 2025 (source column) |
 | codet_m4 | unverified | LeetCode and Codeforces solutions, undated, plus CodeSearchNet (2019) | GPT-4o, Llama 3, Qwen and other 2024 models (model column) |
 | cpython-doc | pinned-2019 | CPython 3.8.0 Doc, tagged October 2019 | n/a |
 | cpython-lib | pinned-2019 | CPython 3.8.0 Lib, tagged October 2019 | n/a |
+| design2code | unverified | 484 real web pages sampled from the C4 validation split (Common Crawl, April 2019) and cleaned by the authors; some pages carry Bootstrap 5 custom properties (2021), so a later re-crawl cannot be ruled out | n/a |
 | diplomatrix | verified-authors | CACD diplomatic-career exam essays, handwritten by identified candidates under supervision | GPT-4o, Claude 3, Gemini, Llama 3, Sabiá and other 2024 models |
 | droid | unverified | GitHub, LeetCode and Codeforces code collected 2024-25; the paper says the human class may contain assistant-written code | open and API code models, 2024-25 (Generator column) |
 | essay-br | unverified | ENEM-style student essays published on a correction site 2015-2020; the 2020 tail postdates the bar and authors are anonymous | n/a |
@@ -73,15 +81,19 @@ A split is read as human only when its text is dated 2019 or earlier (`pinned-20
 | hc3 | pinned-2019 | ELI5 (2019), FiQA (2018) and WikiQA (2015) answers; the wiki_csai (2022) and medicine (2020) human rows are dropped, their ChatGPT rows kept | ChatGPT (December 2022) |
 | k8s-docs | pinned-2019 | kubernetes/website English docs, tagged December 2019 | n/a |
 | lener-br | pinned-2019 | Brazilian federal statutes and court rulings dated 2008-2018 by their own text; the repo's own commit history only starts 2020-05-15, so the cutoff rests on the documents' stated dates, not the clone | n/a |
+| lovable-ui | ai only | n/a | Lovable, commits dated 2026-06-30 to 2026-10-14 |
 | mage | pinned-2019 | nine pre-2020 corpora (CMV, Yelp, XSum, TLDR, ELI5, WritingPrompts, ROC, HellaSwag, SQuAD); the SciGen human rows (arXiv through 2021) are dropped | 27 LLMs from GPT-J to GPT-3.5 and LLaMA (2019-2022) |
 | naples-code | pinned-2019 | HMCorp: 16,928 non-forked GitHub repos sorted by stars, filtered from CodeSearchNet (2019) | gpt-3.5-turbo (2023), DeepSeek-Coder-Instruct-33B and Qwen2.5-Coder-Instruct-32B (2024) |
 | pan25 | unverified | fiction, essay and news human text; the fiction/essay sources could not be confirmed, the news text is dated 2021 | 23 models spanning 2023-2025, including gpt-4o, o3-mini, gemini-2.0-flash, deepseek-r1-distill-qwen-32b, llama-3.3-70b-instruct and gpt-4.5-preview (model column) |
 | react-docs | pinned-2019 | react.dev docs at their last default-branch commit before 2020-01-01 | n/a |
+| replit-ui | ai only | n/a | Replit Agent, commits dated 2025-06-21 to 2026-10-14 |
 | rosetta | unverified | Rosetta Code wiki solutions in a 2022-23 snapshot; individual edits are undated | n/a |
 | rust-book | pinned-2019 | rust-lang/book at its last default-branch commit before 2020-01-01 | n/a |
 | rust-std | pinned-2019 | Rust 1.40.0 libstd, libcore and liballoc, tagged December 2019 | n/a |
+| same-ui | ai only | n/a | Same.new, commits dated 2025-05-19 to 2026-09-17 |
 | semeval13 | unverified | Droid-derived GitHub, LeetCode and Codeforces code collected 2024-25 | Qwen2.5-Coder, DeepSeek-Coder, Llama 3.x, GPT-4o and other 2024-25 models (generator column) |
 | semeval24-m4 | pinned-2019 | PeerRead (2007-2017) plus pre-2020 arXiv, Reddit and WikiHow text; the wikipedia human rows are dropped, their machine rows kept, the same treatment HC3's wiki_csai config gets | ChatGPT, GPT-3 davinci, Cohere, Dolly (2023) |
+| tailwind-tsx-2022 | verified-authors | 11 well-known open-source Tailwind React apps by named maintainers, each pinned to its last commit before 2023-01-01 (commit dates 2022-11-19 to 2022-12-30), before AI app builders existed | n/a |
 | typescript-src | pinned-2019 | TypeScript 3.7.2 compiler sources, tagged November 2019 | n/a |
 | wetbench-pt | unverified | Portuguese Wikipedia paragraphs from 2024 revisions | GPT-4o mini, Gemini 2.0 Flash, Qwen2.5-7B, Mistral-7B (2024) |
 
@@ -178,27 +190,43 @@ Plain ai Rust in this table, when present, comes only from the synthesized `synt
 
 #### tsx
 
-| rule | antd-tsx H% | antd-tsx A% |
+| rule | antd-tsx H% | antd-tsx A% | tailwind-tsx-2022 H% | tailwind-tsx-2022 A% |
+|---|---|---|---|---|
+| SLOP001 | 0.00% |  | 0.00% |  |
+| SLOP002 | 0.00% |  | 0.00% |  |
+| SLOP003 | 0.00% |  | 0.00% |  |
+| SLOP004 | 0.00% |  | 0.00% |  |
+| SLOP005 | 0.20% |  | 1.20% |  |
+| SLOP007 | 5.40% |  | 4.00% |  |
+| SLOP008 | 0.00% |  | 0.00% |  |
+| SLOP009 | 0.00% |  | 2.00% |  |
+| SLOP037 | 0.00% |  | 0.00% |  |
+| SLOP038 | 2.20% |  | 0.60% |  |
+| SLOP039 | 0.00% |  | 0.60% |  |
+| SLOP040 | 0.00% |  | 0.00% |  |
+| SLOP042 | 0.40% |  | 1.60% |  |
+| SLOP043 | 0.00% |  | 1.20% |  |
+| SLOP050 | 0.00% |  | 0.00% |  |
+| SLOP051 | 0.00% |  | 0.00% |  |
+| SLOP045 | 0.00% |  | 0.00% |  |
+| SLOP052 | 0.00% |  | 0.20% |  |
+| SLOP053 | 0.00% |  | 0.00% |  |
+| SLOP054 | 0.00% |  | 0.00% |  |
+| SLOP055 | 0.00% |  | 1.20% |  |
+| SLOP057 | 0.00% |  | 0.00% |  |
+| **any Tier A rule** | 5.40% |  | 7.00% |  |
+| **any rule** | 7.40% |  | 10.60% |  |
+
+#### css
+
+| rule | tailwind-tsx-2022 H% | tailwind-tsx-2022 A% |
 |---|---|---|
-| SLOP001 | 0.00% |  |
-| SLOP002 | 0.00% |  |
-| SLOP003 | 0.00% |  |
-| SLOP004 | 0.00% |  |
-| SLOP005 | 0.20% |  |
-| SLOP007 | 5.40% |  |
-| SLOP008 | 0.00% |  |
-| SLOP009 | 0.00% |  |
-| SLOP037 | 0.00% |  |
-| SLOP038 | 2.20% |  |
-| SLOP039 | 0.00% |  |
-| SLOP040 | 0.00% |  |
-| SLOP042 | 0.40% |  |
-| SLOP043 | 0.00% |  |
-| SLOP050 | 0.00% |  |
-| SLOP051 | 0.00% |  |
-| SLOP045 | 0.00% |  |
-| **any Tier A rule** | 5.40% |  |
-| **any rule** | 7.40% |  |
+| SLOP052 | 0.00% |  |
+| SLOP053 | 0.00% |  |
+| SLOP054 | 0.00% |  |
+| SLOP056 | 0.00% |  |
+| **any Tier A rule** | 0.00% |  |
+| **any rule** | 0.00% |  |
 
 #### prose
 
@@ -329,6 +357,89 @@ Plain ai Rust in this table, when present, comes only from the synthesized `synt
 | **any Tier A rule** |  |  | 1.80% | 13.60% | 0.40% |  | 0.00% |  | 1.60% | 9.40% |
 | **any rule** |  |  | 9.00% | 39.20% | 12.83% |  | 5.13% |  | 6.00% | 31.00% |
 
+#### tsx
+
+| rule | bolt-ui H% | bolt-ui A% | lovable-ui H% | lovable-ui A% | replit-ui H% | replit-ui A% | same-ui H% | same-ui A% |
+|---|---|---|---|---|---|---|---|---|
+| SLOP001 |  | 0.00% |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP002 |  | 0.00% |  | 0.40% |  | 0.00% |  | 0.00% |
+| SLOP003 |  | 0.00% |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP004 |  | 0.00% |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP005 |  | 6.61% |  | 11.20% |  | 0.63% |  | 4.17% |
+| SLOP007 |  | 7.21% |  | 26.60% |  | 2.52% |  | 0.00% |
+| SLOP008 |  | 0.00% |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP009 |  | 3.21% |  | 2.20% |  | 0.00% |  | 4.17% |
+| SLOP037 |  | 1.80% |  | 2.20% |  | 0.00% |  | 2.98% |
+| SLOP038 |  | 0.00% |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP039 |  | 0.00% |  | 1.00% |  | 1.89% |  | 0.00% |
+| SLOP040 |  | 0.00% |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP042 |  | 10.82% |  | 6.20% |  | 5.03% |  | 2.98% |
+| SLOP043 |  | 0.00% |  | 6.80% |  | 0.00% |  | 2.38% |
+| SLOP050 |  | 0.80% |  | 0.00% |  | 0.63% |  | 0.60% |
+| SLOP051 |  | 1.00% |  | 0.00% |  | 0.00% |  | 1.79% |
+| SLOP045 |  | 0.00% |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP052 |  | 2.40% |  | 0.20% |  | 1.26% |  | 2.38% |
+| SLOP053 |  | 6.01% |  | 0.20% |  | 7.55% |  | 11.31% |
+| SLOP054 |  | 0.00% |  | 0.20% |  | 0.00% |  | 0.00% |
+| SLOP055 |  | 20.04% |  | 2.60% |  | 10.06% |  | 13.69% |
+| SLOP057 |  | 0.20% |  | 27.00% |  | 6.92% |  | 0.60% |
+| **any Tier A rule** |  | 15.43% |  | 33.00% |  | 3.14% |  | 7.14% |
+| **any rule** |  | 35.67% |  | 50.40% |  | 28.30% |  | 30.36% |
+
+#### html
+
+| rule | bolt-ui H% | bolt-ui A% | design2code H% | design2code A% | lovable-ui H% | lovable-ui A% | replit-ui H% | replit-ui A% | same-ui H% | same-ui A% |
+|---|---|---|---|---|---|---|---|---|---|---|
+| SLOP001 |  | 0.00% | 0.00% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP009 |  | 0.00% | 3.31% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP011 |  | 0.00% | 0.21% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP012 |  | 0.00% | 0.00% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP013 |  | 0.00% | 1.24% |  |  | 23.08% |  | 0.00% |  | 0.00% |
+| SLOP014 |  | 0.00% | 0.41% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP015 |  | 0.00% | 0.21% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP016 |  | 0.00% | 0.00% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP017 |  | 0.00% | 0.41% |  |  | 15.38% |  | 0.00% |  | 0.00% |
+| SLOP018 |  | 0.00% | 4.13% |  |  | 53.85% |  | 0.00% |  | 0.00% |
+| SLOP019 |  | 0.00% | 8.06% |  |  | 7.69% |  | 0.00% |  | 0.00% |
+| SLOP020 |  | 0.00% | 17.56% |  |  | 23.08% |  | 0.00% |  | 0.00% |
+| SLOP021 |  | 0.00% | 13.02% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP022 |  | 0.00% | 2.07% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP023 |  | 0.00% | 0.00% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP024 |  | 0.00% | 0.83% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP025 |  | 0.00% | 0.21% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP026 |  | 0.00% | 0.00% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP027 |  | 0.00% | 0.21% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP028 |  | 0.00% | 0.62% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP029 |  | 0.00% | 0.41% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP030 |  | 0.00% | 4.34% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP031 |  | 0.00% | 0.00% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP032 |  | 0.00% | 0.00% |  |  | 7.69% |  | 0.00% |  | 0.00% |
+| SLOP033 |  | 0.00% | 5.17% |  |  | 7.69% |  | 0.00% |  | 0.00% |
+| SLOP034 |  | 0.00% | 0.41% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP035 |  | 0.00% | 0.00% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP036 |  | 0.00% | 0.62% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP041 |  | 0.00% | 0.62% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP044 |  | 0.00% | 0.21% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP052 |  | 0.00% | 0.62% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP053 |  | 10.00% | 0.00% |  |  | 0.00% |  | 16.67% |  | 0.00% |
+| SLOP054 |  | 0.00% | 0.21% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP055 |  | 0.00% | 0.00% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP056 |  | 0.00% | 0.00% |  |  | 0.00% |  | 0.00% |  | 0.00% |
+| SLOP057 |  | 0.00% | 1.24% |  |  | 7.69% |  | 0.00% |  | 0.00% |
+| **any Tier A rule** |  | 0.00% | 4.75% |  |  | 23.08% |  | 0.00% |  | 0.00% |
+| **any rule** |  | 10.00% | 48.76% |  |  | 69.23% |  | 16.67% |  | 0.00% |
+
+#### css
+
+| rule | bolt-ui H% | bolt-ui A% | lovable-ui H% | lovable-ui A% | replit-ui H% | replit-ui A% | same-ui H% | same-ui A% |
+|---|---|---|---|---|---|---|---|---|
+| SLOP052 |  | 5.88% |  | 11.11% |  | 4.35% |  | 0.00% |
+| SLOP053 |  | 0.00% |  | 0.00% |  | 4.35% |  | 0.00% |
+| SLOP054 |  | 5.88% |  | 2.22% |  | 0.00% |  | 0.00% |
+| SLOP056 |  | 5.88% |  | 11.11% |  | 4.35% |  | 0.00% |
+| **any Tier A rule** |  | 0.00% |  | 0.00% |  | 0.00% |  | 0.00% |
+| **any rule** |  | 11.76% |  | 20.00% |  | 8.70% |  | 0.00% |
+
 #### prose
 
 | rule | aidev H% | aidev A% | apt-eval H% | apt-eval A% | essay-br H% | essay-br A% | faidset H% | faidset A% | pan25 H% | pan25 A% | wetbench-pt H% | wetbench-pt A% |
@@ -397,6 +508,11 @@ Plain ai Rust in this table, when present, comes only from the synthesized `synt
 | SLOP045 | 0 (0.00%) |
 | SLOP050 | 0 (0.00%) |
 | SLOP051 | 0 (0.00%) |
+| SLOP052 | 0 (0.00%) |
+| SLOP053 | 0 (0.00%) |
+| SLOP054 | 0 (0.00%) |
+| SLOP055 | 0 (0.00%) |
+| SLOP057 | 0 (0.00%) |
 | **any Tier A rule** | 27 (5.40%) |
 | **any rule** | 37 (7.40%) |
 
@@ -1208,6 +1324,63 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP041 | 61.0% | 46.3% | 23.6% |
 
 
+### tailwind-tsx-2022
+
+- Source: https://github.com/vercel/commerce
+- License: mixed, per repo
+- Natural language: n/a (code)
+- Human split: verified-authors (11 well-known open-source Tailwind React apps by named maintainers, each pinned to its last commit before 2023-01-01 (commit dates 2022-11-19 to 2022-12-30), before AI app builders existed)
+- Revision: pinned-set:1924a21b0c347bab
+- Files fetched: 589
+  - css:
+    - human: 89 (0 blank dropped).
+  - tsx:
+    - human: 500 (0 blank dropped).
+- No pre-2020 Tailwind React baseline exists: Tailwind's React ecosystem and its violet palette postdate 2019, so the human bar is late 2022, weeks after ChatGPT launched.
+- Large repos (cal.com, saleor/storefront) contribute proportionally more files to the pooled sample.
+- Product apps, not landing pages: a marketing hero is where gradient text concentrates, so this baseline may understate the human rate on landing-page code.
+
+#### tailwind-tsx-2022 / css
+
+| rule | human hits |
+|---|---|
+| SLOP052 | 0 (0.00%) |
+| SLOP053 | 0 (0.00%) |
+| SLOP054 | 0 (0.00%) |
+| SLOP056 | 0 (0.00%) |
+| **any Tier A rule** | 0 (0.00%) |
+| **any rule** | 0 (0.00%) |
+
+#### tailwind-tsx-2022 / tsx
+
+| rule | human hits |
+|---|---|
+| SLOP007 | 20 (4.00%) |
+| SLOP009 | 10 (2.00%) |
+| SLOP042 | 8 (1.60%) |
+| SLOP005 | 6 (1.20%) |
+| SLOP043 | 6 (1.20%) |
+| SLOP055 | 6 (1.20%) |
+| SLOP038 | 3 (0.60%) |
+| SLOP039 | 3 (0.60%) |
+| SLOP052 | 1 (0.20%) |
+| SLOP001 | 0 (0.00%) |
+| SLOP002 | 0 (0.00%) |
+| SLOP003 | 0 (0.00%) |
+| SLOP004 | 0 (0.00%) |
+| SLOP008 | 0 (0.00%) |
+| SLOP037 | 0 (0.00%) |
+| SLOP040 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
+| SLOP050 | 0 (0.00%) |
+| SLOP051 | 0 (0.00%) |
+| SLOP053 | 0 (0.00%) |
+| SLOP054 | 0 (0.00%) |
+| SLOP057 | 0 (0.00%) |
+| **any Tier A rule** | 35 (7.00%) |
+| **any rule** | 53 (10.60%) |
+
+
 ### typescript-src
 
 - Source: https://github.com/microsoft/TypeScript
@@ -1406,6 +1579,118 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | **any rule** | 84 (28.00%) |
 
 
+### bolt-ui
+
+- Source: https://github.com/Gaganpraveen/AuraM
+- License: mixed, per repo
+- Natural language: n/a (code)
+- Generators: bolt.new, commits dated 2024-10-08 to 2026-03-26
+- Revision: pinned-set:9c42b52be956bbe8
+- Files fetched: 526
+  - css:
+    - ai: 17 (0 blank dropped).
+  - html:
+    - ai: 10 (0 blank dropped).
+  - tsx:
+    - ai: 499 (1 blank dropped).
+- 12 public repos pinned by SHA. Provenance marker: each pinned repo carries .bolt/config.json or .bolt/prompt at the pinned HEAD, files bolt.new writes into every project; repos are capped at 15 commits to skip heavy human follow-up.
+- Only .tsx, .css and .html under src/ and client/src/ (plus index.html) are scored; components/ui/ vendored shadcn primitives and *.min.* files are excluded, so no hand-copied primitive counts as builder output.
+- The marker proves the builder created the project, not that it wrote every line: an owner may have edited files before the pin.
+
+#### bolt-ui / css
+
+| rule | ai hits |
+|---|---|
+| SLOP052 | 1 (5.88%) |
+| SLOP054 | 1 (5.88%) |
+| SLOP056 | 1 (5.88%) |
+| SLOP053 | 0 (0.00%) |
+| **any Tier A rule** | 0 (0.00%) |
+| **any rule** | 2 (11.76%) |
+
+#### bolt-ui / html
+
+| rule | ai hits |
+|---|---|
+| SLOP053 | 1 (10.00%) |
+| SLOP001 | 0 (0.00%) |
+| SLOP009 | 0 (0.00%) |
+| SLOP011 | 0 (0.00%) |
+| SLOP012 | 0 (0.00%) |
+| SLOP013 | 0 (0.00%) |
+| SLOP014 | 0 (0.00%) |
+| SLOP015 | 0 (0.00%) |
+| SLOP016 | 0 (0.00%) |
+| SLOP017 | 0 (0.00%) |
+| SLOP018 | 0 (0.00%) |
+| SLOP019 | 0 (0.00%) |
+| SLOP020 | 0 (0.00%) |
+| SLOP021 | 0 (0.00%) |
+| SLOP022 | 0 (0.00%) |
+| SLOP023 | 0 (0.00%) |
+| SLOP024 | 0 (0.00%) |
+| SLOP025 | 0 (0.00%) |
+| SLOP026 | 0 (0.00%) |
+| SLOP027 | 0 (0.00%) |
+| SLOP028 | 0 (0.00%) |
+| SLOP029 | 0 (0.00%) |
+| SLOP030 | 0 (0.00%) |
+| SLOP031 | 0 (0.00%) |
+| SLOP032 | 0 (0.00%) |
+| SLOP033 | 0 (0.00%) |
+| SLOP034 | 0 (0.00%) |
+| SLOP035 | 0 (0.00%) |
+| SLOP036 | 0 (0.00%) |
+| SLOP041 | 0 (0.00%) |
+| SLOP044 | 0 (0.00%) |
+| SLOP052 | 0 (0.00%) |
+| SLOP054 | 0 (0.00%) |
+| SLOP055 | 0 (0.00%) |
+| SLOP056 | 0 (0.00%) |
+| SLOP057 | 0 (0.00%) |
+| **any Tier A rule** | 0 (0.00%) |
+| **any rule** | 1 (10.00%) |
+
+#### bolt-ui / tsx
+
+| rule | ai hits |
+|---|---|
+| SLOP055 | 100 (20.04%) |
+| SLOP042 | 54 (10.82%) |
+| SLOP007 | 36 (7.21%) |
+| SLOP005 | 33 (6.61%) |
+| SLOP053 | 30 (6.01%) |
+| SLOP009 | 16 (3.21%) |
+| SLOP052 | 12 (2.40%) |
+| SLOP037 | 9 (1.80%) |
+| SLOP051 | 5 (1.00%) |
+| SLOP050 | 4 (0.80%) |
+| SLOP057 | 1 (0.20%) |
+| SLOP001 | 0 (0.00%) |
+| SLOP002 | 0 (0.00%) |
+| SLOP003 | 0 (0.00%) |
+| SLOP004 | 0 (0.00%) |
+| SLOP008 | 0 (0.00%) |
+| SLOP038 | 0 (0.00%) |
+| SLOP039 | 0 (0.00%) |
+| SLOP040 | 0 (0.00%) |
+| SLOP043 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
+| SLOP054 | 0 (0.00%) |
+| **any Tier A rule** | 77 (15.43%) |
+| **any rule** | 178 (35.67%) |
+
+Per-generator (ai, >= 20 files, rule >= 20 hits):
+
+| rule | bolt.new |
+| --- | --- |
+| SLOP005 | 6.6% |
+| SLOP007 | 7.2% |
+| SLOP042 | 10.8% |
+| SLOP053 | 6.0% |
+| SLOP055 | 20.0% |
+
+
 ### codemirage
 
 - Source: https://huggingface.co/datasets/HanxiGuo/CodeMirage
@@ -1552,6 +1837,64 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | rule | codellama | gpt | llama3.1 | nxcode | qwen1.5 |
 | --- | --- | --- | --- | --- | --- |
 | SLOP037 | 10.3% | 5.1% | 6.5% | 0.0% | 6.1% |
+
+
+### design2code
+
+- Source: https://huggingface.co/datasets/SALT-NLP/Design2Code-hf
+- Paper: arXiv 2403.03163
+- License: CC-BY-4.0
+- Natural language: n/a (code)
+- Human split: unverified (484 real web pages sampled from the C4 validation split (Common Crawl, April 2019) and cleaned by the authors; some pages carry Bootstrap 5 custom properties (2021), so a later re-crawl cannot be ruled out)
+- Revision: 9d23e96b0b8d
+- Files fetched: 484
+  - html:
+    - human: 484 (0 blank dropped).
+- The authors replaced images with placeholders and trimmed scripts, so page furniture reads cleaner than the live web.
+- Fetched at run time and never committed to this repo.
+
+#### design2code / html
+
+| rule | human hits |
+|---|---|
+| SLOP020 | 85 (17.56%) |
+| SLOP021 | 63 (13.02%) |
+| SLOP019 | 39 (8.06%) |
+| SLOP033 | 25 (5.17%) |
+| SLOP030 | 21 (4.34%) |
+| SLOP018 | 20 (4.13%) |
+| SLOP009 | 16 (3.31%) |
+| SLOP022 | 10 (2.07%) |
+| SLOP013 | 6 (1.24%) |
+| SLOP057 | 6 (1.24%) |
+| SLOP024 | 4 (0.83%) |
+| SLOP028 | 3 (0.62%) |
+| SLOP036 | 3 (0.62%) |
+| SLOP041 | 3 (0.62%) |
+| SLOP052 | 3 (0.62%) |
+| SLOP014 | 2 (0.41%) |
+| SLOP017 | 2 (0.41%) |
+| SLOP029 | 2 (0.41%) |
+| SLOP034 | 2 (0.41%) |
+| SLOP011 | 1 (0.21%) |
+| SLOP015 | 1 (0.21%) |
+| SLOP025 | 1 (0.21%) |
+| SLOP027 | 1 (0.21%) |
+| SLOP044 | 1 (0.21%) |
+| SLOP054 | 1 (0.21%) |
+| SLOP001 | 0 (0.00%) |
+| SLOP012 | 0 (0.00%) |
+| SLOP016 | 0 (0.00%) |
+| SLOP023 | 0 (0.00%) |
+| SLOP026 | 0 (0.00%) |
+| SLOP031 | 0 (0.00%) |
+| SLOP032 | 0 (0.00%) |
+| SLOP035 | 0 (0.00%) |
+| SLOP053 | 0 (0.00%) |
+| SLOP055 | 0 (0.00%) |
+| SLOP056 | 0 (0.00%) |
+| **any Tier A rule** | 23 (4.75%) |
+| **any rule** | 236 (48.76%) |
 
 
 ### droid
@@ -1866,6 +2209,118 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | **any rule** | 64 (12.83%) |
 
 
+### lovable-ui
+
+- Source: https://github.com/Anaislegousky/Memory-lane
+- License: mixed, per repo
+- Natural language: n/a (code)
+- Generators: Lovable, commits dated 2026-06-30 to 2026-10-14
+- Revision: pinned-set:6292e0475347c90b
+- Files fetched: 558
+  - css:
+    - ai: 45 (0 blank dropped).
+  - html:
+    - ai: 13 (0 blank dropped).
+  - tsx:
+    - ai: 500 (0 blank dropped).
+- 28 public repos pinned by SHA. Provenance marker: at least half of each pinned repo's recent commits are authored or co-authored by gpt-engineer-app[bot], Lovable's committer identity; each pin is the newest such commit.
+- Only .tsx, .css and .html under src/ and client/src/ (plus index.html) are scored; components/ui/ vendored shadcn primitives and *.min.* files are excluded, so no hand-copied primitive counts as builder output.
+- The marker proves the builder created the project, not that it wrote every line: an owner may have edited files before the pin.
+
+#### lovable-ui / css
+
+| rule | ai hits |
+|---|---|
+| SLOP052 | 5 (11.11%) |
+| SLOP056 | 5 (11.11%) |
+| SLOP054 | 1 (2.22%) |
+| SLOP053 | 0 (0.00%) |
+| **any Tier A rule** | 0 (0.00%) |
+| **any rule** | 9 (20.00%) |
+
+#### lovable-ui / html
+
+| rule | ai hits |
+|---|---|
+| SLOP018 | 7 (53.85%) |
+| SLOP013 | 3 (23.08%) |
+| SLOP020 | 3 (23.08%) |
+| SLOP017 | 2 (15.38%) |
+| SLOP019 | 1 (7.69%) |
+| SLOP032 | 1 (7.69%) |
+| SLOP033 | 1 (7.69%) |
+| SLOP057 | 1 (7.69%) |
+| SLOP001 | 0 (0.00%) |
+| SLOP009 | 0 (0.00%) |
+| SLOP011 | 0 (0.00%) |
+| SLOP012 | 0 (0.00%) |
+| SLOP014 | 0 (0.00%) |
+| SLOP015 | 0 (0.00%) |
+| SLOP016 | 0 (0.00%) |
+| SLOP021 | 0 (0.00%) |
+| SLOP022 | 0 (0.00%) |
+| SLOP023 | 0 (0.00%) |
+| SLOP024 | 0 (0.00%) |
+| SLOP025 | 0 (0.00%) |
+| SLOP026 | 0 (0.00%) |
+| SLOP027 | 0 (0.00%) |
+| SLOP028 | 0 (0.00%) |
+| SLOP029 | 0 (0.00%) |
+| SLOP030 | 0 (0.00%) |
+| SLOP031 | 0 (0.00%) |
+| SLOP034 | 0 (0.00%) |
+| SLOP035 | 0 (0.00%) |
+| SLOP036 | 0 (0.00%) |
+| SLOP041 | 0 (0.00%) |
+| SLOP044 | 0 (0.00%) |
+| SLOP052 | 0 (0.00%) |
+| SLOP053 | 0 (0.00%) |
+| SLOP054 | 0 (0.00%) |
+| SLOP055 | 0 (0.00%) |
+| SLOP056 | 0 (0.00%) |
+| **any Tier A rule** | 3 (23.08%) |
+| **any rule** | 9 (69.23%) |
+
+#### lovable-ui / tsx
+
+| rule | ai hits |
+|---|---|
+| SLOP057 | 135 (27.00%) |
+| SLOP007 | 133 (26.60%) |
+| SLOP005 | 56 (11.20%) |
+| SLOP043 | 34 (6.80%) |
+| SLOP042 | 31 (6.20%) |
+| SLOP055 | 13 (2.60%) |
+| SLOP009 | 11 (2.20%) |
+| SLOP037 | 11 (2.20%) |
+| SLOP039 | 5 (1.00%) |
+| SLOP002 | 2 (0.40%) |
+| SLOP052 | 1 (0.20%) |
+| SLOP053 | 1 (0.20%) |
+| SLOP054 | 1 (0.20%) |
+| SLOP001 | 0 (0.00%) |
+| SLOP003 | 0 (0.00%) |
+| SLOP004 | 0 (0.00%) |
+| SLOP008 | 0 (0.00%) |
+| SLOP038 | 0 (0.00%) |
+| SLOP040 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
+| SLOP050 | 0 (0.00%) |
+| SLOP051 | 0 (0.00%) |
+| **any Tier A rule** | 165 (33.00%) |
+| **any rule** | 252 (50.40%) |
+
+Per-generator (ai, >= 20 files, rule >= 20 hits):
+
+| rule | Lovable |
+| --- | --- |
+| SLOP005 | 11.2% |
+| SLOP007 | 26.6% |
+| SLOP042 | 6.2% |
+| SLOP043 | 6.8% |
+| SLOP057 | 27.0% |
+
+
 ### pan25
 
 - Source: https://zenodo.org/records/14962653
@@ -1931,6 +2386,108 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP030 | 16.7% | 5.1% | 31.4% | 47.4% | 10.5% | 2.8% | 3.3% | 2.6% | 29.0% | 4.7% |
 | SLOP033 | 6.7% | 10.3% | 11.4% | 7.9% | 1.8% | 11.1% | 15.0% | 35.9% | 3.2% | 48.8% |
 | SLOP041 | 0.0% | 0.0% | 0.0% | 0.0% | 15.8% | 0.0% | 0.0% | 5.1% | 0.0% | 0.0% |
+
+
+### replit-ui
+
+- Source: https://github.com/0xTariq-dev/Askolo
+- License: mixed, per repo
+- Natural language: n/a (code)
+- Generators: Replit Agent, commits dated 2025-06-21 to 2026-10-14
+- Revision: pinned-set:9fb8ed55c2fa4e52
+- Files fetched: 188
+  - css:
+    - ai: 23 (0 blank dropped).
+  - html:
+    - ai: 6 (0 blank dropped).
+  - tsx:
+    - ai: 159 (0 blank dropped).
+- 12 public repos pinned by SHA. Provenance marker: at least 40% of each pinned repo's recent commits carry the Replit-Commit-Author: Agent trailer; each pin is the newest such commit.
+- Only .tsx, .css and .html under src/ and client/src/ (plus index.html) are scored; components/ui/ vendored shadcn primitives and *.min.* files are excluded, so no hand-copied primitive counts as builder output.
+- The marker proves the builder created the project, not that it wrote every line: an owner may have edited files before the pin.
+
+#### replit-ui / css
+
+| rule | ai hits |
+|---|---|
+| SLOP052 | 1 (4.35%) |
+| SLOP053 | 1 (4.35%) |
+| SLOP056 | 1 (4.35%) |
+| SLOP054 | 0 (0.00%) |
+| **any Tier A rule** | 0 (0.00%) |
+| **any rule** | 2 (8.70%) |
+
+#### replit-ui / html
+
+| rule | ai hits |
+|---|---|
+| SLOP053 | 1 (16.67%) |
+| SLOP001 | 0 (0.00%) |
+| SLOP009 | 0 (0.00%) |
+| SLOP011 | 0 (0.00%) |
+| SLOP012 | 0 (0.00%) |
+| SLOP013 | 0 (0.00%) |
+| SLOP014 | 0 (0.00%) |
+| SLOP015 | 0 (0.00%) |
+| SLOP016 | 0 (0.00%) |
+| SLOP017 | 0 (0.00%) |
+| SLOP018 | 0 (0.00%) |
+| SLOP019 | 0 (0.00%) |
+| SLOP020 | 0 (0.00%) |
+| SLOP021 | 0 (0.00%) |
+| SLOP022 | 0 (0.00%) |
+| SLOP023 | 0 (0.00%) |
+| SLOP024 | 0 (0.00%) |
+| SLOP025 | 0 (0.00%) |
+| SLOP026 | 0 (0.00%) |
+| SLOP027 | 0 (0.00%) |
+| SLOP028 | 0 (0.00%) |
+| SLOP029 | 0 (0.00%) |
+| SLOP030 | 0 (0.00%) |
+| SLOP031 | 0 (0.00%) |
+| SLOP032 | 0 (0.00%) |
+| SLOP033 | 0 (0.00%) |
+| SLOP034 | 0 (0.00%) |
+| SLOP035 | 0 (0.00%) |
+| SLOP036 | 0 (0.00%) |
+| SLOP041 | 0 (0.00%) |
+| SLOP044 | 0 (0.00%) |
+| SLOP052 | 0 (0.00%) |
+| SLOP054 | 0 (0.00%) |
+| SLOP055 | 0 (0.00%) |
+| SLOP056 | 0 (0.00%) |
+| SLOP057 | 0 (0.00%) |
+| **any Tier A rule** | 0 (0.00%) |
+| **any rule** | 1 (16.67%) |
+
+#### replit-ui / tsx
+
+| rule | ai hits |
+|---|---|
+| SLOP055 | 16 (10.06%) |
+| SLOP053 | 12 (7.55%) |
+| SLOP057 | 11 (6.92%) |
+| SLOP042 | 8 (5.03%) |
+| SLOP007 | 4 (2.52%) |
+| SLOP039 | 3 (1.89%) |
+| SLOP052 | 2 (1.26%) |
+| SLOP005 | 1 (0.63%) |
+| SLOP050 | 1 (0.63%) |
+| SLOP001 | 0 (0.00%) |
+| SLOP002 | 0 (0.00%) |
+| SLOP003 | 0 (0.00%) |
+| SLOP004 | 0 (0.00%) |
+| SLOP008 | 0 (0.00%) |
+| SLOP009 | 0 (0.00%) |
+| SLOP037 | 0 (0.00%) |
+| SLOP038 | 0 (0.00%) |
+| SLOP040 | 0 (0.00%) |
+| SLOP043 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
+| SLOP051 | 0 (0.00%) |
+| SLOP054 | 0 (0.00%) |
+| **any Tier A rule** | 5 (3.14%) |
+| **any rule** | 45 (28.30%) |
 
 
 ### rosetta
@@ -2016,6 +2573,114 @@ Per-generator (ai, >= 20 files, rule >= 20 hits):
 | SLOP051 | 0 (0.00%) |
 | **any Tier A rule** | 0 (0.00%) |
 | **any rule** | 2 (5.13%) |
+
+
+### same-ui
+
+- Source: https://github.com/Harshi-max/AI-Interviewer
+- License: mixed, per repo
+- Natural language: n/a (code)
+- Generators: Same.new, commits dated 2025-05-19 to 2026-09-17
+- Revision: pinned-set:e9cdb553daeb441b
+- Files fetched: 183
+  - css:
+    - ai: 12 (0 blank dropped).
+  - html:
+    - ai: 3 (0 blank dropped).
+  - tsx:
+    - ai: 168 (0 blank dropped).
+- 12 public repos pinned by SHA. Provenance marker: each pinned repo carries .same/todos.md at the pinned HEAD, the task file the Same agent keeps; repos are capped at 15 commits to skip heavy human follow-up.
+- Only .tsx, .css and .html under src/ and client/src/ (plus index.html) are scored; components/ui/ vendored shadcn primitives and *.min.* files are excluded, so no hand-copied primitive counts as builder output.
+- The marker proves the builder created the project, not that it wrote every line: an owner may have edited files before the pin.
+
+#### same-ui / css
+
+| rule | ai hits |
+|---|---|
+| SLOP052 | 0 (0.00%) |
+| SLOP053 | 0 (0.00%) |
+| SLOP054 | 0 (0.00%) |
+| SLOP056 | 0 (0.00%) |
+| **any Tier A rule** | 0 (0.00%) |
+| **any rule** | 0 (0.00%) |
+
+#### same-ui / html
+
+| rule | ai hits |
+|---|---|
+| SLOP001 | 0 (0.00%) |
+| SLOP009 | 0 (0.00%) |
+| SLOP011 | 0 (0.00%) |
+| SLOP012 | 0 (0.00%) |
+| SLOP013 | 0 (0.00%) |
+| SLOP014 | 0 (0.00%) |
+| SLOP015 | 0 (0.00%) |
+| SLOP016 | 0 (0.00%) |
+| SLOP017 | 0 (0.00%) |
+| SLOP018 | 0 (0.00%) |
+| SLOP019 | 0 (0.00%) |
+| SLOP020 | 0 (0.00%) |
+| SLOP021 | 0 (0.00%) |
+| SLOP022 | 0 (0.00%) |
+| SLOP023 | 0 (0.00%) |
+| SLOP024 | 0 (0.00%) |
+| SLOP025 | 0 (0.00%) |
+| SLOP026 | 0 (0.00%) |
+| SLOP027 | 0 (0.00%) |
+| SLOP028 | 0 (0.00%) |
+| SLOP029 | 0 (0.00%) |
+| SLOP030 | 0 (0.00%) |
+| SLOP031 | 0 (0.00%) |
+| SLOP032 | 0 (0.00%) |
+| SLOP033 | 0 (0.00%) |
+| SLOP034 | 0 (0.00%) |
+| SLOP035 | 0 (0.00%) |
+| SLOP036 | 0 (0.00%) |
+| SLOP041 | 0 (0.00%) |
+| SLOP044 | 0 (0.00%) |
+| SLOP052 | 0 (0.00%) |
+| SLOP053 | 0 (0.00%) |
+| SLOP054 | 0 (0.00%) |
+| SLOP055 | 0 (0.00%) |
+| SLOP056 | 0 (0.00%) |
+| SLOP057 | 0 (0.00%) |
+| **any Tier A rule** | 0 (0.00%) |
+| **any rule** | 0 (0.00%) |
+
+#### same-ui / tsx
+
+| rule | ai hits |
+|---|---|
+| SLOP055 | 23 (13.69%) |
+| SLOP053 | 19 (11.31%) |
+| SLOP005 | 7 (4.17%) |
+| SLOP009 | 7 (4.17%) |
+| SLOP037 | 5 (2.98%) |
+| SLOP042 | 5 (2.98%) |
+| SLOP043 | 4 (2.38%) |
+| SLOP052 | 4 (2.38%) |
+| SLOP051 | 3 (1.79%) |
+| SLOP050 | 1 (0.60%) |
+| SLOP057 | 1 (0.60%) |
+| SLOP001 | 0 (0.00%) |
+| SLOP002 | 0 (0.00%) |
+| SLOP003 | 0 (0.00%) |
+| SLOP004 | 0 (0.00%) |
+| SLOP007 | 0 (0.00%) |
+| SLOP008 | 0 (0.00%) |
+| SLOP038 | 0 (0.00%) |
+| SLOP039 | 0 (0.00%) |
+| SLOP040 | 0 (0.00%) |
+| SLOP045 | 0 (0.00%) |
+| SLOP054 | 0 (0.00%) |
+| **any Tier A rule** | 12 (7.14%) |
+| **any rule** | 51 (30.36%) |
+
+Per-generator (ai, >= 20 files, rule >= 20 hits):
+
+| rule | Same |
+| --- | --- |
+| SLOP055 | 13.7% |
 
 
 ### semeval13
