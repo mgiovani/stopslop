@@ -3,6 +3,14 @@
 Notable changes per release. The README describes current behavior only;
 migration notes live here.
 
+## Unreleased
+
+### Fixed
+
+- **The locked `rustls` moves to 0.23.46**, past the TLS 1.3 handshake
+  advisory fixed in 0.23.45. It is reached only through the update notice, and
+  only `cargo install --locked` used the old pin.
+
 ## 0.7.0
 
 ### Added
