@@ -2,7 +2,9 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]*"]
+
+permissions: {}
 
 env:
   CARGO_TERM_COLOR: always
@@ -10,22 +12,42 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Must match the environment in the crates.io Trusted Publisher config.
+    environment: release
     permissions:
-      contents: write
+      contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Check the tag matches Cargo.toml
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - name: Check the tag matches Cargo.toml and CHANGELOG.md
         run: |
           version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
           test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != Cargo.toml v$version" >&2; exit 1; }
-      - uses: rust-lang/crates-io-auth-action@v1
+          grep -qx "## $version" CHANGELOG.md || { echo "CHANGELOG.md has no '## $version' section" >&2; exit 1; }
+      # Build before minting the token so dependency build scripts never see it.
+      - run: cargo package --locked
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
         id: auth
       - name: Publish to crates.io
-        run: cargo publish
+        run: cargo publish --locked --no-verify
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+  # A separate job so a failed release re-runs without republishing.
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Create the GitHub release from the CHANGELOG.md section
         run: |
           version=${GITHUB_REF_NAME#v}
