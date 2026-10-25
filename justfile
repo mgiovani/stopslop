@@ -36,6 +36,21 @@ check: build
     cargo test
     {{bin}} .
 
+# Publishing is left to .github/workflows/release.yml, which runs when the tag lands.
+# Bump to VERSION, retitle Unreleased in CHANGELOG.md, then commit, tag and push.
+release version:
+    test -z "$(git status --porcelain)" || { echo "release: working tree is dirty" >&2; exit 1; }
+    test "$(git branch --show-current)" = main || { echo "release: not on main" >&2; exit 1; }
+    git pull --ff-only
+    grep -q '^## Unreleased$' CHANGELOG.md || { echo "release: CHANGELOG.md has no Unreleased section" >&2; exit 1; }
+    just check
+    perl -pi -e '$n += s/^version = "[^"]*"/version = "{{version}}"/ if !$n' Cargo.toml
+    perl -pi -e 's/^## Unreleased$/## {{version}}/' CHANGELOG.md
+    cargo update --workspace --quiet
+    git commit -qam "chore: release v{{version}}"
+    git tag -a v{{version}} -m v{{version}}
+    git push origin main v{{version}}
+
 # Download and materialize every corpus cell (needs the network).
 corpus-fetch:
     python3 bench/score_corpus.py --dir {{corpus}} --limit {{limit}} --fetch-only --skip-failures
