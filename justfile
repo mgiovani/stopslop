@@ -36,6 +36,25 @@ check: build
     cargo test
     {{bin}} .
 
+# .github/workflows/release.yml publishes when the tag lands; --atomic keeps a rejected
+# main push from leaving the tag behind to publish anyway.
+# Release `version` (X.Y.Z): bump, retitle Unreleased in CHANGELOG.md, commit, tag, push.
+release version:
+    echo "{{version}}" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { echo "release: version must be X.Y.Z, got {{version}}" >&2; exit 1; }
+    test -z "$(git status --porcelain)" || { echo "release: working tree is dirty" >&2; exit 1; }
+    test "$(git branch --show-current)" = main || { echo "release: not on main" >&2; exit 1; }
+    git pull --ff-only
+    test "$(git rev-parse HEAD)" = "$(git rev-parse '@{u}')" || { echo "release: main has unpushed commits" >&2; exit 1; }
+    test -z "$(git tag -l v{{version}})" || { echo "release: tag v{{version}} already exists" >&2; exit 1; }
+    grep -q '^## Unreleased$' CHANGELOG.md || { echo "release: CHANGELOG.md has no Unreleased section" >&2; exit 1; }
+    just check
+    perl -pi -e '$n += s/^version = "[^"]*"/version = "{{version}}"/ if !$n' Cargo.toml
+    perl -pi -e 's/^## Unreleased$/## {{version}}/' CHANGELOG.md
+    cargo update --workspace --quiet
+    git commit -qam "chore: release v{{version}}"
+    git tag -a v{{version}} -m v{{version}}
+    git push --atomic origin main v{{version}}
+
 # Download and materialize every corpus cell (needs the network).
 corpus-fetch:
     python3 bench/score_corpus.py --dir {{corpus}} --limit {{limit}} --fetch-only --skip-failures
