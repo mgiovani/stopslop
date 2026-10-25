@@ -3,7 +3,7 @@
 Notable changes per release. The README describes current behavior only;
 migration notes live here.
 
-## Unreleased
+## 0.7.1
 
 ### Fixed
 

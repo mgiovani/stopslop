@@ -1,6 +1,6 @@
 [package]
 name = "stopslop"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 description = "A fast linter for AI slop in code, prose, stylesheets and images. No model, no API key, zero tokens."
 license = "MIT"
